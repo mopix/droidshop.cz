@@ -1,0 +1,1 @@
+# droidshop.cz
