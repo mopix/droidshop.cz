@@ -2,6 +2,8 @@
 
 namespace App\Providers;
 
+use App\Core\Limits\LimitsService;
+use App\Core\Storage\StorageLimitCounter;
 use Illuminate\Support\Facades\Vite;
 use Illuminate\Support\ServiceProvider;
 
@@ -12,7 +14,10 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        // LimitsService holds registered counters, so it must be one instance
+        // for the whole request or a counter registered here would be invisible
+        // to the caller that checks the limit.
+        $this->app->singleton(LimitsService::class);
     }
 
     /**
@@ -21,5 +26,10 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         Vite::prefetch(concurrency: 3);
+
+        // The storage_mb counter is the first concrete LimitCounter. Registered
+        // at boot so LimitsService can answer storage questions from anywhere.
+        $this->app->make(LimitsService::class)
+            ->registerCounter($this->app->make(StorageLimitCounter::class));
     }
 }
