@@ -1,5 +1,11 @@
 # Fáze 0 / vlna 0.1 — Tenancy jádro, izolace, CI — implementační plán
 
+> **STAV: dokončeno 2026-07-19**, verze 0.2.0, větev `feat/tenancy-core`.
+> Bloky A–H hotové, 80 testů zelených. Skutečný stav a odchylky:
+> [`docs/as-is/2026-07-19-tenancy-jadro.md`](../../as-is/2026-07-19-tenancy-jadro.md).
+> Kroky níže zůstávají v původním znění; kde se realizace lišila, je to
+> poznamenáno u dotčeného bloku.
+
 > **Pro agenta:** Použij superpowers:executing-plans nebo subagent-driven-development. Kroky s `- [ ]`.
 
 **Cíl:** Request na `nazev.droidshop.cz` rozpozná tenanta, nastaví kontext a od té chvíle je datově nemožné sáhnout na data cizího tenanta — ověřeno testy v CI.
