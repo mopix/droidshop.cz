@@ -176,6 +176,9 @@ Po milestone: [`docs/as-is/`](docs/as-is/) ([`.claude/rules/as-is-on-milestone.m
 - 2026-07-19: `stripe/stripe-php` = zbytek po šabloně, odstranit při první implementační vlně; brána se rozhodne u modulu `billing`
 - 2026-07-19: **PHP 8.3** zatím stačí (Laravel 13 vyžaduje `^8.3`, tj. 8.4 je volitelná). Pokud narazíme na funkci vyžadující 8.4 (property hooks, lazy objects, `array_find`), upozorni uživatele — zvedneme constraint na `^8.4`
 - 2026-07-19: Page cache — zrušena cookie `has_cart`; mini-košík je ostrůvek, cachované HTML nesmí obsahovat osobní obsah (spec §15.6)
+- 2026-07-19: **Multi-tenancy = `spatie/laravel-multitenancy` ^4.1** — navržený pro shared DB + `tenant_id`. `stancl/tenancy` zamítnut (těžiště v DB-per-tenant). Kernel služby dle spec §15.1 píšeme sami
+- 2026-07-19: **Moduly = `nwidart/laravel-modules` ^13.0 + vlastní manifest vrstva** — nwidart dá autoloading, scaffolding, migrace per modul; naše vrstva manifest schema, per-tenant aktivaci, route mounting, kill switch, tarify. Kompromis: `modules_statuses.json` = deploy stav, tabulka `tenant_modules` = per-tenant stav. Revidovatelné (alternativa = plně vlastní systém)
+- 2026-07-19: **Fáze 0 rozdělena na vlny.** Vlna 0.1 = tenancy jádro + izolace + CI (bez modulů, bez superadmin UI)
 
 ## Před spuštěním (právní / provozní)
 - [ ] VOP platformy (odpovědnost nájemce za obsah)
