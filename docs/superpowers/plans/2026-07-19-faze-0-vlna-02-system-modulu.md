@@ -1,5 +1,14 @@
 # Fáze 0 / vlna 0.2 — Systém modulů — implementační plán
 
+> **STAV: dokončeno 2026-07-19**, verze 0.3.0, větev `feat/module-system`.
+> Bloky A–H hotové, 137 testů zelených. Skutečný stav a odchylky:
+> [`docs/as-is/2026-07-19-system-modulu.md`](../../as-is/2026-07-19-system-modulu.md).
+>
+> **Změna oproti plánu (blok F):** routy se registrují z **disku**, ne z registru.
+> Registrace běží při bootu, kdy ještě není znám tenant a na čerstvé databázi
+> ani neexistuje tabulka `modules`. Kill switch přesto funguje bez redeploye —
+> middleware se registru ptá při každém requestu.
+
 > **Pro agenta:** Použij superpowers:executing-plans nebo subagent-driven-development. Kroky s `- [ ]`.
 
 **Cíl:** Modul jde nasadit, zaregistrovat, per tenanta zapnout a vypnout — a když je vypnutý, jeho routy, navigace ani listenery pro toho tenanta neexistují.
