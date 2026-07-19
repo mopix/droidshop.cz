@@ -2,6 +2,7 @@
 
 namespace App\Core\Storage;
 
+use App\Core\Limits\LimitsService;
 use App\Core\Tenancy\Exceptions\MissingTenantContext;
 use App\Core\Tenancy\TenantContext;
 use Illuminate\Contracts\Filesystem\Filesystem;
@@ -37,7 +38,10 @@ class FileStorage
      */
     public function putPublic(string $path, mixed $contents): string
     {
+        // key() resolves the tenant first, so a missing context fails as
+        // MissingTenantContext rather than as a limit error.
         $key = $this->key($path);
+        $this->guardStorageLimit($contents);
         $this->publicDisk()->put($key, $contents);
 
         return $path;
@@ -49,9 +53,31 @@ class FileStorage
     public function putPrivate(string $path, mixed $contents): string
     {
         $key = $this->key($path);
+        $this->guardStorageLimit($contents);
         $this->privateDisk()->put($key, $contents);
 
         return $path;
+    }
+
+    /**
+     * Refuses the write if it would take the tenant over their storage limit.
+     *
+     * LimitsService is resolved lazily, not injected: the storage_mb counter
+     * depends on FileStorage, and taking LimitsService in the constructor would
+     * close that loop. Read at call time, the cycle never forms.
+     */
+    private function guardStorageLimit(mixed $contents): void
+    {
+        $bytes = is_string($contents) ? strlen($contents) : 0;
+
+        // Conservative: round the new file up to whole MB of headroom needed.
+        $deltaMb = (int) ceil($bytes / (1024 * 1024));
+
+        $result = app(LimitsService::class)->check('storage_mb', $deltaMb);
+
+        if (! $result->allowed()) {
+            throw new Exceptions\StorageLimitExceeded($result->message);
+        }
     }
 
     public function get(string $path, bool $private = true): string
