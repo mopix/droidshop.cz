@@ -94,10 +94,36 @@ class FileStorage
         // Validate the path now, so a bad key fails here and not at serve time.
         $this->guard->clean($path);
 
-        return URL::temporarySignedRoute(self::SIGNED_ROUTE, now()->addSeconds($ttl), [
-            'tenant' => $this->tenantId(),
-            'path' => $path,
-        ]);
+        $tenant = $this->context->current();
+
+        if ($tenant === null) {
+            throw MissingTenantContext::forModel('file storage');
+        }
+
+        // The URL must live on the tenant's own domain, not the platform's:
+        // that is where the file resolves, and signedUrl may be called from a
+        // queue job with no request host to borrow. Laravel's signature covers
+        // the host, so the root is forced before signing, not swapped after.
+        $domain = $tenant->primaryDomain?->domain;
+
+        if ($domain === null) {
+            return URL::temporarySignedRoute(self::SIGNED_ROUTE, now()->addSeconds($ttl), [
+                'tenant' => $tenant->id,
+                'path' => $path,
+            ]);
+        }
+
+        $previousRoot = URL::to('/');
+        URL::forceRootUrl('https://'.$domain);
+
+        try {
+            return URL::temporarySignedRoute(self::SIGNED_ROUTE, now()->addSeconds($ttl), [
+                'tenant' => $tenant->id,
+                'path' => $path,
+            ]);
+        } finally {
+            URL::forceRootUrl($previousRoot);
+        }
     }
 
     /**
