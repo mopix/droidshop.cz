@@ -1,19 +1,29 @@
 <?php
 
 use App\Http\Middleware\CheckTenantStatus;
+use App\Http\Middleware\EnsurePlatformTwoFactor;
 use App\Http\Middleware\HandleInertiaRequests;
+use App\Http\Middleware\RequirePlatformHost;
 use App\Http\Middleware\ResolveHost;
 use App\Http\Middleware\SetTenantContext;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets;
+use Illuminate\Support\Facades\Route;
 
 $app = Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
         web: __DIR__.'/../routes/web.php',
         commands: __DIR__.'/../routes/console.php',
         health: '/up',
+        then: function () {
+            // Superadmin routes share the web group (session, CSRF, the tenant
+            // pipeline that lets platform hosts through) but are gated to
+            // platform hosts by their own middleware.
+            Route::middleware('web')
+                ->group(base_path('routes/platform.php'));
+        },
     )
     ->withMiddleware(function (Middleware $middleware): void {
         // Tenant pipeline (spec §15.2) runs before anything else on the web
@@ -28,6 +38,11 @@ $app = Application::configure(basePath: dirname(__DIR__))
         $middleware->web(append: [
             HandleInertiaRequests::class,
             AddLinkHeadersForPreloadedAssets::class,
+        ]);
+
+        $middleware->alias([
+            'platform.host' => RequirePlatformHost::class,
+            'platform.2fa' => EnsurePlatformTwoFactor::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
