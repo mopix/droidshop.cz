@@ -1,5 +1,13 @@
 # Fáze 0 / vlna 0.3 — Kernel služby — implementační plán
 
+> **STAV: dokončeno 2026-07-19**, verze 0.4.0, větev `feat/kernel-services`.
+> Bloky A–F hotové, 189 testů zelených. Skutečný stav a odchylky:
+> [`docs/as-is/2026-07-19-kernel-sluzby.md`](../../as-is/2026-07-19-kernel-sluzby.md).
+>
+> **Změna oproti plánu (blok D):** `SequenceService` používá atomický
+> `UPDATE ... LAST_INSERT_ID`, ne `SELECT ... FOR UPDATE` — původní návrh
+> deadlockoval při prvním čísle řady, odhalil souběhový test.
+
 > **Pro agenta:** Použij superpowers:executing-plans nebo subagent-driven-development. Kroky s `- [ ]`.
 
 **Cíl:** Moduly mají k dispozici služby jádra, o které se mají opírat místo vlastních řešení — a aktivace modulu konečně respektuje tarif.
