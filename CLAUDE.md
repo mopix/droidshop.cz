@@ -27,7 +27,7 @@
 - Auth: Laravel Breeze (aktuálně v skeletonu); Fortify možná později
 - Platby nájemců (platforma): karta / opakované předplatné (Stripe nebo ekvivalent — rozhodnout)
 - Platby na e-shopech tenantů (MVP): dobírka, převod (+ QR), 1 brána (Comgate nebo GoPay)
-- Storage: S3-kompatibilní od začátku (ne jen lokální disk)
+- Storage: **lokální disk pro MVP** (rozhodnutí 2026-07-19, viz sekce Rozhodnutí); `FileStorage` služba drží abstrakci, přechod na S3 = změna configu
 - Monitoring (cíl): Sentry + stavová stránka; Telescope jen dev
 - Hosting: vlastní VPS
 
@@ -179,6 +179,7 @@ Po milestone: [`docs/as-is/`](docs/as-is/) ([`.claude/rules/as-is-on-milestone.m
 - 2026-07-19: **Multi-tenancy = `spatie/laravel-multitenancy` ^4.1** — navržený pro shared DB + `tenant_id`. `stancl/tenancy` zamítnut (těžiště v DB-per-tenant). Kernel služby dle spec §15.1 píšeme sami
 - 2026-07-19: **Moduly = `nwidart/laravel-modules` ^13.0 + vlastní manifest vrstva** — nwidart dá autoloading, scaffolding, migrace per modul; naše vrstva manifest schema, per-tenant aktivaci, route mounting, kill switch, tarify. Kompromis: `modules_statuses.json` = deploy stav, tabulka `tenant_modules` = per-tenant stav. Revidovatelné (alternativa = plně vlastní systém)
 - 2026-07-19: **Fáze 0 rozdělena na vlny.** Vlna 0.1 = tenancy jádro + izolace + CI (bez modulů, bez superadmin UI)
+- 2026-07-19: **Úložiště = lokální disk pro MVP**, ne S3 (změna původního rozhodnutí „S3 od začátku"). Soubory zůstávají na naší VPS. `FileStorage` služba jádra drží abstrakci — modul nikdy nesahá na disk přímo, takže přechod na S3 je pak jen změna configu. Háček: lokální disk váže na jeden server (víc app serverů = nutné S3) a soubory musí být v záloze VPS. Platí, dokud běžíme na jedné VPS.
 - 2026-07-19: **Redis je vědomá závislost, ne pohodlí.** Session/fronty/základní cache jdou přepnout na `database` driver bez zásahu do kódu a izolace tenantů zůstane (prefix cache funguje na každém storu). Ale **tagy umí jen Redis** (`database` a `file` je neumí — ověřeno), takže invalidace page cache dle §15.6 by se bez Redisu musela přepsat. Pokud hosting Redis nemá, je to rozhodnutí do specifikace, ne tichý fallback. Navíc: absence Redisu obvykle značí sdílený hosting, kde nejde držet `queue:work` démona — a to bolí víc než cache.
 
 ## Před spuštěním (právní / provozní)
