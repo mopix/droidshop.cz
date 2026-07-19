@@ -7,6 +7,7 @@ defineProps<{
 
 const page = usePage()
 const recoveryCodes = (page.props.flash as { recoveryCodes?: string[] } | undefined)?.recoveryCodes
+const impersonating = page.props.impersonating as { user_id: number; admin_id: number } | null
 
 const logout = () => router.post('/superadmin/logout')
 </script>
@@ -17,6 +18,10 @@ const logout = () => router.post('/superadmin/logout')
   </Head>
 
   <main class="platform">
+    <div v-if="impersonating" class="platform__impersonation">
+      Jednáte jako uživatel #{{ impersonating.user_id }} (impersonace správcem).
+    </div>
+
     <header class="platform__bar">
       <strong>DroidShop — správa platformy</strong>
       <span>{{ admin.name }} ({{ admin.email }}) · <button @click="logout">Odhlásit</button></span>
@@ -41,6 +46,13 @@ const logout = () => router.post('/superadmin/logout')
   min-height: 100vh;
   font-family: system-ui, sans-serif;
   background: #f8fafc;
+}
+.platform__impersonation {
+  padding: 0.6rem 1.5rem;
+  background: #b91c1c;
+  color: #fff;
+  font-weight: 600;
+  text-align: center;
 }
 .platform__bar {
   display: flex;

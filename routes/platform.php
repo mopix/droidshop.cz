@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Platform\Auth\LoginController;
 use App\Http\Controllers\Platform\Auth\TwoFactorController;
+use App\Http\Controllers\Platform\ImpersonationController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
@@ -32,5 +33,8 @@ Route::middleware('platform.host')->group(function () {
         Route::get('/superadmin', fn () => Inertia::render('Platform/Dashboard', [
             'admin' => auth('platform')->user()->only('name', 'email'),
         ]))->name('platform.dashboard');
+
+        Route::post('/superadmin/impersonace', [ImpersonationController::class, 'start'])
+            ->name('platform.impersonate');
     });
 });

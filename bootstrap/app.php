@@ -44,6 +44,12 @@ $app = Application::configure(basePath: dirname(__DIR__))
             'platform.host' => RequirePlatformHost::class,
             'platform.2fa' => EnsurePlatformTwoFactor::class,
         ]);
+
+        // An unauthenticated superadmin request belongs at the superadmin
+        // login, not the tenant one.
+        $middleware->redirectGuestsTo(fn ($request) => str_starts_with(ltrim($request->path(), '/'), 'superadmin')
+            ? route('platform.login')
+            : route('login'));
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         //

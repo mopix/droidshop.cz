@@ -1,6 +1,7 @@
 <?php
 
 use App\Core\Storage\FileStorage;
+use App\Http\Controllers\ImpersonationController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\Storage\PrivateFileController;
 use Illuminate\Foundation\Application;
@@ -27,6 +28,14 @@ Route::get('/', function () {
 Route::get('/dashboard', function () {
     return Inertia::render('Dashboard');
 })->middleware(['auth', 'verified'])->name('dashboard');
+
+// Impersonation lands here on the tenant's own host, via a signed URL minted
+// by a superadmin. `signed` proves the URL is ours and unexpired.
+Route::get('/impersonace/zahajit/{user}/{admin}', [ImpersonationController::class, 'begin'])
+    ->middleware('signed')
+    ->name('impersonation.begin');
+Route::post('/impersonace/ukoncit', [ImpersonationController::class, 'end'])
+    ->name('impersonation.end');
 
 Route::middleware('auth')->group(function () {
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');

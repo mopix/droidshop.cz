@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Core\Platform\Impersonation;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
 
@@ -29,11 +30,22 @@ class HandleInertiaRequests extends Middleware
      */
     public function share(Request $request): array
     {
+        $impersonation = app(Impersonation::class);
+
         return [
             ...parent::share($request),
             'auth' => [
                 'user' => $request->user(),
             ],
+            'flash' => [
+                'recoveryCodes' => fn () => $request->session()->get('recoveryCodes'),
+            ],
+            // Drives the "you are impersonating" banner so a superadmin never
+            // forgets they are acting as someone else.
+            'impersonating' => $impersonation->isActive() ? [
+                'user_id' => $impersonation->impersonatedUserId(),
+                'admin_id' => $impersonation->impersonatorId(),
+            ] : null,
         ];
     }
 }
