@@ -1,0 +1,97 @@
+<?php
+
+namespace App\Core\Sequences;
+
+use App\Core\Tenancy\Exceptions\MissingTenantContext;
+use App\Core\Tenancy\TenantContext;
+use Illuminate\Support\Facades\DB;
+
+/**
+ * Gap-free numbering for the current tenant (spec §15.1).
+ *
+ * Invoice and order numbers have to be contiguous for accounting, which rules
+ * out AUTO_INCREMENT: a rolled-back transaction consumes a value there and
+ * leaves a hole.
+ *
+ * The increment is a single atomic UPDATE using MySQL's LAST_INSERT_ID(expr)
+ * trick: it locks exactly the counter row, returns the pre-increment value,
+ * and takes no gap locks. An earlier design used SELECT ... FOR UPDATE, but on
+ * a series' very first call the row does not exist yet, so the lock held
+ * nothing and concurrent inserts deadlocked. This approach has no such gap.
+ */
+class SequenceService
+{
+    public function __construct(private readonly TenantContext $context) {}
+
+    /**
+     * The next number in a series, with the series prefix applied.
+     */
+    public function next(string $series): string
+    {
+        $tenantId = $this->requireTenant();
+
+        // Bounded retry: the only contended case is two callers both finding
+        // the row absent and racing to create it. One insert wins, the loser
+        // falls through to the UPDATE on the next turn.
+        for ($attempt = 0; $attempt < 5; $attempt++) {
+            $affected = DB::update(
+                'UPDATE sequences SET next_number = LAST_INSERT_ID(next_number) + 1
+                 WHERE tenant_id = ? AND series = ?',
+                [$tenantId, $series]
+            );
+
+            if ($affected > 0) {
+                $number = (int) DB::selectOne('SELECT LAST_INSERT_ID() AS n')->n;
+                $prefix = (string) DB::table('sequences')
+                    ->where('tenant_id', $tenantId)
+                    ->where('series', $series)
+                    ->value('prefix');
+
+                return $prefix.$number;
+            }
+
+            // No row yet: create it starting at 1 (so next stored value is 2).
+            $created = DB::table('sequences')->insertOrIgnore([
+                'tenant_id' => $tenantId,
+                'series' => $series,
+                'prefix' => '',
+                'next_number' => 2,
+            ]);
+
+            if ($created) {
+                return '1';
+            }
+
+            // Someone created it between our UPDATE and INSERT; loop and UPDATE.
+        }
+
+        throw new \RuntimeException("Could not allocate a number for series [{$series}] after retries.");
+    }
+
+    /**
+     * Sets the prefix and, optionally, the starting number for a series.
+     *
+     * Meant for configuration before a series is first used — e.g. a tenant
+     * wanting invoices to start at 2026001.
+     */
+    public function configure(string $series, string $prefix = '', int $startAt = 1): void
+    {
+        $tenantId = $this->requireTenant();
+
+        DB::table('sequences')->updateOrInsert(
+            ['tenant_id' => $tenantId, 'series' => $series],
+            ['prefix' => $prefix, 'next_number' => $startAt],
+        );
+    }
+
+    private function requireTenant(): int
+    {
+        $id = $this->context->id();
+
+        if ($id === null) {
+            throw MissingTenantContext::forModel('sequences');
+        }
+
+        return $id;
+    }
+}

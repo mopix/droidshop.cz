@@ -7,10 +7,12 @@ use App\Core\Modules\NavigationBuilder;
 use App\Models\Module;
 use App\Models\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Concerns\ActivatesModules;
 use Tests\TestCase;
 
 class NavigationBuilderTest extends TestCase
 {
+    use ActivatesModules;
     use RefreshDatabase;
 
     private NavigationBuilder $navigation;
@@ -53,8 +55,8 @@ class NavigationBuilderTest extends TestCase
         $this->moduleWithNav('orders', 'Objednávky', 20);
         $this->moduleWithNav('products', 'Produkty', 10);
 
-        $this->registry->activate($this->tenant, 'orders');
-        $this->registry->activate($this->tenant, 'products');
+        $this->activateModule($this->tenant, 'orders');
+        $this->activateModule($this->tenant, 'products');
 
         $labels = $this->navigation->forTenant($this->tenant)->pluck('label')->all();
 
@@ -67,8 +69,8 @@ class NavigationBuilderTest extends TestCase
         $this->moduleWithNav('misc', 'Ostatní', null);
         $this->moduleWithNav('products', 'Produkty', 10);
 
-        $this->registry->activate($this->tenant, 'misc');
-        $this->registry->activate($this->tenant, 'products');
+        $this->activateModule($this->tenant, 'misc');
+        $this->activateModule($this->tenant, 'products');
 
         $labels = $this->navigation->forTenant($this->tenant)->pluck('label')->all();
 
@@ -80,7 +82,7 @@ class NavigationBuilderTest extends TestCase
         $this->moduleWithNav('products', 'Produkty', 10);
         $this->moduleWithNav('blog', 'Blog', 20);
 
-        $this->registry->activate($this->tenant, 'products');
+        $this->activateModule($this->tenant, 'products');
 
         $labels = $this->navigation->forTenant($this->tenant)->pluck('label')->all();
 
@@ -90,7 +92,7 @@ class NavigationBuilderTest extends TestCase
     public function test_killed_module_disappears_from_the_menu(): void
     {
         $module = $this->moduleWithNav('products', 'Produkty', 10);
-        $this->registry->activate($this->tenant, 'products');
+        $this->activateModule($this->tenant, 'products');
 
         $module->update(['enabled_globally' => false]);
         $this->registry->flush();
@@ -109,7 +111,7 @@ class NavigationBuilderTest extends TestCase
             ],
         ]);
 
-        $this->registry->activate($this->tenant, 'widget');
+        $this->activateModule($this->tenant, 'widget');
 
         $this->assertCount(0, $this->navigation->forTenant($this->tenant, 'admin'));
         $this->assertCount(1, $this->navigation->forTenant($this->tenant, 'storefront'));
