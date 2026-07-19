@@ -47,6 +47,28 @@ return [
             'report' => false,
         ],
 
+        /*
+         * Tenant file storage (spec §15.1). Two disks so public and private
+         * files never share a serving path: public files go out through the
+         * web server, private files only through a signed, tenant-checked
+         * route. The driver is local for the MVP; swapping either to s3 is a
+         * config change, because modules only ever talk to FileStorage.
+         */
+        'tenant_public' => [
+            'driver' => 'local',
+            'root' => storage_path('app/tenant-public'),
+            'url' => env('APP_URL').'/media',
+            'visibility' => 'public',
+            'throw' => true,
+        ],
+
+        'tenant_private' => [
+            'driver' => 'local',
+            'root' => storage_path('app/tenant-private'),
+            'visibility' => 'private',
+            'throw' => true,
+        ],
+
         's3' => [
             'driver' => 's3',
             'key' => env('AWS_ACCESS_KEY_ID'),
@@ -75,6 +97,10 @@ return [
 
     'links' => [
         public_path('storage') => storage_path('app/public'),
+        // Public tenant files are served straight from the web server.
+        // Private files are deliberately absent here — they must never be
+        // reachable by URL, only through the signed route.
+        public_path('media') => storage_path('app/tenant-public'),
     ],
 
 ];
