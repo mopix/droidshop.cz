@@ -1,5 +1,9 @@
 # Fáze 0 / vlna 0.5 — Superadmin: auth jádro — implementační plán
 
+> **STAV: dokončeno 2026-07-19**, verze 0.6.0, větev `feat/superadmin-auth`.
+> Bloky A–E hotové, 258 testů zelených. Skutečný stav a odchylky:
+> [`docs/as-is/2026-07-19-superadmin-auth.md`](../../as-is/2026-07-19-superadmin-auth.md).
+
 > **Pro agenta:** superpowers:executing-plans / subagent-driven-development. Kroky `- [ ]`.
 
 **Cíl:** Správce platformy se přihlásí na platformní doménu odděleným účtem, projde povinným 2FA, a může se auditovaně vydávat za tenanta — vše mimo dosah běžných uživatelů i tenantů.

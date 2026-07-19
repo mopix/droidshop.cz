@@ -1,6 +1,6 @@
 # As-is status — DroidShop.cz
 
-Poslední aktualizace: **2026-07-19** · Verze: **0.5.0**
+Poslední aktualizace: **2026-07-19** · Verze: **0.6.0**
 
 ## Oblasti
 
@@ -16,7 +16,7 @@ Poslední aktualizace: **2026-07-19** · Verze: **0.5.0**
 | Kernel služby — MailService, EventBus | odloženo | §15.1 | čeká na provider / prvního volajícího |
 | Module system | **hotovo** | kap. 5, §15.5 | [detail](2026-07-19-system-modulu.md) — bez odinstalace |
 | Referenční modul `Pages` | **hotovo** | — | statické stránky, Blade SSR |
-| Superadmin / `platform_admins` / 2FA | není | §15.4 | |
+| Superadmin auth / `platform_admins` / 2FA / impersonace | **hotovo** | §15.4, §6.12 | [detail](2026-07-19-superadmin-auth.md); bez management UI |
 | Produkty / objednávky / doprava / platby | není | §3.1 | |
 | Storefront šablona | není | §3.1 | |
 | Tarify / trial / billing | částečně | §3.1 | tabulka `plans` stojí, logika ne |

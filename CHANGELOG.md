@@ -11,6 +11,19 @@ Pravidla: [`.claude/skills/versioning/SKILL.md`](.claude/skills/versioning/SKILL
 
 > CHANGELOG vede milníky (minor/major). Detail patchů je v `git log`.
 
+## [0.6.0] – 2026-07-19
+
+**Fáze 0 / vlna 0.5 — superadmin auth jádro.** Správce platformy s odděleným účtem, povinným 2FA a auditovanou impersonací.
+
+- Oddělená tabulka `platform_admins` + guard `platform` — sdílí nic s `users`
+- Přihlášení jen na platformním hostu (na doméně tenanta 404), rate limit 5/min + lockout
+- Povinné 2FA (TOTP + jednorázové recovery kódy, šifrované/hashované), dvě brány přes middleware
+- **Impersonace** přes podepsaný handoff mezi hosty (různé session cookies); 30 min expirace, `impersonated_by` v každém audit zápisu, banner v UI
+- `platform:create-admin` — interaktivní zřízení superadmina (žádné údaje v seederu)
+- Balíček `pragmarx/google2fa`
+- **Odloženo:** management UI (výpis tenantů, metriky), HIBP kontrola hesla, IP allowlist
+- **As-is:** [`docs/as-is/2026-07-19-superadmin-auth.md`](docs/as-is/2026-07-19-superadmin-auth.md)
+
 ## [0.5.0] – 2026-07-19
 
 **Fáze 0 / vlna 0.4 — FileStorage.** Modul umí uložit a servírovat soubor přes službu jádra, aniž zná disk. Soubory zůstávají na naší VPS (lokální disk, ne S3).
