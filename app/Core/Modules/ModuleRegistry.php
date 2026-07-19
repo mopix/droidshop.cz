@@ -2,6 +2,7 @@
 
 namespace App\Core\Modules;
 
+use App\Core\Modules\Exceptions\PlanDoesNotIncludeModule;
 use App\Core\Modules\Exceptions\UnresolvableDependencies;
 use App\Core\Services\AuditLog;
 use App\Core\Tenancy\TenantContext;
@@ -97,6 +98,7 @@ class ModuleRegistry
             throw UnresolvableDependencies::missing('tenant '.$tenant->id, $key);
         }
 
+        $this->guardPlan($tenant, $module);
         $this->guardDependencies($tenant, $module);
 
         // Everything below runs inside the tenant: the lifecycle hook seeds
@@ -156,6 +158,36 @@ class ModuleRegistry
     public function forgetTenant(Tenant $tenant): void
     {
         Cache::forget("modules:enabled:{$tenant->id}");
+    }
+
+    /**
+     * Refuses to activate a module the tenant's plan does not include.
+     *
+     * This is the gate the wave 0.2 as-is flagged as missing. Core modules
+     * are exempt: they are part of the product, not a plan option.
+     *
+     * @throws PlanDoesNotIncludeModule
+     */
+    private function guardPlan(Tenant $tenant, Module $module): void
+    {
+        if ($module->core) {
+            return;
+        }
+
+        if ($tenant->plan_id === null) {
+            // Decision 2026-07-19: no plan means no optional modules. Safer
+            // than defaulting to "everything is free" when onboarding breaks.
+            throw PlanDoesNotIncludeModule::noPlan($tenant, $module->key);
+        }
+
+        $included = $tenant->plan
+            ->modules()
+            ->where('modules.key', $module->key)
+            ->exists();
+
+        if (! $included) {
+            throw PlanDoesNotIncludeModule::notInPlan($tenant, $module->key);
+        }
     }
 
     /**

@@ -11,10 +11,12 @@ use App\Models\Tenant;
 use App\Models\TenantModule;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use InvalidArgumentException;
+use Tests\Concerns\ActivatesModules;
 use Tests\TestCase;
 
 class ModuleRegistryTest extends TestCase
 {
+    use ActivatesModules;
     use RefreshDatabase;
 
     private ModuleRegistry $registry;
@@ -70,7 +72,7 @@ class ModuleRegistryTest extends TestCase
         Module::factory()->key('pages')->create();
         Module::factory()->key('blog')->create();
 
-        $this->registry->activate($this->tenantA, 'pages');
+        $this->activateModule($this->tenantA, 'pages');
 
         $this->assertTrue($this->registry->isEnabled($this->tenantA, 'pages'));
         $this->assertFalse($this->registry->isEnabled($this->tenantA, 'blog'));
@@ -89,7 +91,7 @@ class ModuleRegistryTest extends TestCase
     public function test_kill_switch_outranks_per_tenant_activation(): void
     {
         $module = Module::factory()->key('blog')->create();
-        $this->registry->activate($this->tenantA, 'blog');
+        $this->activateModule($this->tenantA, 'blog');
         $this->assertTrue($this->registry->isEnabled($this->tenantA, 'blog'));
 
         $module->update(['enabled_globally' => false]);
@@ -115,7 +117,7 @@ class ModuleRegistryTest extends TestCase
         Module::factory()->key('products')->create();
         Module::factory()->key('checkout')->requires(['products' => '^1.0'])->create();
 
-        $this->registry->activate($this->tenantA, 'checkout');
+        $this->activateModule($this->tenantA, 'checkout');
 
         $this->assertTrue($this->registry->isEnabled($this->tenantA, 'products'));
     }
@@ -126,7 +128,7 @@ class ModuleRegistryTest extends TestCase
 
         $this->expectException(UnresolvableDependencies::class);
 
-        $this->registry->activate($this->tenantA, 'checkout');
+        $this->activateModule($this->tenantA, 'checkout');
     }
 
     public function test_activation_fails_on_version_mismatch(): void
@@ -136,13 +138,13 @@ class ModuleRegistryTest extends TestCase
 
         $this->expectException(UnresolvableDependencies::class);
 
-        $this->registry->activate($this->tenantA, 'checkout');
+        $this->activateModule($this->tenantA, 'checkout');
     }
 
     public function test_deactivation_keeps_the_row_and_the_data(): void
     {
         Module::factory()->key('pages')->create();
-        $this->registry->activate($this->tenantA, 'pages');
+        $this->activateModule($this->tenantA, 'pages');
 
         $this->registry->deactivate($this->tenantA, 'pages');
 
@@ -158,10 +160,10 @@ class ModuleRegistryTest extends TestCase
     public function test_reactivation_works(): void
     {
         Module::factory()->key('pages')->create();
-        $this->registry->activate($this->tenantA, 'pages');
+        $this->activateModule($this->tenantA, 'pages');
         $this->registry->deactivate($this->tenantA, 'pages');
 
-        $this->registry->activate($this->tenantA, 'pages');
+        $this->activateModule($this->tenantA, 'pages');
 
         $this->assertTrue($this->registry->isEnabled($this->tenantA, 'pages'));
     }
@@ -179,7 +181,7 @@ class ModuleRegistryTest extends TestCase
     {
         Module::factory()->key('products')->create();
         Module::factory()->key('checkout')->requires(['products' => '^1.0'])->create();
-        $this->registry->activate($this->tenantA, 'checkout');
+        $this->activateModule($this->tenantA, 'checkout');
 
         $this->expectException(InvalidArgumentException::class);
         $this->expectExceptionMessageMatches('/checkout/');
@@ -191,7 +193,7 @@ class ModuleRegistryTest extends TestCase
     {
         Module::factory()->key('pages')->create();
 
-        $this->registry->activate($this->tenantA, 'pages');
+        $this->activateModule($this->tenantA, 'pages');
         $this->registry->deactivate($this->tenantA, 'pages');
 
         $actions = AuditLogEntry::orderBy('id')->pluck('action')->all();
