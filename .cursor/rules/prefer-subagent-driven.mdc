@@ -1,0 +1,12 @@
+---
+description: Prefer Subagent-Driven Development when executing implementation plans
+alwaysApply: true
+---
+
+# Prefer Subagent-Driven execution
+
+When an implementation plan is ready and the workflow offers execution options (Subagent-Driven vs Inline / executing-plans):
+
+- **Default to Subagent-Driven Development** (fresh subagent per task + review between tasks).
+- Do **not** ask which approach to use unless the user explicitly wants a choice this time, or Subagent-Driven is blocked (API limits, tool failure) — then fall back to inline execution and say so briefly.
+- Short confirmation is fine: „Spouštím Subagent-Driven…“ — bez menu 1/2.

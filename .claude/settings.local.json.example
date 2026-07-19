@@ -1,0 +1,12 @@
+{
+  "autoApprove": ["Edit", "Write", "Bash", "Read", "Glob", "Grep"],
+  "permissions": {
+    "allow": [
+      "Bash(composer *)",
+      "Bash(php artisan *)",
+      "Bash(npm *)",
+      "Bash(./vendor/bin/pint*)",
+      "Bash(php artisan test*)"
+    ]
+  }
+}
