@@ -1,3 +1,30 @@
 {
-  "autoApprove": ["Edit", "Write", "Bash", "Read", "Glob", "Grep"]
+  "permissions": {
+    "deny": [
+      "Read(.env)",
+      "Read(.env.*)",
+      "Read(auth.json)",
+      "Read(wp-config.php)",
+      "Read(**/node_modules/**)",
+      "Read(**/vendor/**)"
+    ],
+    "allow": [
+      "Bash(wp plugin list:*)",
+      "Bash(wp theme list:*)",
+      "Bash(wp option get:*)",
+      "Bash(wp core version:*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(composer dump-autoload:*)",
+      "Bash(composer install:*)",
+      "Bash(npm run build:*)",
+      "Bash(npm install:*)",
+      "Bash(php -l:*)",
+      "Bash(grep:*)"
+    ],
+    "defaultMode": "bypassPermissions"
+  }
 }
