@@ -1,5 +1,9 @@
 # Fáze 0 / vlna 0.4 — FileStorage — implementační plán
 
+> **STAV: dokončeno 2026-07-19**, verze 0.5.0, větev `feat/filestorage`.
+> Bloky A–F hotové, 228 testů zelených. Skutečný stav a odchylky:
+> [`docs/as-is/2026-07-19-filestorage.md`](../../as-is/2026-07-19-filestorage.md).
+
 > **Pro agenta:** superpowers:executing-plans / subagent-driven-development. Kroky `- [ ]`.
 
 **Cíl:** Modul umí uložit a servírovat soubor, aniž zná disk — a soubor jednoho tenanta je fyzicky i přes URL nedostupný jinému tenantovi.

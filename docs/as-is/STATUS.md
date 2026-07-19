@@ -1,6 +1,6 @@
 # As-is status — DroidShop.cz
 
-Poslední aktualizace: **2026-07-19** · Verze: **0.4.0**
+Poslední aktualizace: **2026-07-19** · Verze: **0.5.0**
 
 ## Oblasti
 
@@ -12,7 +12,8 @@ Poslední aktualizace: **2026-07-19** · Verze: **0.4.0**
 | Izolace dat + CI brána | **hotovo** | §4.2 pojistky 1–3 | pojistka 4 (export) chybí |
 | Audit log | **hotovo** | §15.1 | e-mail o změně stavu chybí |
 | Kernel služby — Money, Settings, Limits, Sequences, FeatureFlags | **hotovo** | §15.1 | [detail](2026-07-19-kernel-sluzby.md) |
-| Kernel služby — FileStorage, MailService, EventBus | odloženo | §15.1 | čeká na provider / prvního volajícího |
+| Kernel služba — FileStorage | **hotovo** | §15.1 | [detail](2026-07-19-filestorage.md); lokální disk, ne S3 |
+| Kernel služby — MailService, EventBus | odloženo | §15.1 | čeká na provider / prvního volajícího |
 | Module system | **hotovo** | kap. 5, §15.5 | [detail](2026-07-19-system-modulu.md) — bez odinstalace |
 | Referenční modul `Pages` | **hotovo** | — | statické stránky, Blade SSR |
 | Superadmin / `platform_admins` / 2FA | není | §15.4 | |
@@ -37,7 +38,7 @@ Nejdůležitější:
 - **`curl` na subdoménách potřebuje `-k`** — OpenSSL nebere wildcard `*.droidshop` nad jedinou úrovní. Blokuje kontrolní seznam ve `storefront-rendering.md` i Playwright. Oprava = lokální doména `droidshop.test`.
 - **Platformní joby musí implementovat `NotTenantAware`** — jinak je tenant-aware fronta tiše zahodí.
 - **Routa Pages je provizorně `/stranka/{slug}`**, ne `/{page-slug}` podle pravidla storefrontu. Vyřeší se s modulem šablony.
-- **`LimitsService` nemá žádná počítadla** — kontrakt `LimitCounter` stojí, konkrétní počítadla přijdou s moduly; do té doby `usage()` vrací 0.
+- **`LimitsService` má zatím jen počítadlo `storage_mb`** (z vlny 0.4). Ostatní (`products`, `emails_month`) přijdou s příslušnými moduly.
 
 ## Otevřené chyby
 
