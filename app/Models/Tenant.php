@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Core\Enums\TenantStatus;
+use App\Core\Services\AuditLog;
 use Database\Factories\TenantFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -67,6 +68,40 @@ class Tenant extends SpatieTenant
     public function allowsAdminWrite(): bool
     {
         return $this->status->allowsAdminWrite();
+    }
+
+    /**
+     * Moves the tenant through its lifecycle and records it.
+     *
+     * Spec §6.0 requires every status change to land in the audit log, so the
+     * transition goes through here rather than a bare update(). The
+     * notification e-mail is still missing and waits on MailService.
+     */
+    public function changeStatus(TenantStatus $to, string $reason = ''): void
+    {
+        $from = $this->status;
+
+        if ($from === $to) {
+            return;
+        }
+
+        $this->status = $to;
+
+        if ($to === TenantStatus::Suspended) {
+            $this->suspended_at = now();
+        }
+
+        if ($to === TenantStatus::PendingDeletion) {
+            $this->deletion_requested_at = now();
+        }
+
+        $this->save();
+
+        app(AuditLog::class)->log('tenant.status_changed', $this, array_filter([
+            'from' => $from->value,
+            'to' => $to->value,
+            'reason' => $reason,
+        ]));
     }
 
     /**
