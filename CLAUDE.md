@@ -82,6 +82,15 @@ Pokud `APP_ENV=production`:
 - Test: *„Šel by modul vypnout, aniž by spadl zbytek?"* Komunikace přes kontrakty/eventy.
 - Detail: specifikace §3.2 a kap. 5.
 
+### Storefront = Blade SSR (závazné, SEO)
+Veřejné stránky e-shopu **musí** být renderované serverem. Nikdy ne SPA.
+- **Blade SSR:** homepage, výpis kategorie, detail produktu, vyhledávání, statické stránky, blog, sitemap/feedy, chybové stránky
+- **Blade SSR + progressive enhancement:** košík a pokladna (bez JS musí projít; ceny počítá server)
+- **Vue/Inertia SPA:** pouze admin nájemce, superadmin, onboarding, fakturace — vše `noindex`
+- Vue/Alpine na storefrontu jen jako **ostrůvky** nad hotovým HTML (varianty, galerie, mini-košík, našeptávač, widget Zásilkovny)
+
+Detail a checklist: [`.claude/rules/storefront-rendering.md`](.claude/rules/storefront-rendering.md)
+
 ### Multi-tenancy
 - Identita tenanta z Host hlavičky (`nazev.droidshop.cz` — finální doména dle deploye)
 - Globální scope na modelech (`BelongsToTenant`); `tenant_id` ve všech doménových tabulkách
@@ -161,6 +170,12 @@ Po milestone: [`docs/as-is/`](docs/as-is/) ([`.claude/rules/as-is-on-milestone.m
 - 2026-07-17: Produktová spec v1.1 (draft) — multi-tenant SaaS, modularita, shared DB + `tenant_id`
 - 2026-07-19: AI workflow z `claude-laravel-vue` + struktura dokumentace ve stylu WooShop
 - 2026-07-19: Aktuální kód = Laravel 13 skeleton (Breeze/Inertia); tenancy a moduly teprve
+- 2026-07-19: **Storefront povinně Blade SSR** — SEO a marketing nájemce je produktová hodnota; SPA jen admin (viz `.claude/rules/storefront-rendering.md`)
+- 2026-07-19: Košík a pokladna také Blade SSR + ostrůvky (ne SPA) — drží AK „checkout funkční bez JS", cenová logika jen na serveru
+- 2026-07-19: **URL produktu ploché `/produkt/{slug}`** (odchylka od spec §16.2) — URL se nemění při reorganizaci katalogu; kategorie `/kategorie/{slug}`
+- 2026-07-19: `stripe/stripe-php` = zbytek po šabloně, odstranit při první implementační vlně; brána se rozhodne u modulu `billing`
+- 2026-07-19: **PHP 8.3** zatím stačí (Laravel 13 vyžaduje `^8.3`, tj. 8.4 je volitelná). Pokud narazíme na funkci vyžadující 8.4 (property hooks, lazy objects, `array_find`), upozorni uživatele — zvedneme constraint na `^8.4`
+- 2026-07-19: Page cache — zrušena cookie `has_cart`; mini-košík je ostrůvek, cachované HTML nesmí obsahovat osobní obsah (spec §15.6)
 
 ## Před spuštěním (právní / provozní)
 - [ ] VOP platformy (odpovědnost nájemce za obsah)

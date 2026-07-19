@@ -34,6 +34,7 @@ Pravidla: [`DOCUMENTATION-LAYERS.md`](DOCUMENTATION-LAYERS.md).
 
 ## Pravidla a workflow
 
+- [`.claude/rules/storefront-rendering.md`](../.claude/rules/storefront-rendering.md) — **storefront = Blade SSR (SEO), závazné**
 - [`.claude/rules/structured-workflow.md`](../.claude/rules/structured-workflow.md)
 - [`.claude/rules/documentation-layers.md`](../.claude/rules/documentation-layers.md)
 - [`.claude/rules/as-is-on-milestone.md`](../.claude/rules/as-is-on-milestone.md)
