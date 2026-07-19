@@ -1,0 +1,30 @@
+{
+    "name": "pages",
+    "version": "1.0.0",
+    "title": {
+        "cs": "Stránky"
+    },
+    "description": {
+        "cs": "Statické stránky e-shopu — VOP, ochrana údajů, kontakt, o nás."
+    },
+    "core": false,
+    "billable": false,
+    "level": "base",
+    "requires": {},
+    "provides": [],
+    "listens": [],
+    "permissions": [
+        "pages.view",
+        "pages.edit"
+    ],
+    "settings_schema": null,
+    "nav": [
+        {
+            "area": "admin",
+            "label": "Stránky",
+            "route": "admin.pages.index",
+            "icon": "file-text",
+            "order": 50
+        }
+    ]
+}
