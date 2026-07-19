@@ -1,5 +1,14 @@
 # Fáze 0 / vlna 0.2 — Systém modulů — implementační plán
 
+> **STAV: dokončeno 2026-07-19**, verze 0.3.0, větev `feat/module-system`.
+> Bloky A–H hotové, 137 testů zelených. Skutečný stav a odchylky:
+> [`docs/as-is/2026-07-19-system-modulu.md`](../../as-is/2026-07-19-system-modulu.md).
+>
+> **Změna oproti plánu (blok F):** routy se registrují z **disku**, ne z registru.
+> Registrace běží při bootu, kdy ještě není znám tenant a na čerstvé databázi
+> ani neexistuje tabulka `modules`. Kill switch přesto funguje bez redeploye —
+> middleware se registru ptá při každém requestu.
+
 > **Pro agenta:** Použij superpowers:executing-plans nebo subagent-driven-development. Kroky s `- [ ]`.
 
 **Cíl:** Modul jde nasadit, zaregistrovat, per tenanta zapnout a vypnout — a když je vypnutý, jeho routy, navigace ani listenery pro toho tenanta neexistují.
@@ -63,11 +72,12 @@ Registr modulů, manifest a jeho validace, tabulky `modules` / `tenant_modules` 
 
 ### E. Lifecycle
 
-- [ ] E1. Test `ModuleLifecycleTest`: aktivace zapíše `tenant_modules` a zavolá `onActivate`; deaktivace **data nemaže**; odinstalace volá `onUninstall` a data maže; jádrový modul (`core: true`) nejde per tenant vypnout; každá změna je v audit logu. Červený.
-- [ ] E2. Kontrakt `app/Core/Modules/Contracts/ModuleLifecycle.php` (`onActivate`, `onDeactivate`, `onUninstall`) — volitelný, modul ho nemusí implementovat.
-- [ ] E3. Implementace v `ModuleRegistry` + napojení na `AuditLog` (`module.activated`, `module.deactivated`, `module.uninstalled`).
-- [ ] E4. Odinstalace = destruktivní. Vyžaduje potvrzení na volající straně (CLAUDE.md pravidlo mazacích akcí) a zapisuje se do audit logu vždy.
-- [ ] E5. Zeleně. Commit `feat: add per-tenant module lifecycle`.
+**Rozhodnutí 2026-07-19:** odinstalace (`onUninstall`, mazání dat tenanta) se **v této vlně neimplementuje**. Deaktivace je vratná a nic nemaže; to MVP stačí. Kontrakt na `onUninstall` se nepřipravuje dopředu — psát mazání dat dřív, než nějaká data existují, znamená testovat ho jen proti fixture.
+
+- [ ] E1. Test `ModuleLifecycleTest`: aktivace zapíše `tenant_modules` a zavolá `onActivate`; deaktivace **data nemaže** a jde vrátit; jádrový modul (`core: true`) nejde per tenant vypnout; každá změna je v audit logu. Červený.
+- [ ] E2. Kontrakt `app/Core/Modules/Contracts/ModuleLifecycle.php` (`onActivate`, `onDeactivate`) — volitelný, modul ho nemusí implementovat.
+- [ ] E3. Implementace v `ModuleRegistry` + napojení na `AuditLog` (`module.activated`, `module.deactivated`).
+- [ ] E4. Zeleně. Commit `feat: add per-tenant module lifecycle`.
 
 ### F. Routy, kill switch, navigace
 
@@ -118,7 +128,7 @@ Modulové testy **musí** používat dva tenanty všude, kde jde o viditelnost. 
 | nwidart přestane stíhat major Laravelu | nízký | Vrstva je naše; výměna balíčku by se dotkla jen autoloadingu (viz rozhodnutí 2026-07-19) |
 | Odinstalace smaže data omylem | vysoký | Potvrzení, audit log, deaktivace jako výchozí a vratná operace |
 
-## Otevřené otázky na uživatele
+## Rozhodnutí (2026-07-19, uživatel)
 
-1. **Referenční modul** — `Pages`, jak navrhuji, nebo rovnou `Products`?
-2. **Odinstalace v MVP** — implementovat celou, nebo zatím jen deaktivaci a `onUninstall` nechat na později? Spec ji chce, ale je to jediná destruktivní operace v celé vlně.
+1. **Referenční modul = `Pages`** (statické stránky). Prokazuje celý řetěz a VOP/GDPR stránky jsou stejně potřeba. `Products` dostane vlastní vlnu.
+2. **Odinstalace odložena.** Ve vlně 0.2 jen aktivace a deaktivace. Odchylka od spec §5.2 — zapsat do as-is.
