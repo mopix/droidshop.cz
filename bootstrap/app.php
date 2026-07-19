@@ -1,6 +1,9 @@
 <?php
 
+use App\Http\Middleware\CheckTenantStatus;
 use App\Http\Middleware\HandleInertiaRequests;
+use App\Http\Middleware\ResolveHost;
+use App\Http\Middleware\SetTenantContext;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -13,12 +16,19 @@ $app = Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        // Tenant pipeline (spec §15.2) runs before anything else on the web
+        // group: session, auth and Inertia all need to know which tenant they
+        // belong to before they touch the database.
+        $middleware->web(prepend: [
+            ResolveHost::class,
+            CheckTenantStatus::class,
+            SetTenantContext::class,
+        ]);
+
         $middleware->web(append: [
             HandleInertiaRequests::class,
             AddLinkHeadersForPreloadedAssets::class,
         ]);
-
-        //
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         //
