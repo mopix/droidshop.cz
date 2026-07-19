@@ -39,6 +39,12 @@ class SchemaConventionTest extends TestCase
         'users',
         'tenants',
         'plans',
+
+        // Module registry: what is deployed and what each plan includes.
+        // Which tenant has a module enabled lives in tenant_modules, which
+        // does carry tenant_id and is therefore checked like any other table.
+        'modules',
+        'plan_modules',
     ];
 
     public function test_every_domain_table_carries_a_tenant_id(): void
