@@ -38,4 +38,27 @@ class TenantModule extends Model
     {
         return $this->belongsTo(Module::class, 'module_key', 'key');
     }
+
+    /**
+     * Spec §15.3 gives this table a composite primary key and no id column.
+     * Eloquent assumes a single key, so saves and refreshes have to be told
+     * how a row identifies itself. Without this, save() builds
+     * "where id is null" and updates nothing — or everything.
+     */
+    protected function setKeysForSaveQuery($query)
+    {
+        return $this->applyCompositeKey($query);
+    }
+
+    protected function setKeysForSelectQuery($query)
+    {
+        return $this->applyCompositeKey($query);
+    }
+
+    private function applyCompositeKey($query)
+    {
+        return $query
+            ->where('tenant_id', $this->getOriginal('tenant_id', $this->tenant_id))
+            ->where('module_key', $this->getOriginal('module_key', $this->module_key));
+    }
 }

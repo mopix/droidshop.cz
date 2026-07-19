@@ -3,6 +3,8 @@
 namespace App\Models;
 
 use App\Core\Enums\PlanLevel;
+use Database\Factories\ModuleFactory;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
@@ -16,6 +18,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
  */
 class Module extends Model
 {
+    /** @use HasFactory<ModuleFactory> */
+    use HasFactory;
+
     protected $primaryKey = 'key';
 
     protected $keyType = 'string';
