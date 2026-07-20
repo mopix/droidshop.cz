@@ -1,5 +1,6 @@
 <?php
 
+use App\Core\Routing\RedirectResponder;
 use App\Http\Middleware\CheckTenantStatus;
 use App\Http\Middleware\EnsurePlatformTwoFactor;
 use App\Http\Middleware\EnsureTenantMember;
@@ -11,7 +12,9 @@ use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
+use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
 $app = Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -54,7 +57,13 @@ $app = Application::configure(basePath: dirname(__DIR__))
             : route('login'));
     })
     ->withExceptions(function (Exceptions $exceptions): void {
-        //
+        // Renamed slugs keep answering (spec §15.3). Hung off the 404 rather
+        // than added to the web pipeline: a middleware would cost a lookup on
+        // every request, and a redirect only ever matters where no route
+        // matched. Returning null falls through to the normal 404.
+        $exceptions->render(function (NotFoundHttpException $e, Request $request) {
+            return app(RedirectResponder::class)->respond($request);
+        });
     })->create();
 
 // Local development uses .env.local so the shared .env stays untouched.

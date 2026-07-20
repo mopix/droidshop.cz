@@ -1,6 +1,6 @@
 # As-is status — DroidShop.cz
 
-Poslední aktualizace: **2026-07-20** · Verze: **0.8.0**
+Poslední aktualizace: **2026-07-20** · Verze: **0.9.0**
 
 ## Oblasti
 
@@ -23,7 +23,9 @@ Poslední aktualizace: **2026-07-20** · Verze: **0.8.0**
 | Modul `categories` — strom, admin, 301 | **hotovo** | §6.3, §16.2 | max 4 úrovně; řazení tlačítky, ne drag&drop |
 | Modul `products` — katalog, ceny, sklad, obrázky, SEO | **hotovo** | §6.2, §16.1 | bez variant, CSV importu, řezů obrázků a hromadných operací |
 | Objednávky / doprava / platby | není | §3.1 | |
-| Storefront šablona | není | §3.1 | katalog zatím nemá veřejné routy |
+| Modul `storefront` — layout, homepage, hledání, chybové stránky | **hotovo** | §4.1.1 | [detail](2026-07-20-storefront-katalog.md) |
+| Veřejný katalog — kategorie, produkt, řazení a filtr bez JS | **hotovo** | §16.1, §16.2 | bez košíku |
+| SEO výstupy — canonical, OG, JSON-LD, sitemap, robots, 301, 410 | **hotovo** | §3.1, §15.3 | page cache §15.6 chybí |
 | Tarify / trial / billing | částečně | §3.1 | tabulka `plans` stojí, přiřazení tenantovi jde z UI; fakturace a trial logika ne |
 | Playwright E2E | není | CLAUDE.md | blokováno omezením certifikátu, viz níže |
 | Design handoff | prázdné | `docs/design-droidshop/` | |
@@ -44,9 +46,10 @@ Nejdůležitější:
 
 - **`curl` na subdoménách potřebuje `-k`** — OpenSSL nebere wildcard `*.droidshop` nad jedinou úrovní. Blokuje kontrolní seznam ve `storefront-rendering.md` i Playwright. Oprava = lokální doména `droidshop.test`.
 - **Platformní joby musí implementovat `NotTenantAware`** — jinak je tenant-aware fronta tiše zahodí.
-- **Routa Pages je provizorně `/stranka/{slug}`**, ne `/{page-slug}` podle pravidla storefrontu. Vyřeší se s modulem šablony.
+- **Routa Pages je provizorně `/stranka/{slug}`**, ne `/{page-slug}` podle pravidla storefrontu. Modul šablony to nevyřešil — catch-all v kořeni by spolkl ostatní routy, takže to čeká na explicitní pořadí registrace routů.
 - **`LimitsService` má počítadla `storage_mb` a `products`.** `emails_month` přijde s modulem `mailer` — v superadmin detailu tenanta proto ukazuje čerpání 0.
-- **`redirects` se zapisují, ale nic je neservíruje.** Přejmenovaný slug kategorie nebo produktu zatím vrátí 404; middleware přijde s vlnou storefrontu.
+- **Hledání běží přes `LIKE '%term%'` nad `products.search_text`** — index se nepoužije. U desítek tisíc produktů bude potřeba přepsat (fulltext nebo externí index).
+- **Page cache podle §15.6 zatím není.** Šablony jsou na ni připravené (žádný osobní obsah v HTML), ale TTFB nechrání nic.
 - **Soft-deleted produkty dál počítají do `storage_mb`** — obrázky zůstávají, aby šel produkt obnovit a staré objednávky ho zobrazily.
 - **Kill switch přebíjí i core moduly** — vypnutí core modulu vezme e-shopům základní funkčnost. Je to záměr (nouzová brzda), ne chyba.
 - **Stav tenanta se mění bez e-mailu nájemci** — čeká na `MailService`.

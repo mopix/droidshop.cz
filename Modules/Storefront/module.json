@@ -1,0 +1,21 @@
+{
+    "name": "storefront",
+    "version": "1.0.0",
+    "title": {
+        "cs": "Šablona e-shopu"
+    },
+    "description": {
+        "cs": "Veřejná část e-shopu — layout, homepage, vyhledávání, sitemap a robots.txt."
+    },
+    "core": true,
+    "billable": false,
+    "level": "base",
+    "requires": {},
+    "provides": [
+        "storefront-theme"
+    ],
+    "listens": [],
+    "permissions": [],
+    "settings_schema": null,
+    "nav": []
+}

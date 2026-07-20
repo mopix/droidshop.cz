@@ -3,7 +3,9 @@
 namespace App\Core\Catalog\Contracts;
 
 use App\Core\Catalog\Exceptions\InsufficientStock;
+use App\Core\Catalog\ProductQuery;
 use App\Core\Money\Money;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
 
 /**
@@ -34,6 +36,24 @@ interface ProductCatalog
      * @return Collection<int, CatalogProduct>
      */
     public function search(string $term, int $limit = 20): Collection;
+
+    /**
+     * The newest visible products, for the homepage.
+     *
+     * @return Collection<int, CatalogProduct>
+     */
+    public function latest(int $limit = 8): Collection;
+
+    /**
+     * A paginated storefront listing — category pages, search results.
+     *
+     * Returns a paginator rather than a collection because the storefront has
+     * to render rel=prev/next and page links, and reproducing that on top of a
+     * plain collection is how off-by-one page counts happen.
+     *
+     * @return LengthAwarePaginator<int, CatalogProduct>
+     */
+    public function paginate(ProductQuery $query): LengthAwarePaginator;
 
     /**
      * Takes stock, atomically.

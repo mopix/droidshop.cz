@@ -164,7 +164,7 @@ Po milestone: [`docs/as-is/`](docs/as-is/) ([`.claude/rules/as-is-on-milestone.m
 - MVP: jedna šablona storefrontu; šablona = modul (rozšiřitelné).
 - Vlastní domény + SSL = fáze 2 (brzy po MVP).
 - Licence / digitální produkty s aktivačním API = premium, fáze 2 (spec kap. 17).
-- Stojí jádro (tenancy, moduly, kernel služby, superadmin) a první business moduly `categories` + `products`. Storefront zatím nemá veřejné routy — katalog je vidět jen v adminu.
+- Stojí jádro (tenancy, moduly, kernel služby, superadmin), moduly `categories` + `products` a veřejný storefront katalogu (Blade SSR, SEO výstupy, 301/410). Chybí košík, pokladna a objednávky.
 
 ## Rozhodnutí
 - 2026-07-17: Produktová spec v1.1 (draft) — multi-tenant SaaS, modularita, shared DB + `tenant_id`
@@ -186,6 +186,10 @@ Po milestone: [`docs/as-is/`](docs/as-is/) ([`.claude/rules/as-is-on-milestone.m
 - 2026-07-20: **Inertia stránky modulů leží v `resources/js/Pages/Modules/<Modul>/`**, ne uvnitř modulu. Inertia view finder skládá cestu `{page_path}/{component}.vue`, takže krátký název na cestu uvnitř modulu nenamapuješ bez vlastního finderu. Blade views, routy, controllery a migrace v modulu zůstávají
 - 2026-07-20: **Sanitizace tenantem psaného HTML vlastní** (`app/Core/Html/HtmlSanitizer.php` nad `DOMDocument`), bez `htmlpurifier`. Čistí se **při zápisu**, ne při renderu — jinak by se politika rozhodovala znovu na každém call site
 - 2026-07-20: **Drag&drop nikdy jako jediná cesta.** Řazení kategorií i obrázků má tlačítka ovladatelná klávesnicí (WCAG 2.1.1). Tažení lze doplnit jako nadstavbu
+- 2026-07-20: **Šablona storefrontu = modul `storefront` (core), ale bez `requires` na katalog.** Core modul nejde vypnout a nic pod ním taky ne, takže deklarovaná závislost by z `products` udělala nevypnutelný modul. Šablona se ptá za běhu (`ShopModules`) a vykreslí, co e-shop běží
+- 2026-07-20: **Kořenová routa `/` zůstává v jádře a deleguje přes kontrakt `StorefrontHome`.** Core web routy se matchují dřív než modulové, takže modulová routa pro `/` by se nikdy netrefila. Jádro se implementace ptá na modulový klíč, takže kill switch i per-tenant aktivace platí dál
+- 2026-07-20: **Redirecty se servírují z handleru `NotFoundHttpException`, ne middlewarem.** Middleware by stál DB dotaz na každém zobrazení produktu; redirect má smysl jen tam, kde už žádná routa nesedí. Responder si přitom sám dohledá tenanta z hostu — nenamatchovaná cesta neprojde `web` skupinou, takže tenant kontext v ní ještě není nastavený
+- 2026-07-20: **Vyhledávání přes normalizovaný sloupec `products.search_text` + `LIKE`, ne InnoDB fulltext** (odchylka od §16.1). Fulltext neumí české skloňování ani diakritiku a nejede na SQLite v testech. Normalizace při zápisu je stejně povinná podle §4.1. Háček: `LIKE '%term%'` nepoužije index — u velkých katalogů se bude přepisovat
 - 2026-07-19: **Redis je vědomá závislost, ne pohodlí.** Session/fronty/základní cache jdou přepnout na `database` driver bez zásahu do kódu a izolace tenantů zůstane (prefix cache funguje na každém storu). Ale **tagy umí jen Redis** (`database` a `file` je neumí — ověřeno), takže invalidace page cache dle §15.6 by se bez Redisu musela přepsat. Pokud hosting Redis nemá, je to rozhodnutí do specifikace, ne tichý fallback. Navíc: absence Redisu obvykle značí sdílený hosting, kde nejde držet `queue:work` démona — a to bolí víc než cache.
 
 ## Před spuštěním (právní / provozní)

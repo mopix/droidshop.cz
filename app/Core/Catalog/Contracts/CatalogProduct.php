@@ -28,5 +28,19 @@ interface CatalogProduct
 
     public function catalogWeightGrams(): int;
 
+    public function catalogShortDescription(): ?string;
+
+    /**
+     * Web URL of the main image, or null when the product has none.
+     */
+    public function catalogImageUrl(): ?string;
+
+    public function catalogImageAlt(): ?string;
+
+    /**
+     * The product's own storefront path.
+     */
+    public function catalogUrl(): string;
+
     public function catalogIsAvailable(int $quantity = 1): bool;
 }

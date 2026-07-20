@@ -11,6 +11,45 @@ Pravidla: [`.claude/skills/versioning/SKILL.md`](.claude/skills/versioning/SKILL
 
 > CHANGELOG vede milníky (minor/major). Detail patchů je v `git log`.
 
+## [0.9.0] – 2026-07-20
+
+**Fáze 1 / vlna 1.2 — storefront katalogu.** E-shop nájemce je poprvé veřejně dostupný: homepage, kategorie, detail produktu a vyhledávání renderované serverem, se SEO výstupy podle závazného pravidla storefrontu.
+
+### Nový modul `storefront`
+
+- Layout e-shopu (skip link, navigace kořenových kategorií, hledání, patička), homepage, `/hledani`
+- Blade komponenty `seo-meta`, `json-ld`, `breadcrumbs`, `product-card`, `product-grid`, `sort-form`
+- Chybové stránky v šabloně e-shopu; bez tenanta se degraduje na prostý HTML
+- `sitemap.xml` a `robots.txt` per tenant; e-shop, který neobchoduje, dostane `Disallow: /`
+
+### Veřejný katalog
+
+- `/kategorie/{slug}` — výpis celého podstromu, stránkování 24, řazení a filtr „skladem" přes query parametry (funguje bez JS)
+- `/produkt/{slug}` — galerie, cena s DPH i bez, dostupnost, popis
+- JSON-LD `Product`+`Offer`, `BreadcrumbList`, `ItemList`, `Organization`+`WebSite`; canonical, OG a Twitter meta, `rel=prev/next`
+- `noindex` na výsledky hledání a na filtrované kombinace
+
+### SEO a chybové stavy
+
+- **Přejmenovaný slug konečně odpovídá 301.** `redirects` se zapisovaly od vlny 1.1, ale nic je neservírovalo — obsluha visí na handleru 404, takže úspěšná cesta nenese DB dotaz navíc
+- Stažený (soft-deleted) produkt vrací **410** se stránkou „produkt už není v nabídce" a odkazem do kategorie
+- 404 se renderuje v šabloně e-shopu
+
+### Jádro
+
+- Kontrakt `StorefrontHome` — kořenová routa zůstává v jádře a deleguje ji šabloně
+- `ProductQuery` + rozšíření `ProductCatalog` o `latest()` a `paginate()`; `CatalogProduct` o obrázek, krátký popis a URL
+- `RedirectResponder` — servírování redirectů včetně dohledání tenanta z hostu
+
+### Modul `products`
+
+- Normalizovaný sloupec `search_text` (lowercase, bez diakritiky) plněný při zápisu + command `products:reindex-search`
+- Vyhledávání ho používá, takže „cerna bunda" najde „Černá bunda"
+
+### Assety
+
+- Samostatný storefront bundle (JS 250 B gzip, CSS 9,8 kB gzip), Tailwind vidí Blade v `Modules/`
+
 ## [0.8.0] – 2026-07-20
 
 **Fáze 1 / vlna 1.1 — jádro katalogu.** Nájemce spravuje strom kategorií a produkty s cenami, DPH, skladem, obrázky a SEO poli ve vlastním adminu.
