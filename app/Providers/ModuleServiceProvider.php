@@ -2,9 +2,13 @@
 
 namespace App\Providers;
 
+use App\Core\Auth\TenantPermissions;
 use App\Core\Modules\ModuleRouteRegistrar;
+use App\Core\Tenancy\TenantContext;
 use App\Http\Middleware\EnsureModuleEnabled;
+use App\Models\User;
 use Illuminate\Routing\Router;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Str;
 
@@ -20,10 +24,68 @@ class ModuleServiceProvider extends ServiceProvider
         // depending on runtime state.
         $this->loadModuleAssetsFromDisk();
 
+        // A module binds its own contracts and registers its own counters. The
+        // kernel must not know that "products" implements ProductCatalog —
+        // that knowledge in core is exactly what makes a module unremovable.
+        $this->registerModuleProviders();
+
         // Routes also come from disk. The kill switch still works: the
         // `module` middleware consults the registry on every request, so a
         // withdrawn module answers 404 without anything being redeployed.
         $registrar->register();
+
+        $this->registerModulePermissionGate();
+    }
+
+    /**
+     * Makes manifest permissions answerable through `Gate` / `$user->can()`.
+     *
+     * A `before` hook rather than a `Gate::define()` per permission, because
+     * the set of permissions depends on which modules the *current tenant*
+     * runs, and that is not known at boot. Returning null for anything the
+     * shop does not declare leaves ordinary policies untouched — and means an
+     * unknown ability is denied by the gate's own default rather than by us.
+     */
+    private function registerModulePermissionGate(): void
+    {
+        Gate::before(function ($user, string $ability) {
+            if (! $user instanceof User) {
+                return null;
+            }
+
+            $tenant = $this->app->make(TenantContext::class)->current();
+
+            if ($tenant === null) {
+                return null;
+            }
+
+            $permissions = $this->app->make(TenantPermissions::class);
+
+            if (! in_array($ability, $permissions->availableFor($tenant), true)) {
+                return null;
+            }
+
+            return $permissions->allows($user, $tenant, $ability);
+        });
+    }
+
+    /**
+     * Registers Modules\<Name>\Providers\ModuleProvider where it exists.
+     *
+     * From disk and unconditionally, like routes and migrations: registration
+     * happens before a tenant is known, and a binding that only existed for
+     * tenants running the module would break every queue worker and console
+     * command. Access stays a per-request decision.
+     */
+    private function registerModuleProviders(): void
+    {
+        foreach ($this->moduleDirectories() as $directory) {
+            $class = 'Modules\\'.basename($directory).'\\Providers\\ModuleProvider';
+
+            if (is_file($directory.'/Providers/ModuleProvider.php') && class_exists($class)) {
+                $this->app->register($class);
+            }
+        }
     }
 
     private function loadModuleAssetsFromDisk(): void

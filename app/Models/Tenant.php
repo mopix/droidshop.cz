@@ -57,6 +57,7 @@ class Tenant extends SpatieTenant
     public function users(): BelongsToMany
     {
         return $this->belongsToMany(User::class, 'tenant_users')
+            ->using(TenantMembership::class)
             ->withPivot(['role', 'permissions', 'invited_at', 'joined_at']);
     }
 

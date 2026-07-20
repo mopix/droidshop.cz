@@ -6,6 +6,7 @@ use App\Core\Modules\ModuleRegistry;
 use App\Core\Tenancy\TenantContext;
 use App\Models\Module;
 use App\Models\Tenant;
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Modules\Pages\Models\Page;
 use Tests\Concerns\ActivatesModules;
@@ -128,9 +129,13 @@ class ModuleRoutingTest extends TestCase
     {
         $this->activateModule($this->tenantA, 'pages');
 
-        $this->get('http://shop1.droidshop/admin/m/pages')
+        $owner = User::factory()->create();
+        $this->tenantA->users()->attach($owner, ['role' => 'owner', 'joined_at' => now()]);
+
+        $this->actingAs($owner)
+            ->get('http://shop1.droidshop/admin/m/pages')
             ->assertOk()
-            ->assertJsonStructure(['pages']);
+            ->assertInertia(fn ($page) => $page->component('Modules/Pages/Index'));
     }
 
     public function test_admin_route_is_404_for_a_tenant_without_the_module(): void

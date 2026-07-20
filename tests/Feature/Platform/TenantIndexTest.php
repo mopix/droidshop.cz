@@ -113,8 +113,16 @@ class TenantIndexTest extends TestCase
     public function test_search_matches_name_domain_and_company_id(): void
     {
         $this->actingAsPlatformAdmin();
-        Tenant::factory()->withDomain('bicykl.droidshop')->create(['name' => 'Kola s.r.o.', 'billing_ico' => '12345678']);
-        Tenant::factory()->withDomain('kniha.droidshop')->create(['name' => 'Knihy a.s.', 'billing_ico' => '87654321']);
+
+        // billing_name is pinned on both: the search covers it, and the cs_CZ
+        // faker hands out surnames like "Kolář", which contain the needle and
+        // made this test fail roughly one run in ten.
+        Tenant::factory()->withDomain('bicykl.droidshop')->create([
+            'name' => 'Kola s.r.o.', 'billing_name' => 'Kola s.r.o.', 'billing_ico' => '12345678',
+        ]);
+        Tenant::factory()->withDomain('kniha.droidshop')->create([
+            'name' => 'Knihy a.s.', 'billing_name' => 'Knihy a.s.', 'billing_ico' => '87654321',
+        ]);
 
         foreach (['Kola', 'bicykl.droidshop', '12345678'] as $needle) {
             $this->get($this->platformUrl('/superadmin/tenanti?search='.$needle))

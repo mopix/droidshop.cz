@@ -2,6 +2,7 @@
 
 use App\Http\Middleware\CheckTenantStatus;
 use App\Http\Middleware\EnsurePlatformTwoFactor;
+use App\Http\Middleware\EnsureTenantMember;
 use App\Http\Middleware\HandleInertiaRequests;
 use App\Http\Middleware\RequirePlatformHost;
 use App\Http\Middleware\ResolveHost;
@@ -43,6 +44,7 @@ $app = Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'platform.host' => RequirePlatformHost::class,
             'platform.2fa' => EnsurePlatformTwoFactor::class,
+            'tenant.member' => EnsureTenantMember::class,
         ]);
 
         // An unauthenticated superadmin request belongs at the superadmin

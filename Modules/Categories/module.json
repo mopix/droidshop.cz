@@ -1,0 +1,32 @@
+{
+    "name": "categories",
+    "version": "1.0.0",
+    "title": {
+        "cs": "Kategorie"
+    },
+    "description": {
+        "cs": "Stromová struktura kategorií e-shopu, navigace a SEO pole."
+    },
+    "core": false,
+    "billable": false,
+    "level": "base",
+    "requires": {},
+    "provides": [
+        "category-tree"
+    ],
+    "listens": [],
+    "permissions": [
+        "categories.view",
+        "categories.edit"
+    ],
+    "settings_schema": null,
+    "nav": [
+        {
+            "area": "admin",
+            "label": "Kategorie",
+            "route": "admin.categories.index",
+            "icon": "folder-tree",
+            "order": 20
+        }
+    ]
+}

@@ -164,7 +164,7 @@ Po milestone: [`docs/as-is/`](docs/as-is/) ([`.claude/rules/as-is-on-milestone.m
 - MVP: jedna šablona storefrontu; šablona = modul (rozšiřitelné).
 - Vlastní domény + SSL = fáze 2 (brzy po MVP).
 - Licence / digitální produkty s aktivačním API = premium, fáze 2 (spec kap. 17).
-- Skeleton je Laravel Breeze + Inertia — business moduly ještě nejsou.
+- Stojí jádro (tenancy, moduly, kernel služby, superadmin) a první business moduly `categories` + `products`. Storefront zatím nemá veřejné routy — katalog je vidět jen v adminu.
 
 ## Rozhodnutí
 - 2026-07-17: Produktová spec v1.1 (draft) — multi-tenant SaaS, modularita, shared DB + `tenant_id`
@@ -180,6 +180,12 @@ Po milestone: [`docs/as-is/`](docs/as-is/) ([`.claude/rules/as-is-on-milestone.m
 - 2026-07-19: **Moduly = `nwidart/laravel-modules` ^13.0 + vlastní manifest vrstva** — nwidart dá autoloading, scaffolding, migrace per modul; naše vrstva manifest schema, per-tenant aktivaci, route mounting, kill switch, tarify. Kompromis: `modules_statuses.json` = deploy stav, tabulka `tenant_modules` = per-tenant stav. Revidovatelné (alternativa = plně vlastní systém)
 - 2026-07-19: **Fáze 0 rozdělena na vlny.** Vlna 0.1 = tenancy jádro + izolace + CI (bez modulů, bez superadmin UI)
 - 2026-07-19: **Úložiště = lokální disk pro MVP**, ne S3 (změna původního rozhodnutí „S3 od začátku"). Soubory zůstávají na naší VPS. `FileStorage` služba jádra drží abstrakci — modul nikdy nesahá na disk přímo, takže přechod na S3 je pak jen změna configu. Háček: lokální disk váže na jeden server (víc app serverů = nutné S3) a soubory musí být v záloze VPS. Platí, dokud běžíme na jedné VPS.
+- 2026-07-20: **Admin routy modulů jsou za `module:{key}` → `tenant.member`.** Laravelí alias `auth` se schválně nepoužívá — sedí v middleware priority listu a byl by přeřazen před modulový gate, čímž by z jeho 404 udělal redirect na login a prozradil, které moduly e-shop provozuje. Autentizaci dělá `EnsureTenantMember` sám (vyhodí `AuthenticationException`)
+- 2026-07-20: **Oprávnění se odvozují z manifestů modulů, které tenant běží** (`TenantPermissions` + `Gate::before`). Právo vypnutého modulu nedostane nikdo, ani vlastník — jinak by deaktivace modulu nechala jeho autorizační plochu otevřenou
+- 2026-07-20: **Převody DPH sedí na `TaxRate`, ne na `Money`** (odchylka od plánu vlny 1.1). `Money` je nejprimitivnější hodnotový typ jádra a nesmí znát daň; závislost míří jen jedním směrem
+- 2026-07-20: **Inertia stránky modulů leží v `resources/js/Pages/Modules/<Modul>/`**, ne uvnitř modulu. Inertia view finder skládá cestu `{page_path}/{component}.vue`, takže krátký název na cestu uvnitř modulu nenamapuješ bez vlastního finderu. Blade views, routy, controllery a migrace v modulu zůstávají
+- 2026-07-20: **Sanitizace tenantem psaného HTML vlastní** (`app/Core/Html/HtmlSanitizer.php` nad `DOMDocument`), bez `htmlpurifier`. Čistí se **při zápisu**, ne při renderu — jinak by se politika rozhodovala znovu na každém call site
+- 2026-07-20: **Drag&drop nikdy jako jediná cesta.** Řazení kategorií i obrázků má tlačítka ovladatelná klávesnicí (WCAG 2.1.1). Tažení lze doplnit jako nadstavbu
 - 2026-07-19: **Redis je vědomá závislost, ne pohodlí.** Session/fronty/základní cache jdou přepnout na `database` driver bez zásahu do kódu a izolace tenantů zůstane (prefix cache funguje na každém storu). Ale **tagy umí jen Redis** (`database` a `file` je neumí — ověřeno), takže invalidace page cache dle §15.6 by se bez Redisu musela přepsat. Pokud hosting Redis nemá, je to rozhodnutí do specifikace, ne tichý fallback. Navíc: absence Redisu obvykle značí sdílený hosting, kde nejde držet `queue:work` démona — a to bolí víc než cache.
 
 ## Před spuštěním (právní / provozní)

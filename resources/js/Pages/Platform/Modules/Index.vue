@@ -2,8 +2,8 @@
 import { computed, ref } from 'vue'
 import { useForm } from '@inertiajs/vue3'
 import PlatformLayout from '@/Layouts/PlatformLayout.vue'
-import DataTable, { type Column } from '@/Components/Platform/DataTable.vue'
-import ConfirmDialog from '@/Components/Platform/ConfirmDialog.vue'
+import DataTable, { type Column } from '@/Components/Ui/DataTable.vue'
+import ConfirmDialog from '@/Components/Ui/ConfirmDialog.vue'
 
 type ModuleRow = {
   key: string

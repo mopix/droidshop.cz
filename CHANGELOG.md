@@ -11,6 +11,45 @@ Pravidla: [`.claude/skills/versioning/SKILL.md`](.claude/skills/versioning/SKILL
 
 > CHANGELOG vede milníky (minor/major). Detail patchů je v `git log`.
 
+## [0.8.0] – 2026-07-20
+
+**Fáze 1 / vlna 1.1 — jádro katalogu.** Nájemce spravuje strom kategorií a produkty s cenami, DPH, skladem, obrázky a SEO poli ve vlastním adminu.
+
+### Bezpečnost
+
+- **Opravena díra v admin routách modulů.** Byly montované jen s `web` a modulovým gate, takže kdokoli bez přihlášení mohl číst a zapisovat cizí e-shop. Týkalo se i nasazeného modulu `Pages`. Nový middleware `EnsureTenantMember` ověřuje přihlášení a členství v e-shopu, na jehož hostu request dorazil.
+- **Oprávnění z manifestů začala platit.** `TenantPermissions` odvozuje sadu práv e-shopu z manifestů modulů, které běží; `Gate::before` z ní odpovídá na `$user->can()`. Právo vypnutého modulu nedostane nikdo, ani vlastník.
+- **Vlastní `HtmlSanitizer`** (whitelist tagů, atributů a URL schémat nad `DOMDocument`). Popisy produktů se čistí při zápisu.
+- **Nákupní cena** se zahazuje z validovaných dat a neopouští server bez práva `products.costs`.
+- **Obrázky se při nahrání otevírají**, ne jen kontrolují podle přípony — HTML soubor přejmenovaný na `.jpg` by se jinak servíroval z originu e-shopu.
+
+### Jádro
+
+- Číselník sazeb DPH (`tax_rates`, promile jako integer); převody `net`/`gross`/`vat` na `TaxRate`
+- Tabulka a služba `redirects` — 301 po přejmenování, řetězce se kolabují při zápisu
+- `AdminLayout` — shell adminu nájemce, navigace z manifestů modulů, sdílené Inertia props
+- Kontrakt `ProductCatalog` + `CatalogProduct` v jádře, implementace v modulu
+- Service providery modulů se načítají z disku (`Modules/*/Providers/ModuleProvider.php`)
+- Sdílené UI komponenty přesunuty z `Components/Platform` do `Components/Ui`
+
+### Modul `categories`
+
+- Strom (adjacency list + materializovaná cesta), max 4 úrovně, bez cyklů
+- Admin: výpis, inline editace, přesun, řazení tlačítky (ovladatelné klávesnicí), mazání s povinným cílem pro podkategorie
+
+### Modul `products`
+
+- Produkty, výrobci, obrázky, vazba na kategorie s hlavní kategorií
+- Cena hrubá + sazba; net a DPH se dopočítávají
+- Atomický `decrementStock` jedním podmíněným `UPDATE`
+- Soft delete; smazané produkty nepočítají do limitu tarifu
+- Admin: seznam s filtry a stránkováním, karta se záložkami Základní / Ceny / Obrázky / Sklad / SEO
+- Validace EAN-8/13 včetně kontrolní číslice
+
+### Mimo rozsah vlny
+
+Varianty, CSV import/export, generování řezů obrázků, hromadné operace, storefront rendering.
+
 ## [0.7.0] – 2026-07-20
 
 **Fáze 0 / vlna 0.6 — superadmin management UI.** Platformu lze spravovat z prohlížeče: tenanti, stavy, tarify, moduly, kill switch.

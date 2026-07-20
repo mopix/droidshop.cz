@@ -55,7 +55,14 @@ class ModuleRouteRegistrar
             return;
         }
 
-        Route::middleware(['web', 'module:'.$key])
+        // Order matters. The module gate runs first so a platform host or a
+        // shop that does not run the module gets a flat 404 without ever
+        // revealing there is a login behind it. Only then do we ask who the
+        // caller is. `tenant.member` does the authentication itself rather
+        // than stacking Laravel's `auth` alias, because `auth` sits in the
+        // framework's middleware priority list and would be hoisted in front
+        // of the module gate, turning those 404s into login redirects.
+        Route::middleware(['web', 'module:'.$key, 'tenant.member'])
             ->prefix('admin/m/'.$key)
             ->name('admin.'.$key.'.')
             ->group($file);
