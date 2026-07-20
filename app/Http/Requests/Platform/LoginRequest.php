@@ -19,6 +19,13 @@ class LoginRequest extends FormRequest
 {
     private const MAX_ATTEMPTS = 5;
 
+    /**
+     * RateLimiter::hit() defaults to a 60-second decay when none is given,
+     * so this must be passed explicitly — matches the "5 attempts a minute"
+     * documented above.
+     */
+    private const DECAY_SECONDS = 60;
+
     public function authorize(): bool
     {
         return true;
@@ -40,7 +47,7 @@ class LoginRequest extends FormRequest
         $this->ensureIsNotRateLimited();
 
         if (! Auth::guard('platform')->attempt($this->only('email', 'password'), $this->boolean('remember'))) {
-            RateLimiter::hit($this->throttleKey());
+            RateLimiter::hit($this->throttleKey(), self::DECAY_SECONDS);
 
             throw ValidationException::withMessages([
                 'email' => __('auth.failed'),

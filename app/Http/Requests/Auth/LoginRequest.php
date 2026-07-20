@@ -13,6 +13,13 @@ use Illuminate\Validation\ValidationException;
 class LoginRequest extends FormRequest
 {
     /**
+     * RateLimiter::hit() defaults to a 60-second decay when none is given,
+     * so this must be passed explicitly — a login lockout stays short on
+     * purpose, one minute, matching the "auth.throttle" message below.
+     */
+    private const DECAY_SECONDS = 60;
+
+    /**
      * Determine if the user is authorized to make this request.
      */
     public function authorize(): bool
@@ -43,7 +50,7 @@ class LoginRequest extends FormRequest
         $this->ensureIsNotRateLimited();
 
         if (! Auth::attempt($this->only('email', 'password'), $this->boolean('remember'))) {
-            RateLimiter::hit($this->throttleKey());
+            RateLimiter::hit($this->throttleKey(), self::DECAY_SECONDS);
 
             throw ValidationException::withMessages([
                 'email' => trans('auth.failed'),

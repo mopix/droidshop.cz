@@ -22,6 +22,13 @@ class RequestPasswordResetRequest extends FormRequest
 {
     private const MAX_ATTEMPTS = 5;
 
+    /**
+     * RateLimiter::hit() defaults to a 60-second decay when none is given,
+     * so this must be passed explicitly — this endpoint mails an inbox
+     * (see ResendVerificationRequest), so an hourly cap is the point.
+     */
+    private const DECAY_SECONDS = 3600;
+
     public function authorize(): bool
     {
         return true;
@@ -66,7 +73,7 @@ class RequestPasswordResetRequest extends FormRequest
      */
     public function hit(): void
     {
-        RateLimiter::hit($this->throttleKey());
+        RateLimiter::hit($this->throttleKey(), self::DECAY_SECONDS);
     }
 
     /**
