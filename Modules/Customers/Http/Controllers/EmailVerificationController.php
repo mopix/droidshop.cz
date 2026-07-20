@@ -78,7 +78,7 @@ class EmailVerificationController
         $customer = Auth::guard('customer')->user();
 
         if ($customer->hasVerifiedEmail()) {
-            return redirect('/ucet')->with('status', 'E-mail je již ověřený.');
+            return redirect()->route('storefront.customers.account')->with('status', 'E-mail je již ověřený.');
         }
 
         $request->ensureIsNotRateLimited();
@@ -95,13 +95,13 @@ class EmailVerificationController
 
         $mail->send(new VerifyEmail($verifyUrl, $shopName), $customer->email, MailKind::Transactional);
 
-        return redirect('/ucet')->with('status', 'Ověřovací e-mail byl znovu odeslán.');
+        return redirect()->route('storefront.customers.account')->with('status', 'Ověřovací e-mail byl znovu odeslán.');
     }
 
     private function success(Customer $customer, string $message): RedirectResponse
     {
         $destination = Auth::guard('customer')->check() && Auth::guard('customer')->id() === $customer->id
-            ? '/ucet'
+            ? route('storefront.customers.account')
             : route('storefront.customers.login');
 
         return redirect($destination)->with('status', $message);

@@ -2,6 +2,7 @@
 
 namespace Modules\Customers\Models;
 
+use App\Core\Customers\Contracts\CustomerAccount;
 use App\Core\Tenancy\BelongsToTenant;
 use Database\Factories\CustomerFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -19,8 +20,12 @@ use Illuminate\Notifications\Notifiable;
  *
  * Identity is per shop. The same person shopping at two tenants has two
  * unrelated accounts, which is why the unique index is (tenant_id, email).
+ *
+ * Implements CustomerAccount directly, the same way Product answers
+ * CatalogProduct: callers outside the module see only the narrow interface,
+ * never the full Eloquent surface.
  */
-class Customer extends Authenticatable
+class Customer extends Authenticatable implements CustomerAccount
 {
     use BelongsToTenant;
 
@@ -72,5 +77,20 @@ class Customer extends Authenticatable
     public function fullName(): string
     {
         return trim("{$this->first_name} {$this->last_name}");
+    }
+
+    public function accountEmail(): string
+    {
+        return $this->email;
+    }
+
+    public function accountFullName(): string
+    {
+        return $this->fullName();
+    }
+
+    public function accountPhone(): ?string
+    {
+        return $this->phone;
     }
 }

@@ -111,6 +111,6 @@ class PasswordResetController
         Auth::guard('customer')->login($customer);
         $request->session()->regenerate();
 
-        return redirect('/ucet')->with('status', 'Heslo bylo změněno.');
+        return redirect()->route('storefront.customers.account')->with('status', 'Heslo bylo změněno.');
     }
 }

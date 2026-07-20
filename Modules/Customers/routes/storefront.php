@@ -1,6 +1,7 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
+use Modules\Customers\Http\Controllers\AccountController;
 use Modules\Customers\Http\Controllers\EmailVerificationController;
 use Modules\Customers\Http\Controllers\PasswordResetController;
 use Modules\Customers\Http\Controllers\RegistrationController;
@@ -35,3 +36,23 @@ Route::get('/overeni-emailu/{token}', [EmailVerificationController::class, 'veri
 Route::post('/overeni-emailu/znovu', [EmailVerificationController::class, 'resend'])
     ->middleware('auth:customer')
     ->name('verify.resend');
+
+// The account area. Every route here requires a signed-in customer — see
+// AccountController for how each write is additionally scoped to the
+// authenticated customer's own rows, never trusting an id from the request.
+Route::middleware('auth:customer')->group(function () {
+    Route::get('/ucet', [AccountController::class, 'index'])->name('account');
+
+    Route::get('/ucet/udaje', [AccountController::class, 'editProfile'])->name('account.profile');
+    Route::put('/ucet/udaje', [AccountController::class, 'updateProfile'])->name('account.profile.update');
+
+    Route::get('/ucet/adresy', [AccountController::class, 'addresses'])->name('account.addresses');
+    Route::post('/ucet/adresy', [AccountController::class, 'storeAddress'])->name('account.addresses.store');
+    Route::get('/ucet/adresy/{address}/upravit', [AccountController::class, 'editAddress'])->name('account.addresses.edit');
+    Route::put('/ucet/adresy/{address}', [AccountController::class, 'updateAddress'])->name('account.addresses.update');
+    // A GET confirmation step, not a JS confirm() dialog: the delete itself
+    // stays a real DELETE request from a real form on this page, so the
+    // whole flow works with JavaScript switched off.
+    Route::get('/ucet/adresy/{address}/smazat', [AccountController::class, 'confirmDeleteAddress'])->name('account.addresses.delete');
+    Route::delete('/ucet/adresy/{address}', [AccountController::class, 'destroyAddress'])->name('account.addresses.destroy');
+});
