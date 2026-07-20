@@ -10,8 +10,8 @@
 
         <div>
             <label for="email" class="block text-sm font-medium">E-mail</label>
-            <input id="email" name="email" type="email" value="{{ old('email', $email) }}" required autocomplete="email"
-                   class="mt-1 w-full rounded border border-slate-300 px-3 py-2">
+            <input id="email" name="email" type="email" value="{{ old('email', $email) }}" required readonly autocomplete="email"
+                   class="mt-1 w-full rounded border border-slate-300 px-3 py-2 bg-slate-100">
             @error('email') <p role="alert" class="mt-1 text-sm text-red-700">{{ $message }}</p> @enderror
         </div>
 

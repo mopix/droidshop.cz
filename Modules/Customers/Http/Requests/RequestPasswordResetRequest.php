@@ -7,20 +7,18 @@ use Illuminate\Auth\Events\Lockout;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Str;
-use Illuminate\Validation\Rules\Password;
 use Illuminate\Validation\ValidationException;
 
 /**
- * Validates both steps of a customer password reset.
+ * Validates and throttles the "request a reset" step only.
  *
- * The two steps share one class rather than living apart in two, because the
- * tenant-scoped throttle key below (see throttleKey()) belongs to the
- * request step only, and duplicating it across two request classes is a
- * worse trade-off than branching once on which fields the request actually
- * carries. `token` is what tells the two apart: only the second step
- * (spending a token to set a new password) ever posts one.
+ * Kept apart from UpdatePasswordRequest deliberately: which rules apply must
+ * be decided by which endpoint is running, not by which fields the caller
+ * chose to send. A single class branching on $this->has('token') let a POST
+ * to the update endpoint without a token key fall back to these rules,
+ * silently skipping password validation on that call.
  */
-class PasswordResetRequest extends FormRequest
+class RequestPasswordResetRequest extends FormRequest
 {
     private const MAX_ATTEMPTS = 5;
 
@@ -34,24 +32,16 @@ class PasswordResetRequest extends FormRequest
      */
     public function rules(): array
     {
-        if ($this->has('token')) {
-            return [
-                'email' => ['required', 'string', 'email'],
-                'token' => ['required', 'string'],
-                'password' => ['required', 'confirmed', Password::defaults()],
-            ];
-        }
-
         return [
             'email' => ['required', 'string', 'email'],
         ];
     }
 
     /**
-     * Throttling for the "request a reset" step only, modelled on
-     * LoginRequest: five attempts per shop, address and IP. A token, once
-     * issued, is one-time and expires on its own (CustomerTokens), so the
-     * update step needs no throttle of its own.
+     * Throttling for this step only, modelled on LoginRequest: five attempts
+     * per shop, address and IP. A token, once issued, is one-time and
+     * expires on its own (CustomerTokens), so the update step needs no
+     * throttle of its own.
      */
     public function ensureIsNotRateLimited(): void
     {

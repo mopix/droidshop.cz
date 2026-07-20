@@ -10,6 +10,8 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Mail;
+use Modules\Customers\Mail\ResetPassword;
 use Modules\Customers\Services\CustomerTokens;
 use Tests\Concerns\ActivatesModules;
 use Tests\Concerns\ActsAsCustomer;
@@ -299,5 +301,121 @@ class CustomerPasswordResetTest extends TestCase
         // limiter is decorative and the endpoint can still flood an inbox.
         $messages = MailMessage::withoutGlobalScopes()->where('tenant_id', $this->tenant->id)->get();
         $this->assertCount(5, $messages);
+    }
+
+    public function test_posting_a_valid_token_with_a_missing_password_is_rejected_by_validation(): void
+    {
+        $this->makeCustomer($this->tenant, [
+            'email' => 'jan@example.test',
+            'password' => Hash::make('staryheslo123'),
+        ]);
+
+        $token = $this->issueToken($this->tenant, 'jan@example.test');
+
+        // No password field at all: with the combined request class this
+        // fell back to the request-step's email-only rules (branching on
+        // $this->has('token')) and reached CustomerTokens::consume() without
+        // ever validating a password. UpdatePasswordRequest must reject this
+        // on its own, before the token is ever touched.
+        $response = $this->post($this->url('/obnova-hesla'), [
+            'email' => 'jan@example.test',
+            'token' => $token,
+        ]);
+
+        $response->assertSessionHasErrors('password');
+
+        $row = DB::table('customer_tokens')
+            ->where('tenant_id', $this->tenant->id)
+            ->where('email', 'jan@example.test')
+            ->where('purpose', CustomerTokens::PASSWORD_RESET)
+            ->first();
+
+        // Validation must fail before the token is spent: a short-circuited
+        // token would strand the customer with a dead link and no new
+        // password.
+        $this->assertNotNull($row);
+    }
+
+    public function test_posting_a_valid_token_with_a_too_short_password_is_rejected_by_validation(): void
+    {
+        $this->makeCustomer($this->tenant, [
+            'email' => 'jan@example.test',
+            'password' => Hash::make('staryheslo123'),
+        ]);
+
+        $token = $this->issueToken($this->tenant, 'jan@example.test');
+
+        $response = $this->post($this->url('/obnova-hesla'), [
+            'email' => 'jan@example.test',
+            'token' => $token,
+            'password' => 'ab',
+            'password_confirmation' => 'ab',
+        ]);
+
+        $response->assertSessionHasErrors('password');
+    }
+
+    public function test_posting_to_the_update_endpoint_without_a_token_key_is_rejected_by_validation(): void
+    {
+        $this->makeCustomer($this->tenant, [
+            'email' => 'jan@example.test',
+            'password' => Hash::make('staryheslo123'),
+        ]);
+
+        // No 'token' key at all in the payload — the exact property the old
+        // combined request class used to decide which rules applied
+        // ($this->has('token')). Which validation runs must be decided by
+        // the endpoint, not by what the caller chose to send.
+        $response = $this->post($this->url('/obnova-hesla'), [
+            'email' => 'jan@example.test',
+            'password' => 'short',
+        ]);
+
+        $response->assertSessionHasErrors(['token', 'password']);
+    }
+
+    public function test_the_mailed_reset_link_is_absolute_and_on_the_tenants_own_host(): void
+    {
+        Mail::fake();
+
+        $this->makeCustomer($this->tenant, ['email' => 'jan@example.test']);
+
+        $this->post($this->url('/zapomenute-heslo'), ['email' => 'jan@example.test']);
+
+        Mail::assertSent(ResetPassword::class, function (ResetPassword $mail) {
+            // A link on the platform domain (or a relative path) would land
+            // the customer on the wrong shop, or on none at all.
+            return str_starts_with($mail->resetUrl, 'http://shop1.droidshop/');
+        });
+    }
+
+    public function test_a_reset_request_throttled_at_one_shop_still_succeeds_at_another(): void
+    {
+        $other = Tenant::factory()->withDomain('shop2.droidshop')->create();
+        foreach (['storefront', 'customers'] as $module) {
+            $this->activateModule($other, $module);
+        }
+
+        $this->makeCustomer($this->tenant, ['email' => 'jan@example.test']);
+        $this->makeCustomer($other, ['email' => 'jan@example.test']);
+
+        for ($attempt = 0; $attempt < 5; $attempt++) {
+            $this->post($this->url('/zapomenute-heslo'), ['email' => 'jan@example.test']);
+        }
+
+        // Confirm the lockout is genuinely in effect at shop 1 before
+        // crossing shops.
+        $lockedOut = $this->post($this->url('/zapomenute-heslo'), ['email' => 'jan@example.test']);
+        $lockedOut->assertSessionHasErrors('email');
+
+        // The same address, at a different shop, must be unaffected by shop
+        // 1's lockout: RequestPasswordResetRequest::throttleKey() includes
+        // the tenant id.
+        $response = $this->post('http://shop2.droidshop/zapomenute-heslo', ['email' => 'jan@example.test']);
+        $response->assertSessionHasNoErrors();
+
+        $messages = MailMessage::withoutGlobalScopes()->where('tenant_id', $other->id)->get();
+        $this->assertCount(1, $messages);
+        $this->assertSame(['jan@example.test'], $messages->first()->recipients);
     }
 }

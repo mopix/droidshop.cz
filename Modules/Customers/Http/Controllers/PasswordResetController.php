@@ -9,9 +9,11 @@ use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
-use Modules\Customers\Http\Requests\PasswordResetRequest;
+use Modules\Customers\Http\Requests\RequestPasswordResetRequest;
+use Modules\Customers\Http\Requests\UpdatePasswordRequest;
 use Modules\Customers\Mail\ResetPassword;
 use Modules\Customers\Models\Customer;
 use Modules\Customers\Services\CustomerTokens;
@@ -34,7 +36,7 @@ class PasswordResetController
      * is not possible is for a wrong guess to be indistinguishable from a
      * right one.
      */
-    public function email(PasswordResetRequest $request, CustomerTokens $tokens, MailService $mail): RedirectResponse
+    public function email(RequestPasswordResetRequest $request, CustomerTokens $tokens, MailService $mail): RedirectResponse
     {
         $request->ensureIsNotRateLimited();
         $request->hit();
@@ -54,6 +56,17 @@ class PasswordResetController
             $shopName = app(TenantContext::class)->current()?->name ?? '';
 
             $mail->send(new ResetPassword($resetUrl, $shopName), $email, MailKind::Transactional);
+        } else {
+            // Do comparable work on the not-found branch so the synchronous
+            // response time does not itself reveal whether the address
+            // exists — a hash costs real, roughly constant time regardless
+            // of outcome. This only equalises the synchronous path: the real
+            // uniformity in production comes from mail being queued
+            // (MailService), so the request returns before delivery either
+            // way. A dummy token row is deliberately not written here —
+            // that would leak an unknown address into customer_tokens
+            // instead of into a stopwatch.
+            Hash::make(Str::random(32));
         }
 
         return redirect()->route('storefront.customers.password.request')
@@ -69,7 +82,7 @@ class PasswordResetController
         ]);
     }
 
-    public function update(PasswordResetRequest $request, CustomerTokens $tokens): RedirectResponse
+    public function update(UpdatePasswordRequest $request, CustomerTokens $tokens): RedirectResponse
     {
         $email = Str::lower((string) $request->string('email'));
 

@@ -31,22 +31,30 @@ class CustomerTokens
 
     /**
      * Issues a token, replacing any live one for the same address and purpose.
+     *
+     * upsert() rather than updateOrInsert(): the latter runs a SELECT and
+     * then a separate INSERT or UPDATE, so two concurrent requests for the
+     * same address can both pass the existence check and the loser gets an
+     * uncaught QueryException off the unique index (a 500 on a double-click
+     * of the reset button). upsert() compiles to a single atomic
+     * `INSERT ... ON DUPLICATE KEY UPDATE` on MySQL, keyed on the same
+     * columns the unique index covers.
      */
     public function issue(string $email, string $purpose): string
     {
         $token = Str::random(64);
 
-        DB::table('customer_tokens')->updateOrInsert(
+        DB::table('customer_tokens')->upsert(
             [
                 'tenant_id' => $this->tenantId(),
                 'email' => Str::lower($email),
                 'purpose' => $purpose,
-            ],
-            [
                 'token_hash' => hash('sha256', $token),
                 'expires_at' => now()->addMinutes(self::LIFETIME_MINUTES),
                 'created_at' => now(),
             ],
+            ['tenant_id', 'email', 'purpose'],
+            ['token_hash', 'expires_at', 'created_at'],
         );
 
         return $token;
