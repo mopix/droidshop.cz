@@ -683,17 +683,25 @@ class QueuedMailService implements MailService
     }
 
     /**
-     * Mailables set their subject either as a property or inside build();
-     * rendering the envelope is the only way to get the final string.
+     * A mailable declares its subject either through envelope() or inside
+     * build(), and neither has run yet at queue time.
+     *
+     * build() runs on a clone: on the real instance it would append the
+     * attachments and addresses a second time when the job delivers it.
      */
     private function subjectOf(Mailable $mailable): string
     {
-        return $mailable->subject ?? class_basename($mailable);
+        if (method_exists($mailable, 'envelope')) {
+            return $mailable->envelope()->subject ?? class_basename($mailable);
+        }
+
+        $probe = clone $mailable;
+        $probe->build();
+
+        return $probe->subject ?? class_basename($mailable);
     }
 }
 ```
-
-> Note for the implementer: the anonymous Mailable in the test sets its subject inside `build()`, so `$mailable->subject` is null until Laravel builds it. If `test_sending_logs_the_message_against_the_current_tenant` fails on the subject assertion, call `$mailable->build()` inside `subjectOf()` before reading the property — do not change the test to accept the class name.
 
 - [ ] **Step 6: Bind the contract**
 
