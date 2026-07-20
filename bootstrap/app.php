@@ -50,11 +50,30 @@ $app = Application::configure(basePath: dirname(__DIR__))
             'tenant.member' => EnsureTenantMember::class,
         ]);
 
-        // An unauthenticated superadmin request belongs at the superadmin
-        // login, not the tenant one.
-        $middleware->redirectGuestsTo(fn ($request) => str_starts_with(ltrim($request->path(), '/'), 'superadmin')
-            ? route('platform.login')
-            : route('login'));
+        // This one closure backs every guest redirect in the app — Laravel's
+        // `auth` middleware and any AuthenticationException thrown directly
+        // (EnsureTenantMember does exactly that) both funnel through it. It
+        // has to decide per guard, not just per host: a request rejected by
+        // `auth:customer` must land on that guard's own login, never on the
+        // tenant staff or superadmin one, or a customer would be bounced to
+        // a form they can never authenticate against. Read off the matched
+        // route's own middleware rather than the path or route name — that
+        // stays correct even for routes (like the admin gate) that throw the
+        // exception without declaring an `auth:*` middleware at all.
+        // Laravel's own redirect()->guest() call (Handler::unauthenticated())
+        // already stores the intended URL before landing here, so no extra
+        // machinery is needed to send the customer back after logging in.
+        $middleware->redirectGuestsTo(function ($request) {
+            $routeMiddleware = $request->route()?->gatherMiddleware() ?? [];
+
+            if (in_array('auth:customer', $routeMiddleware, true)) {
+                return route('storefront.customers.login');
+            }
+
+            return str_starts_with(ltrim($request->path(), '/'), 'superadmin')
+                ? route('platform.login')
+                : route('login');
+        });
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         // Renamed slugs keep answering (spec §15.3). Hung off the 404 rather

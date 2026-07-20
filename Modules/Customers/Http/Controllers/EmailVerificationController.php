@@ -6,10 +6,10 @@ use App\Core\Mail\Contracts\MailService;
 use App\Core\Mail\MailKind;
 use App\Core\Tenancy\TenantContext;
 use Illuminate\Http\RedirectResponse;
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Str;
 use Modules\Customers\Http\Requests\ResendVerificationRequest;
+use Modules\Customers\Http\Requests\VerifyEmailRequest;
 use Modules\Customers\Mail\VerifyEmail;
 use Modules\Customers\Models\Customer;
 use Modules\Customers\Services\CustomerTokens;
@@ -27,9 +27,17 @@ class EmailVerificationController
      * nowhere at all. What authenticates this request is possession of the
      * token itself, not a session — so the guard here checks nothing about
      * who the caller is signed in as.
+     *
+     * Being public and unauthenticated, it also gets its own light,
+     * IP-keyed throttle (VerifyEmailRequest) — checked before any DB lookup,
+     * since this is the only endpoint in the module that costs a query
+     * before a caller has proven anything about themselves.
      */
-    public function verify(Request $request, string $token, CustomerTokens $tokens): RedirectResponse
+    public function verify(VerifyEmailRequest $request, string $token, CustomerTokens $tokens): RedirectResponse
     {
+        $request->ensureIsNotRateLimited();
+        $request->hit();
+
         $email = Str::lower((string) $request->query('email', ''));
 
         $customer = Customer::where('email', $email)->first();

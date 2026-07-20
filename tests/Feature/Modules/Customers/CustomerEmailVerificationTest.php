@@ -251,11 +251,67 @@ class CustomerEmailVerificationTest extends TestCase
         $this->assertCount(5, $messages);
     }
 
+    public function test_the_resend_lockout_lasts_an_hour_not_the_rate_limiters_default_minute(): void
+    {
+        $customer = $this->makeCustomer($this->tenant, [
+            'email' => 'jan@example.test',
+            'email_verified_at' => null,
+        ]);
+
+        for ($attempt = 0; $attempt < 5; $attempt++) {
+            $this->actingAsCustomer($customer)->post($this->url('/overeni-emailu/znovu'));
+        }
+
+        // The 6th attempt lands inside RateLimiter::hit()'s silent 60-second
+        // default too, so on its own this proves nothing about the decay —
+        // see test_the_resend_endpoint_is_rate_limited() above for that gap.
+        $this->actingAsCustomer($customer)
+            ->post($this->url('/overeni-emailu/znovu'))
+            ->assertSessionHasErrors();
+
+        // Past 60 seconds but well inside an hour: a decay that had
+        // regressed to that 60-second default would already be open again
+        // here. This is the assertion a burst-count-only test cannot make.
+        $this->travel(90)->seconds();
+
+        $this->actingAsCustomer($customer)
+            ->post($this->url('/overeni-emailu/znovu'))
+            ->assertSessionHasErrors();
+
+        // Past the documented hourly window, measured from the very first
+        // hit (the timer is set once and never renewed by later hits): the
+        // lockout must have lifted, proving the window really is an hour
+        // and not something open-ended.
+        $this->travel(3600 - 90 + 5)->seconds();
+
+        $this->actingAsCustomer($customer)
+            ->post($this->url('/overeni-emailu/znovu'))
+            ->assertSessionHasNoErrors();
+    }
+
     public function test_the_resend_endpoint_requires_an_authenticated_customer(): void
     {
-        $this->post($this->url('/overeni-emailu/znovu'))->assertRedirect();
+        // Must land on this shop's own customer login, not the tenant staff
+        // one — an unauthenticated customer can never sign in there.
+        $this->post($this->url('/overeni-emailu/znovu'))
+            ->assertRedirect($this->url('/prihlaseni'));
 
         $this->assertFalse(Auth::guard('customer')->check());
+    }
+
+    public function test_a_guest_on_an_auth_customer_route_and_a_guest_on_the_admin_gate_go_to_different_logins(): void
+    {
+        $this->activateModule($this->tenant, 'products');
+
+        // auth:customer -> the customer login for this shop.
+        $this->post($this->url('/overeni-emailu/znovu'))
+            ->assertRedirect($this->url('/prihlaseni'));
+
+        // The tenant admin gate (EnsureTenantMember, no auth:customer
+        // middleware at all) must be entirely unaffected by that -> still
+        // the staff login, exactly as before this fix.
+        $this->get($this->url('/admin/m/products'))
+            ->assertRedirect(route('login'));
     }
 
     public function test_an_already_verified_customer_following_an_old_link_is_redirected_without_an_error(): void
@@ -279,6 +335,47 @@ class CustomerEmailVerificationTest extends TestCase
 
         $fresh = app(TenantContext::class)->runAs($this->tenant, fn () => $customer->fresh());
         $this->assertNotNull($fresh->email_verified_at);
+    }
+
+    public function test_clicking_a_valid_verification_link_twice_is_not_throttled(): void
+    {
+        $this->makeCustomer($this->tenant, [
+            'email' => 'jan@example.test',
+            'email_verified_at' => null,
+        ]);
+
+        $token = $this->issueToken($this->tenant, 'jan@example.test');
+        $url = $this->url('/overeni-emailu/'.$token.'?email=jan%40example.test');
+
+        // First click verifies for real; a second click on the same link (a
+        // second tab, a doubled click, an eager retry) must go through the
+        // "already verified" no-op path unharmed, not the throttle.
+        $this->get($url)->assertRedirect()->assertSessionHasNoErrors();
+        $this->get($url)->assertRedirect()->assertSessionHasNoErrors();
+    }
+
+    public function test_the_verify_endpoint_throttles_repeated_hits_from_the_same_ip(): void
+    {
+        $this->makeCustomer($this->tenant, [
+            'email' => 'jan@example.test',
+            'email_verified_at' => null,
+        ]);
+
+        $token = $this->issueToken($this->tenant, 'jan@example.test');
+        $url = $this->url('/overeni-emailu/'.$token.'?email=jan%40example.test');
+
+        // The first hit verifies for real; every one after that is a
+        // legitimate "already verified" no-op right up to the limit — so a
+        // lockout observed here can only be the throttle, never the token
+        // logic.
+        for ($attempt = 0; $attempt < 20; $attempt++) {
+            $this->get($url)->assertSessionHasNoErrors();
+        }
+
+        $response = $this->get($url);
+
+        $response->assertSessionHasErrors('email');
+        $this->assertStringContainsString('Příliš mnoho pokusů', session('errors')->first('email'));
     }
 
     public function test_an_unknown_address_fails_without_revealing_anything(): void
