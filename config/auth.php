@@ -92,7 +92,11 @@ return [
         ],
 
         'customers' => [
-            'driver' => 'eloquent',
+            // Not the built-in `eloquent` driver: `customer-eloquent` is
+            // registered by Modules\Customers\Providers\ModuleProvider and
+            // excludes anonymised (GDPR-erased) customers from every guard
+            // lookup — see Modules\Customers\Auth\AnonymisedCustomerProvider.
+            'driver' => 'customer-eloquent',
             'model' => Customer::class,
         ],
 

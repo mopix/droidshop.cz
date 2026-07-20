@@ -41,11 +41,21 @@ const KIND_LABELS: Record<string, string> = {
 }
 
 const erasing = ref(false)
+const processing = ref(false)
 
-const confirmErase = () =>
+const confirmErase = () => {
+  // Set before the request goes out, not in onFinish: a second click on the
+  // dialog's confirm button between the first request being sent and its
+  // response arriving must not fire a second erase request.
+  processing.value = true
+
   router.post(route('admin.customers.erase', props.customer.id), {}, {
-    onFinish: () => (erasing.value = false),
+    onFinish: () => {
+      processing.value = false
+      erasing.value = false
+    },
   })
+}
 </script>
 
 <template>
@@ -145,6 +155,7 @@ const confirmErase = () =>
       :message="`Opravdu anonymizovat údaje zákazníka ${customer.full_name || customer.email}? Jméno, e-mail, telefon a adresy budou nenávratně odstraněny. Tuto akci nelze vzít zpět.`"
       confirm-label="Anonymizovat"
       danger
+      :processing="processing"
       @cancel="erasing = false"
       @confirm="confirmErase"
     />

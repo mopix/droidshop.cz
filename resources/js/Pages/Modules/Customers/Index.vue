@@ -3,7 +3,7 @@ import { computed } from 'vue'
 import { Link } from '@inertiajs/vue3'
 import AdminLayout from '@/Layouts/AdminLayout.vue'
 import DataTable, { type Column } from '@/Components/Ui/DataTable.vue'
-import Pagination, { type PaginationLink, type PaginationMeta } from '@/Components/Ui/Pagination.vue'
+import Pagination, { type PaginationLink } from '@/Components/Ui/Pagination.vue'
 
 type CustomerRow = {
   id: number
@@ -15,8 +15,17 @@ type CustomerRow = {
   created_at: string | null
 }
 
+// Laravel's paginator serialises flat (current_page, total, ... alongside
+// data/links), not nested under a "meta" key — Pagination.vue is built to
+// take the whole object as its `meta` prop (see Platform/Tenants/Index.vue).
+type CustomerPaginator = {
+  data: CustomerRow[]
+  links: PaginationLink[]
+  total: number
+}
+
 const props = defineProps<{
-  customers: { data: CustomerRow[]; links: PaginationLink[]; meta?: PaginationMeta }
+  customers: CustomerPaginator
 }>()
 
 const columns: Column[] = [
@@ -30,9 +39,13 @@ const columns: Column[] = [
  * Filtering elsewhere in the admin rewrites the table without moving focus,
  * so this echoes that pattern even though this listing has no filters yet —
  * a screen reader user still gets a count on first load.
+ *
+ * Counts the paginator's total, not the current page's row count: page 2 of
+ * 120 customers must announce 120, not the 50 rows this page happens to
+ * render.
  */
 const resultMessage = computed(() => {
-  const count = props.customers.data.length
+  const count = props.customers.total
 
   if (count === 0) return 'Žádný zákazník.'
   if (count === 1) return 'Nalezen 1 zákazník.'
@@ -78,6 +91,6 @@ const resultMessage = computed(() => {
       </template>
     </DataTable>
 
-    <Pagination :links="customers.links" :meta="customers.meta" />
+    <Pagination :links="customers.links" :meta="customers" />
   </AdminLayout>
 </template>

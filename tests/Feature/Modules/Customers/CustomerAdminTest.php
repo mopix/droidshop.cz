@@ -9,9 +9,11 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 use Inertia\Testing\AssertableInertia;
 use Modules\Customers\Models\Customer;
 use Modules\Customers\Models\CustomerAddress;
+use Modules\Customers\Services\CustomerEraser;
 use Tests\Concerns\ActivatesModules;
 use Tests\Concerns\ActsAsCustomer;
 use Tests\TestCase;
@@ -163,6 +165,8 @@ class CustomerAdminTest extends TestCase
                 'first_name' => 'Jan',
                 'last_name' => 'Novák',
                 'phone' => '777123456',
+                'remember_token' => Str::random(60),
+                'last_login_at' => now(),
             ])
         );
 
@@ -180,7 +184,16 @@ class CustomerAdminTest extends TestCase
             $this->assertNull($fresh->first_name);
             $this->assertNull($fresh->last_name);
             $this->assertNull($fresh->phone);
-            $this->assertNotSame('jan@example.test', $fresh->email);
+            // The exact placeholder shape, not merely "changed": an empty
+            // string, null or any other broken scheme would also satisfy a
+            // weaker assertNotSame('jan@example.test', ...) check.
+            $this->assertMatchesRegularExpression(
+                '/^smazano-'.$customer->id.'-[a-z0-9]{12}@anonymized\.invalid$/',
+                $fresh->email
+            );
+            $this->assertNull($fresh->remember_token);
+            $this->assertNull($fresh->email_verified_at);
+            $this->assertNull($fresh->last_login_at);
             $this->assertSame(0, $fresh->addresses()->count());
         });
     }
@@ -193,10 +206,156 @@ class CustomerAdminTest extends TestCase
             ->post($this->url('/'.$customer->id.'/vymazat'))
             ->assertRedirect();
 
+        // Not just action + subject_id: an entry written under the wrong
+        // tenant, against the wrong subject class, or with no attributable
+        // user would still pass a narrower assertion.
         $this->context->runAs($this->tenant, fn () => $this->assertDatabaseHas('audit_log', [
             'action' => 'customer.erase',
             'subject_id' => $customer->id,
+            'subject_type' => Customer::class,
+            'tenant_id' => $this->tenant->id,
+            'user_id' => $this->owner->id,
         ]));
+    }
+
+    public function test_erasing_two_customers_of_the_same_shop_does_not_collide(): void
+    {
+        $first = $this->makeCustomer($this->tenant, ['email' => 'jan@example.test']);
+        $second = $this->makeCustomer($this->tenant, ['email' => 'petr@example.test']);
+
+        $this->actingAs($this->owner)
+            ->post($this->url('/'.$first->id.'/vymazat'))
+            ->assertRedirect();
+
+        $this->actingAs($this->owner)
+            ->post($this->url('/'.$second->id.'/vymazat'))
+            ->assertRedirect();
+
+        $this->context->runAs($this->tenant, function () use ($first, $second) {
+            $freshFirst = $first->fresh();
+            $freshSecond = $second->fresh();
+
+            $this->assertNotNull($freshFirst->anonymised_at);
+            $this->assertNotNull($freshSecond->anonymised_at);
+            // The one case the (tenant_id, email) unique index actually
+            // threatens: two erasures of the same shop must not fight over
+            // the same placeholder address.
+            $this->assertNotSame($freshFirst->email, $freshSecond->email);
+        });
+    }
+
+    public function test_erasure_survives_a_placeholder_address_a_row_already_holds(): void
+    {
+        $victim = $this->makeCustomer($this->tenant, ['email' => 'jan@example.test']);
+
+        // Reproduces data that predates the reserved-domain validation rule:
+        // some row already sits on the exact placeholder erase() would
+        // generate on its first attempt. Str::createRandomStringsUsingSequence
+        // makes that collision deterministic instead of astronomically
+        // unlikely, and gives the retry a second, distinct value to land on.
+        // Each erase attempt calls Str::random() twice (the placeholder
+        // e-mail, then the discarded password), so the sequence needs one
+        // entry per call, not per attempt — the password values are never
+        // asserted and only need to be present.
+        Str::createRandomStringsUsingSequence([
+            'collidingtoken',
+            'unusedpassword1',
+            'freshtoken02',
+            'unusedpassword2',
+        ]);
+
+        try {
+            $this->context->runAs($this->tenant, fn () => Customer::factory()->create([
+                'email' => 'smazano-'.$victim->id.'-collidingtoken@'.CustomerEraser::PLACEHOLDER_DOMAIN,
+            ]));
+
+            $this->actingAs($this->owner)
+                ->post($this->url('/'.$victim->id.'/vymazat'))
+                ->assertRedirect();
+        } finally {
+            Str::createRandomStringsNormally();
+        }
+
+        $this->context->runAs($this->tenant, function () use ($victim) {
+            $fresh = $victim->fresh();
+
+            $this->assertNotNull($fresh->anonymised_at);
+            $this->assertSame(
+                'smazano-'.$victim->id.'-freshtoken02@'.CustomerEraser::PLACEHOLDER_DOMAIN,
+                $fresh->email
+            );
+        });
+    }
+
+    public function test_erase_of_another_shops_customer_is_not_reachable(): void
+    {
+        $other = Tenant::factory()->withDomain('shop2.droidshop')->create();
+        $this->activateModule($other, 'customers');
+
+        $foreign = $this->makeCustomer($other, ['email' => 'cizi@example.test']);
+
+        $this->actingAs($this->owner)
+            ->post($this->url('/'.$foreign->id.'/vymazat'))
+            ->assertNotFound();
+
+        $this->context->runAs($other, function () use ($foreign) {
+            $fresh = $foreign->fresh();
+
+            $this->assertNull($fresh->anonymised_at);
+            $this->assertSame('cizi@example.test', $fresh->email);
+        });
+    }
+
+    public function test_erasing_a_customer_ends_a_session_that_was_already_signed_in(): void
+    {
+        $customer = $this->makeCustomer($this->tenant, [
+            'email' => 'jan@example.test',
+            'password' => Hash::make('tajneheslo123'),
+            'first_name' => 'Jan',
+            'last_name' => 'Novák',
+        ]);
+
+        // A real login, not actingAsCustomer(): the point of this test is the
+        // guard's own lookup on the *next* request, which actingAsCustomer()
+        // bypasses entirely by injecting the user straight into the guard.
+        $this->post('http://shop1.droidshop/prihlaseni', [
+            'email' => 'jan@example.test',
+            'password' => 'tajneheslo123',
+        ])->assertRedirect('http://shop1.droidshop/ucet');
+
+        $this->assertTrue(Auth::guard('customer')->check());
+
+        $this->actingAs($this->owner)
+            ->post($this->url('/'.$customer->id.'/vymazat'))
+            ->assertRedirect();
+
+        // Laravel's AuthManager caches guard instances (and, once resolved,
+        // a SessionGuard caches its user) for the life of the container —
+        // which in a feature test spans every simulated request in this
+        // method. forgetGuards() is what makes the next call below behave
+        // like the fresh PHP process a real subsequent request actually is,
+        // forcing the guard to re-resolve the customer's session id through
+        // the provider instead of returning an in-memory object cached from
+        // the login above.
+        Auth::forgetGuards();
+
+        // Same browser session as before (cookies persist across calls in
+        // this test client) — no new login, no logout call.
+        $response = $this->put('http://shop1.droidshop/ucet/udaje', [
+            'first_name' => 'Útočník',
+            'last_name' => 'Novák',
+        ]);
+
+        $response->assertRedirect('http://shop1.droidshop/prihlaseni');
+        $this->assertFalse(Auth::guard('customer')->check());
+
+        $this->context->runAs($this->tenant, function () use ($customer) {
+            $fresh = $customer->fresh();
+
+            // The write never reached the row: it stayed anonymised.
+            $this->assertNull($fresh->first_name);
+            $this->assertTrue($fresh->isAnonymised());
+        });
     }
 
     public function test_erasing_twice_is_safe_and_does_not_double_write(): void
@@ -277,6 +436,12 @@ class CustomerAdminTest extends TestCase
         $response = $this->actingAs($this->owner)->get($this->url('/'.$customer->id.'/export'));
 
         $response->assertOk();
+        // Symfony re-serialises Cache-Control directives in its own order,
+        // so this checks both directives are present rather than an exact
+        // string — the order carries no meaning.
+        $cacheControl = (string) $response->headers->get('Cache-Control');
+        $this->assertStringContainsString('private', $cacheControl);
+        $this->assertStringContainsString('no-store', $cacheControl);
 
         $payload = $response->json();
 
@@ -285,8 +450,32 @@ class CustomerAdminTest extends TestCase
         $this->assertCount(1, $payload['addresses']);
         $this->assertSame('Praha', $payload['addresses'][0]['city']);
 
+        // What could actually leak from a full PII export: the password
+        // hash, the remember-me token, and the raw tenant id — none of
+        // which the customer's own portability right entitles them to.
+        $this->assertArrayNotHasKey('password', $payload);
+        $this->assertArrayNotHasKey('remember_token', $payload);
+        $this->assertArrayNotHasKey('tenant_id', $payload);
+
         $raw = $response->getContent();
         $this->assertStringNotContainsString('cizi@jinyeshop.test', $raw);
+    }
+
+    public function test_export_writes_an_audit_entry(): void
+    {
+        $customer = $this->makeCustomer($this->tenant, ['email' => 'jan@example.test']);
+
+        $this->actingAs($this->owner)
+            ->get($this->url('/'.$customer->id.'/export'))
+            ->assertOk();
+
+        $this->context->runAs($this->tenant, fn () => $this->assertDatabaseHas('audit_log', [
+            'action' => 'customer.export',
+            'subject_id' => $customer->id,
+            'subject_type' => Customer::class,
+            'tenant_id' => $this->tenant->id,
+            'user_id' => $this->owner->id,
+        ]));
     }
 
     public function test_export_of_another_shops_customer_is_not_reachable(): void

@@ -6,6 +6,7 @@ use App\Core\Tenancy\TenantContext;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Password;
+use Modules\Customers\Services\CustomerEraser;
 
 class RegisterRequest extends FormRequest
 {
@@ -26,6 +27,15 @@ class RegisterRequest extends FormRequest
                 // separate account at every other tenant.
                 Rule::unique('customers', 'email')
                     ->where('tenant_id', app(TenantContext::class)->id()),
+                // Reserved for GDPR erasure placeholders (CustomerEraser).
+                // Without this, registering exactly the address a future
+                // erase() would generate turns that later GDPR request into
+                // a unique-index collision it cannot resolve on its own.
+                function (string $attribute, mixed $value, \Closure $fail): void {
+                    if (CustomerEraser::isReservedEmail((string) $value)) {
+                        $fail('Tuto e-mailovou adresu nelze použít.');
+                    }
+                },
             ],
             'password' => ['required', 'confirmed', Password::defaults()],
             'first_name' => ['required', 'string', 'max:100'],

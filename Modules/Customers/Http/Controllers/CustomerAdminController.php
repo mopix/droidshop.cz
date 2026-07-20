@@ -2,6 +2,7 @@
 
 namespace Modules\Customers\Http\Controllers;
 
+use App\Core\Services\AuditLog;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -21,7 +22,10 @@ use Modules\Customers\Services\CustomerEraser;
  */
 class CustomerAdminController
 {
-    public function __construct(private readonly CustomerEraser $eraser) {}
+    public function __construct(
+        private readonly CustomerEraser $eraser,
+        private readonly AuditLog $auditLog,
+    ) {}
 
     public function index(Request $request): Response
     {
@@ -93,8 +97,17 @@ class CustomerAdminController
             )->all(),
         ];
 
+        // A full PII export is exactly as sensitive as the erasure it sits
+        // next to — who pulled a customer's complete personal data must be
+        // as traceable as who erased it.
+        $this->auditLog->log('customer.export', $customer);
+
         return response()->json($payload)->withHeaders([
             'Content-Disposition' => 'attachment; filename="zakaznik-'.$customer->id.'.json"',
+            // A PII attachment must refuse caching on its own terms, not
+            // rely on every proxy and browser between here and the nájemce
+            // to guess that a "download" response holds personal data.
+            'Cache-Control' => 'private, no-store',
         ]);
     }
 
