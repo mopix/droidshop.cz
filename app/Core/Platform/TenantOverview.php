@@ -52,6 +52,9 @@ class TenantOverview
     private function basics(Tenant $tenant): array
     {
         return [
+            // Numeric id alongside the uuid: impersonation addresses tenant and
+            // user by id, and this payload never leaves the platform host.
+            'id' => $tenant->id,
             'uuid' => $tenant->uuid,
             'name' => $tenant->name,
             'status' => $tenant->status->value,
@@ -95,6 +98,7 @@ class TenantOverview
     {
         return $tenant->users
             ->map(fn ($user) => [
+                'id' => $user->id,
                 'name' => $user->name,
                 'email' => $user->email,
                 'role' => $user->pivot->role,

@@ -46,6 +46,9 @@ const reasonErrorId = `confirm-reason-error-${uid}`
 
 const reason = ref('')
 const root = ref<HTMLElement | null>(null)
+// Wrapper around the optional default slot (extra fields such as a target
+// status or plan). Focus goes there first when it holds anything focusable.
+const extras = ref<HTMLElement | null>(null)
 const textarea = ref<HTMLTextAreaElement | null>(null)
 const confirmButton = ref<{ $el?: HTMLElement } | null>(null)
 // Element that opened the dialog — focus goes back there on close.
@@ -56,6 +59,16 @@ const canConfirm = computed(
 )
 
 const focusFirst = () => {
+  const extra = extras.value?.querySelector<HTMLElement>(
+    'select, input, textarea, button, [href], [tabindex]:not([tabindex="-1"])',
+  )
+
+  if (extra) {
+    extra.focus()
+
+    return
+  }
+
   if (props.requireReason) {
     textarea.value?.focus()
 
@@ -103,6 +116,10 @@ const confirm = () => {
       <h2 :id="titleId" class="text-lg font-semibold text-gray-900">{{ title }}</h2>
 
       <p v-if="message" :id="messageId" class="mt-2 text-sm text-gray-700">{{ message }}</p>
+
+      <div v-if="$slots.default" ref="extras" class="mt-4">
+        <slot />
+      </div>
 
       <div v-if="requireReason" class="mt-4">
         <InputLabel :for="reasonId">
