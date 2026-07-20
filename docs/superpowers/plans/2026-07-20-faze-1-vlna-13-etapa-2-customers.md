@@ -791,14 +791,19 @@ class CustomerAuthTest extends TestCase
         $this->assertFalse(Auth::guard('customer')->check());
     }
 
-    public function test_a_customer_cannot_reach_the_tenant_admin(): void
+    public function test_a_customer_session_does_not_open_the_tenant_admin(): void
     {
+        // Activate products in setUp() as well — there is no bare /admin route
+        // in this application; the tenant's admin surface is /dashboard plus
+        // admin/m/{module}, so the test needs a module that really mounts one.
         $customer = $this->makeCustomer($this->tenant);
 
         $this->actingAsCustomer($customer)
-            ->get($this->url('/admin'))
+            ->get($this->url('/admin/m/products'))
             ->assertRedirect();
 
+        // The customer guard being satisfied must never satisfy the guard the
+        // admin runs on: those are different people with different rights.
         $this->assertFalse(Auth::guard('web')->check());
     }
 }
@@ -1042,7 +1047,10 @@ class RegistrationController
         Auth::guard('customer')->login($customer);
         $request->session()->regenerate();
 
-        return redirect()->route('storefront.customers.account')
+        // A path, not route('storefront.customers.account'): that name arrives
+        // with the account area in Task 5, and route() throws on a name that
+        // does not exist yet. Task 5 replaces this deliberately.
+        return redirect('/ucet')
             ->with('status', 'Účet byl založen. Poslali jsme vám ověřovací e-mail.');
     }
 }
@@ -1145,7 +1153,9 @@ Both extend the shop layout. Create `Modules/Customers/Resources/views/storefron
 @endsection
 ```
 
-Create `Modules/Customers/Resources/views/storefront/login.blade.php` in the same shape: `email`, `password` (`autocomplete="current-password"`), a `remember` checkbox, a submit button, a link to `storefront.customers.register` and one to `storefront.customers.password.request` (built in Task 3 — write the link now, the route exists by the time the suite runs that task).
+Create `Modules/Customers/Resources/views/storefront/login.blade.php` in the same shape: `email`, `password` (`autocomplete="current-password"`), a `remember` checkbox, a submit button and a link to `storefront.customers.register`.
+
+Do **not** link to the forgotten-password page yet. `route()` throws on a name that does not exist, so the link would make `GET /prihlaseni` return 500 until Task 3 lands. Task 3 adds the link together with the route. A permanent `Route::has()` guard to paper over a temporary gap is worse than one line added later.
 
 Every field carries a `<label for>`, every error a `role="alert"`. No `<div>` standing in for a label. WCAG 2.2 AA is binding.
 
