@@ -1,6 +1,6 @@
 # As-is status — DroidShop.cz
 
-Poslední aktualizace: **2026-07-20** · Verze: **0.9.0**
+Poslední aktualizace: **2026-07-20** · Verze: **0.9.1**
 
 ## Oblasti
 
@@ -13,7 +13,8 @@ Poslední aktualizace: **2026-07-20** · Verze: **0.9.0**
 | Audit log | **hotovo** | §15.1 | e-mail o změně stavu chybí |
 | Kernel služby — Money, Settings, Limits, Sequences, FeatureFlags | **hotovo** | §15.1 | [detail](2026-07-19-kernel-sluzby.md) |
 | Kernel služba — FileStorage | **hotovo** | §15.1 | [detail](2026-07-19-filestorage.md); lokální disk, ne S3 |
-| Kernel služby — MailService, EventBus | odloženo | §15.1 | čeká na provider / prvního volajícího |
+| Kernel služba — MailService | **hotovo** | §15.1 | [detail](../superpowers/plans/2026-07-20-faze-1-vlna-13-etapa-1-mailservice.md); bez šablon (verifikace, reset hesla, potvrzení objednávky) — přijdou s moduly `customers` a `orders` |
+| Kernel služba — EventBus | odloženo | §15.1 | čeká na prvního volajícího |
 | Module system | **hotovo** | kap. 5, §15.5 | [detail](2026-07-19-system-modulu.md) — bez odinstalace |
 | Referenční modul `Pages` | **hotovo** | — | statické stránky, Blade SSR |
 | Superadmin auth / `platform_admins` / 2FA / impersonace | **hotovo** | §15.4, §6.12 | [detail](2026-07-19-superadmin-auth.md) |
@@ -47,12 +48,11 @@ Nejdůležitější:
 - **`curl` na subdoménách potřebuje `-k`** — OpenSSL nebere wildcard `*.droidshop` nad jedinou úrovní. Blokuje kontrolní seznam ve `storefront-rendering.md` i Playwright. Oprava = lokální doména `droidshop.test`.
 - **Platformní joby musí implementovat `NotTenantAware`** — jinak je tenant-aware fronta tiše zahodí.
 - **Routa Pages je provizorně `/stranka/{slug}`**, ne `/{page-slug}` podle pravidla storefrontu. Modul šablony to nevyřešil — catch-all v kořeni by spolkl ostatní routy, takže to čeká na explicitní pořadí registrace routů.
-- **`LimitsService` má počítadla `storage_mb` a `products`.** `emails_month` přijde s modulem `mailer` — v superadmin detailu tenanta proto ukazuje čerpání 0.
 - **Hledání běží přes `LIKE '%term%'` nad `products.search_text`** — index se nepoužije. U desítek tisíc produktů bude potřeba přepsat (fulltext nebo externí index).
 - **Page cache podle §15.6 zatím není.** Šablony jsou na ni připravené (žádný osobní obsah v HTML), ale TTFB nechrání nic.
 - **Soft-deleted produkty dál počítají do `storage_mb`** — obrázky zůstávají, aby šel produkt obnovit a staré objednávky ho zobrazily.
 - **Kill switch přebíjí i core moduly** — vypnutí core modulu vezme e-shopům základní funkčnost. Je to záměr (nouzová brzda), ne chyba.
-- **Stav tenanta se mění bez e-mailu nájemci** — čeká na `MailService`.
+- **Stav tenanta se mění bez e-mailu nájemci** — `MailService` už existuje, ale notifikace na změnu stavu na něj zatím není napojená.
 
 ## Otevřené chyby
 
