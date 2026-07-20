@@ -66,10 +66,6 @@ class TenantPermissions
     {
         $granted = $user->tenants->firstWhere('id', $tenant->id)?->pivot->permissions;
 
-        if (is_string($granted)) {
-            $granted = json_decode($granted, true);
-        }
-
         return is_array($granted) ? array_values($granted) : [];
     }
 }
