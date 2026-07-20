@@ -49,6 +49,46 @@ enum TenantStatus: string
         return $this !== self::Deleted;
     }
 
+    /**
+     * Where a superadmin may move the tenant from here.
+     *
+     * Deliberately not a free choice of every case: going straight from deleted
+     * back to trial, or marking a shop deleted by hand instead of letting the
+     * deletion job do it, would leave the data and the status disagreeing.
+     *
+     * @return list<self>
+     */
+    public function allowedTransitions(): array
+    {
+        return match ($this) {
+            self::Trial => [self::Active, self::Suspended, self::PendingDeletion],
+            self::Active => [self::PastDue, self::Suspended, self::PendingDeletion],
+            self::PastDue => [self::Active, self::Suspended, self::PendingDeletion],
+            self::Suspended => [self::Active, self::PendingDeletion],
+            // Reversible while the grace period runs; the deletion job is what
+            // sets Deleted, never a person.
+            self::PendingDeletion => [self::Suspended],
+            self::Deleted => [],
+        };
+    }
+
+    public function canTransitionTo(self $to): bool
+    {
+        return in_array($to, $this->allowedTransitions(), true);
+    }
+
+    /**
+     * Statuses whose consequences are severe enough that the reason has to be
+     * recorded: they take the shop offline or start the clock on deletion.
+     */
+    public function requiresReason(): bool
+    {
+        return match ($this) {
+            self::Suspended, self::PendingDeletion => true,
+            default => false,
+        };
+    }
+
     public function label(): string
     {
         return match ($this) {

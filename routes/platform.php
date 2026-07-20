@@ -3,6 +3,9 @@
 use App\Http\Controllers\Platform\Auth\LoginController;
 use App\Http\Controllers\Platform\Auth\TwoFactorController;
 use App\Http\Controllers\Platform\ImpersonationController;
+use App\Http\Controllers\Platform\ModuleController;
+use App\Http\Controllers\Platform\TenantController;
+use App\Http\Controllers\Platform\TenantModuleController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
@@ -33,6 +36,33 @@ Route::middleware('platform.host')->group(function () {
         Route::get('/superadmin', fn () => Inertia::render('Platform/Dashboard', [
             'admin' => auth('platform')->user()->only('name', 'email'),
         ]))->name('platform.dashboard');
+
+        Route::get('/superadmin/tenanti', [TenantController::class, 'index'])
+            ->name('platform.tenants.index');
+
+        Route::get('/superadmin/tenanti/{tenant}', [TenantController::class, 'show'])
+            ->name('platform.tenants.show');
+
+        Route::patch('/superadmin/tenanti/{tenant}/stav', [TenantController::class, 'updateStatus'])
+            ->name('platform.tenants.status');
+
+        Route::patch('/superadmin/tenanti/{tenant}/tarif', [TenantController::class, 'updatePlan'])
+            ->name('platform.tenants.plan');
+
+        Route::get('/superadmin/tenanti/{tenant}/dopad-tarifu', [TenantController::class, 'planImpact'])
+            ->name('platform.tenants.plan-impact');
+
+        Route::post('/superadmin/tenanti/{tenant}/moduly', [TenantModuleController::class, 'store'])
+            ->name('platform.tenants.modules.store');
+
+        Route::delete('/superadmin/tenanti/{tenant}/moduly/{module}', [TenantModuleController::class, 'destroy'])
+            ->name('platform.tenants.modules.destroy');
+
+        Route::get('/superadmin/moduly', [ModuleController::class, 'index'])
+            ->name('platform.modules.index');
+
+        Route::patch('/superadmin/moduly/{module}/globalni-stav', [ModuleController::class, 'updateGlobalState'])
+            ->name('platform.modules.global-state');
 
         Route::post('/superadmin/impersonace', [ImpersonationController::class, 'start'])
             ->name('platform.impersonate');

@@ -1,87 +1,64 @@
 <script setup lang="ts">
-import { Head, router, usePage } from '@inertiajs/vue3'
+import { computed } from 'vue'
+import { Link, usePage } from '@inertiajs/vue3'
+import PlatformLayout from '@/Layouts/PlatformLayout.vue'
 
 defineProps<{
   admin: { name: string; email: string }
 }>()
 
 const page = usePage()
-const recoveryCodes = (page.props.flash as { recoveryCodes?: string[] } | undefined)?.recoveryCodes
-const impersonating = page.props.impersonating as { user_id: number; admin_id: number } | null
 
-const logout = () => router.post('/superadmin/logout')
+// Shown once, right after 2FA setup — never retrievable again.
+const recoveryCodes = computed(
+  () => (page.props.flash as { recoveryCodes?: string[] } | undefined)?.recoveryCodes ?? null,
+)
 </script>
 
 <template>
-  <Head title="Správa platformy">
-    <meta name="robots" content="noindex, nofollow" />
-  </Head>
+  <PlatformLayout title="Přehled platformy">
+    <template #header>
+      <h1 class="text-xl font-semibold text-gray-900">Přehled platformy</h1>
+    </template>
 
-  <main class="platform">
-    <div v-if="impersonating" class="platform__impersonation">
-      Jednáte jako uživatel #{{ impersonating.user_id }} (impersonace správcem).
-    </div>
-
-    <header class="platform__bar">
-      <strong>DroidShop — správa platformy</strong>
-      <span>{{ admin.name }} ({{ admin.email }}) · <button @click="logout">Odhlásit</button></span>
-    </header>
-
-    <section v-if="recoveryCodes" class="platform__recovery">
-      <h2>Obnovovací kódy</h2>
-      <p>Uložte si je na bezpečné místo. Zobrazují se jen jednou.</p>
-      <ul>
-        <li v-for="code in recoveryCodes" :key="code"><code>{{ code }}</code></li>
+    <section
+      v-if="recoveryCodes"
+      class="mb-6 rounded-lg border border-amber-400 bg-amber-50 p-4"
+      aria-labelledby="recovery-heading"
+    >
+      <h2 id="recovery-heading" class="text-base font-semibold text-amber-900">
+        Obnovovací kódy
+      </h2>
+      <p class="mt-1 text-sm text-amber-900">
+        Uložte si je na bezpečné místo. Zobrazují se jen jednou.
+      </p>
+      <ul class="mt-3 grid grid-cols-1 gap-1 sm:grid-cols-2">
+        <li v-for="code in recoveryCodes" :key="code">
+          <code class="font-mono text-sm text-amber-900">{{ code }}</code>
+        </li>
       </ul>
     </section>
 
-    <section class="platform__body">
-      <p>Vítejte. Správa tenantů a metriky přibudou v další vlně.</p>
-    </section>
-  </main>
-</template>
+    <div class="grid gap-4 sm:grid-cols-2">
+      <Link
+        :href="route('platform.tenants.index')"
+        class="block rounded-lg border border-gray-200 bg-white p-5 shadow-sm hover:border-slate-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2"
+      >
+        <span class="text-base font-semibold text-gray-900">Tenanti</span>
+        <span class="mt-1 block text-sm text-gray-600">
+          Seznam e-shopů, stavy a životní cyklus.
+        </span>
+      </Link>
 
-<style scoped>
-.platform {
-  min-height: 100vh;
-  font-family: system-ui, sans-serif;
-  background: #f8fafc;
-}
-.platform__impersonation {
-  padding: 0.6rem 1.5rem;
-  background: #b91c1c;
-  color: #fff;
-  font-weight: 600;
-  text-align: center;
-}
-.platform__bar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 1rem 1.5rem;
-  background: #0f172a;
-  color: #fff;
-}
-.platform__bar button {
-  background: transparent;
-  color: #fff;
-  border: 1px solid #475569;
-  border-radius: 0.375rem;
-  padding: 0.25rem 0.5rem;
-  cursor: pointer;
-}
-.platform__recovery {
-  margin: 1.5rem;
-  padding: 1rem 1.5rem;
-  border: 1px solid #f59e0b;
-  background: #fffbeb;
-  border-radius: 0.5rem;
-}
-.platform__recovery ul {
-  columns: 2;
-  font-size: 1.05rem;
-}
-.platform__body {
-  padding: 1.5rem;
-}
-</style>
+      <Link
+        :href="route('platform.modules.index')"
+        class="block rounded-lg border border-gray-200 bg-white p-5 shadow-sm hover:border-slate-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2"
+      >
+        <span class="text-base font-semibold text-gray-900">Moduly</span>
+        <span class="mt-1 block text-sm text-gray-600">
+          Dostupné moduly a jejich aktivace pro tenanty.
+        </span>
+      </Link>
+    </div>
+  </PlatformLayout>
+</template>

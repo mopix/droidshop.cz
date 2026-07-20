@@ -4,9 +4,10 @@ namespace App\Http\Controllers\Platform;
 
 use App\Models\Tenant;
 use App\Models\User;
-use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\URL;
+use Inertia\Inertia;
+use Symfony\Component\HttpFoundation\Response;
 
 /**
  * Superadmin side of impersonation (spec §6.12).
@@ -19,7 +20,7 @@ use Illuminate\Support\Facades\URL;
  */
 class ImpersonationController
 {
-    public function start(Request $request): RedirectResponse
+    public function start(Request $request): Response
     {
         $data = $request->validate([
             'tenant_id' => ['required', 'integer', 'exists:tenants,id'],
@@ -51,6 +52,10 @@ class ImpersonationController
             URL::forceRootUrl($previousRoot);
         }
 
-        return redirect()->away($url);
+        // Not redirect()->away(): the button lives on an Inertia page, and axios
+        // would follow the redirect itself into a cross-origin request the
+        // tenant domain never answers. Inertia::location hands the URL back to
+        // the browser to visit, and still plain-redirects a non-Inertia POST.
+        return Inertia::location($url);
     }
 }

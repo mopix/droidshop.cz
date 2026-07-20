@@ -1,6 +1,6 @@
 # As-is status — DroidShop.cz
 
-Poslední aktualizace: **2026-07-19** · Verze: **0.6.0**
+Poslední aktualizace: **2026-07-20** · Verze: **0.7.0**
 
 ## Oblasti
 
@@ -16,10 +16,11 @@ Poslední aktualizace: **2026-07-19** · Verze: **0.6.0**
 | Kernel služby — MailService, EventBus | odloženo | §15.1 | čeká na provider / prvního volajícího |
 | Module system | **hotovo** | kap. 5, §15.5 | [detail](2026-07-19-system-modulu.md) — bez odinstalace |
 | Referenční modul `Pages` | **hotovo** | — | statické stránky, Blade SSR |
-| Superadmin auth / `platform_admins` / 2FA / impersonace | **hotovo** | §15.4, §6.12 | [detail](2026-07-19-superadmin-auth.md); bez management UI |
+| Superadmin auth / `platform_admins` / 2FA / impersonace | **hotovo** | §15.4, §6.12 | [detail](2026-07-19-superadmin-auth.md) |
+| Superadmin management UI — tenanti, stavy, tarify, moduly, kill switch | **hotovo** | §6.12, §15.5 | [detail](2026-07-20-superadmin-ui.md); bez metrik a bez zakládání tenantů |
 | Produkty / objednávky / doprava / platby | není | §3.1 | |
 | Storefront šablona | není | §3.1 | |
-| Tarify / trial / billing | částečně | §3.1 | tabulka `plans` stojí, logika ne |
+| Tarify / trial / billing | částečně | §3.1 | tabulka `plans` stojí, přiřazení tenantovi jde z UI; fakturace a trial logika ne |
 | Playwright E2E | není | CLAUDE.md | blokováno omezením certifikátu, viz níže |
 | Design handoff | prázdné | `docs/design-droidshop/` | |
 
@@ -38,7 +39,9 @@ Nejdůležitější:
 - **`curl` na subdoménách potřebuje `-k`** — OpenSSL nebere wildcard `*.droidshop` nad jedinou úrovní. Blokuje kontrolní seznam ve `storefront-rendering.md` i Playwright. Oprava = lokální doména `droidshop.test`.
 - **Platformní joby musí implementovat `NotTenantAware`** — jinak je tenant-aware fronta tiše zahodí.
 - **Routa Pages je provizorně `/stranka/{slug}`**, ne `/{page-slug}` podle pravidla storefrontu. Vyřeší se s modulem šablony.
-- **`LimitsService` má zatím jen počítadlo `storage_mb`** (z vlny 0.4). Ostatní (`products`, `emails_month`) přijdou s příslušnými moduly.
+- **`LimitsService` má zatím jen počítadlo `storage_mb`** (z vlny 0.4). Ostatní (`products`, `emails_month`) přijdou s příslušnými moduly — v superadmin detailu tenanta proto ukazují čerpání 0.
+- **Kill switch přebíjí i core moduly** — vypnutí core modulu vezme e-shopům základní funkčnost. Je to záměr (nouzová brzda), ne chyba.
+- **Stav tenanta se mění bez e-mailu nájemci** — čeká na `MailService`.
 
 ## Otevřené chyby
 

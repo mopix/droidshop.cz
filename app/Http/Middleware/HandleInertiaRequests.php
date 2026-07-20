@@ -37,8 +37,14 @@ class HandleInertiaRequests extends Middleware
             'auth' => [
                 'user' => $request->user(),
             ],
+            // Shared rather than passed per screen: the platform layout shows it
+            // on every superadmin page, and only ever name and e-mail — the
+            // record also holds the 2FA secret.
+            'admin' => fn () => $request->user('platform')?->only('name', 'email'),
             'flash' => [
                 'recoveryCodes' => fn () => $request->session()->get('recoveryCodes'),
+                'success' => fn () => $request->session()->get('success'),
+                'error' => fn () => $request->session()->get('error'),
             ],
             // Drives the "you are impersonating" banner so a superadmin never
             // forgets they are acting as someone else.

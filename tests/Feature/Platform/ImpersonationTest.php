@@ -66,6 +66,23 @@ class ImpersonationTest extends TestCase
         $this->assertStringContainsString('/impersonace/zahajit/', $response->headers->get('Location'));
     }
 
+    public function test_starting_from_an_inertia_screen_hands_the_url_to_the_browser(): void
+    {
+        // The button lives on an Inertia page. A plain redirect would be
+        // followed by axios into a cross-origin request the tenant domain does
+        // not answer, so the visit has to be handed back to the browser.
+        $this->actingAs($this->admin, 'platform')
+            ->withSession(['platform.2fa_passed' => true]);
+
+        $response = $this->post('http://droidshop/superadmin/impersonace', [
+            'tenant_id' => $this->tenant->id,
+            'user_id' => $this->owner->id,
+        ], ['X-Inertia' => 'true']);
+
+        $response->assertStatus(409);
+        $this->assertStringContainsString('shop1.droidshop', $response->headers->get('X-Inertia-Location'));
+    }
+
     public function test_cannot_impersonate_a_user_outside_the_tenant(): void
     {
         $stranger = User::factory()->create();

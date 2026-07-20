@@ -26,9 +26,14 @@ class AuditLog
      */
     public function log(string $action, ?Model $subject = null, array $meta = []): AuditLogEntry
     {
+        $meta = [...$this->platformAdminMeta(), ...$meta];
+
         return AuditLogEntry::create([
             'tenant_id' => $this->context->id(),
-            'user_id' => auth()->id(),
+            // Deliberately bound to the tenant guard: user_id has a foreign key
+            // into users, and a superadmin id would either break the insert or
+            // point at an unrelated person.
+            'user_id' => auth('web')->id(),
             // Stamped automatically: an action taken while impersonating never
             // loses the trail back to the real superadmin.
             'impersonated_by' => $this->impersonation->impersonatorId(),
@@ -39,6 +44,27 @@ class AuditLog
             'ip' => $this->clientIp(),
             'created_at' => now(),
         ]);
+    }
+
+    /**
+     * Superadmins sit on their own guard and their own table, so they cannot be
+     * stored in user_id. The email goes along with the id so the entry stays
+     * readable after the account is gone.
+     *
+     * @return array<string, mixed>
+     */
+    private function platformAdminMeta(): array
+    {
+        $admin = auth('platform')->user();
+
+        if ($admin === null) {
+            return [];
+        }
+
+        return [
+            'platform_admin_id' => $admin->getKey(),
+            'platform_admin_email' => $admin->email,
+        ];
     }
 
     /**
