@@ -11,6 +11,44 @@ Pravidla: [`.claude/skills/versioning/SKILL.md`](.claude/skills/versioning/SKILL
 
 > CHANGELOG vede milníky (minor/major). Detail patchů je v `git log`.
 
+## [0.10.0] – 2026-07-21
+
+**Fáze 1 / vlna 1.3 — etapa 2: modul `customers`.** Koncoví zákazníci e-shopu dostávají vlastní identitu — registrace, přihlášení, reset hesla, verifikace e-mailu, účet a admin s GDPR výmazem.
+
+### Guard a datový model
+
+- Čtvrtý guard `customer` nad tabulkou `customers` (tenant-scoped, `BelongsToTenant`); stejná e-mailová adresa u dvou e-shopů jsou dva nesouvisející účty, unikátní index `(tenant_id, email)`
+- `customer_addresses` (fakturační/dodací) a `customer_tokens` (reset hesla, verifikace)
+- Vlastní `CustomerTokens` — tenant-scoped, hash-only, jednorázové, expirující tokeny nad `(tenant_id, email, purpose)`; Laravelí password broker nejde použít, protože `password_reset_tokens` má primární klíč jen `email`
+- `AnonymisedCustomerProvider` (driver `customer-eloquent`) vyřazuje anonymizované účty ze všech cest, kterými guard dohledává uživatele — session, remember-me, přihlášení. Admin dál anonymizované zákazníky vidí, filtr sedí jen na autentizační cestě
+
+### Storefront (Blade SSR, `noindex`)
+
+- `/registrace`, `/prihlaseni`, `/odhlaseni`, `/zapomenute-heslo`, `/obnova-hesla/{token}`, `/overeni-emailu/{token}`, `/overeni-emailu/znovu`
+- `/ucet`, `/ucet/udaje`, `/ucet/adresy` + editace a potvrzovací stránka smazání adresy (GET krok, ne JS `confirm()`) — celý tok funguje bez JavaScriptu
+- Historie objednávek je vyznačený placeholder — čeká na modul `orders`
+
+### Mail a rate limiting
+
+- Verifikační e-mail a reset hesla jdou přes kernel `MailService` z etapy 1, vždy jako `MailKind::Transactional`
+- Přihlášení, reset hesla i verifikace mají explicitní decay okna (ne implicitní minuta Laravelu), klíčované tenantem a adresou/IP — lockout na jednom e-shopu neuzamkne stejnou osobu na jiném
+
+### Admin (Inertia, `resources/js/Pages/Modules/Customers/`)
+
+- Výpis, detail, JSON export (právo na přenositelnost)
+- GDPR výmaz — `CustomerEraser` anonymizuje místo mazání (objednávky budou na řádek odkazovat cizím klíčem), transakčně, idempotentně, s auditním záznamem
+- Oprávnění `customers.view` a `customers.erase`, položka v adminní navigaci
+
+### Jádro
+
+- Kontrakt `App\Core\Customers\Contracts\CustomerIdentity` (+ `CustomerAccount`) — jak si budoucí modul `checkout` připojí košík k přihlášenému zákazníkovi; `findByEmail()` úmyslně přeskakuje anonymizované účty
+- `EnsureTenantMember` napevno na guard `web`; guest redirect (`redirectGuestsTo`) čte middleware namatchované routy, takže zákazník skončí na `/prihlaseni`, ne na staffovském `/login`
+
+### Mimo rozsah etapy
+
+- Verifikace e-mailu se nikde nevynucuje — nic není podmíněno `email_verified_at`; jestli to bude vyžadovat checkout, rozhodne až jeho etapa
+- Historie objednávek v účtu — čeká na modul `orders`
+
 ## [0.9.2] – 2026-07-20
 
 **Fáze 1 / vlna 1.3 — etapa 1: MailService.** Jádrová služba pro odesílání e-mailu jménem tenanta — první konkrétní volající pro `emails_month` v `LimitsService`.

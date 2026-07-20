@@ -1,6 +1,6 @@
 # As-is status — DroidShop.cz
 
-Poslední aktualizace: **2026-07-20** · Verze: **0.9.2**
+Poslední aktualizace: **2026-07-21** · Verze: **0.10.0**
 
 ## Oblasti
 
@@ -13,7 +13,7 @@ Poslední aktualizace: **2026-07-20** · Verze: **0.9.2**
 | Audit log | **hotovo** | §15.1 | e-mail o změně stavu chybí |
 | Kernel služby — Money, Settings, Limits, Sequences, FeatureFlags | **hotovo** | §15.1 | [detail](2026-07-19-kernel-sluzby.md) |
 | Kernel služba — FileStorage | **hotovo** | §15.1 | [detail](2026-07-19-filestorage.md); lokální disk, ne S3 |
-| Kernel služba — MailService | **hotovo** | §15.1 | [detail](../superpowers/plans/2026-07-20-faze-1-vlna-13-etapa-1-mailservice.md); bez šablon (verifikace, reset hesla, potvrzení objednávky) — přijdou s moduly `customers` a `orders` |
+| Kernel služba — MailService | **hotovo** | §15.1 | [detail](../superpowers/plans/2026-07-20-faze-1-vlna-13-etapa-1-mailservice.md); šablony verifikace a reset hesla dodal modul `customers`, potvrzení objednávky čeká na `orders` |
 | Kernel služba — EventBus | odloženo | §15.1 | čeká na prvního volajícího |
 | Module system | **hotovo** | kap. 5, §15.5 | [detail](2026-07-19-system-modulu.md) — bez odinstalace |
 | Referenční modul `Pages` | **hotovo** | — | statické stránky, Blade SSR |
@@ -27,6 +27,7 @@ Poslední aktualizace: **2026-07-20** · Verze: **0.9.2**
 | Modul `storefront` — layout, homepage, hledání, chybové stránky | **hotovo** | §4.1.1 | [detail](2026-07-20-storefront-katalog.md) |
 | Veřejný katalog — kategorie, produkt, řazení a filtr bez JS | **hotovo** | §16.1, §16.2 | bez košíku |
 | SEO výstupy — canonical, OG, JSON-LD, sitemap, robots, 301, 410 | **hotovo** | §3.1, §15.3 | page cache §15.6 chybí |
+| Modul `customers` — registrace, přihlášení, reset hesla, verifikace, účet, admin + GDPR výmaz | **hotovo** | §6.7, §15.1 | čtvrtý guard `customer` nad tenant-scoped tabulkou (unikátní `(tenant_id, email)`); vlastní tenant-scoped tokeny místo Laravelího password brokeru; verifikace e-mailu se nikde nevynucuje (čeká na rozhodnutí etapy `checkout`); historie objednávek v účtu je placeholder na modul `orders` |
 | Tarify / trial / billing | částečně | §3.1 | tabulka `plans` stojí, přiřazení tenantovi jde z UI; fakturace a trial logika ne |
 | Playwright E2E | není | CLAUDE.md | blokováno omezením certifikátu, viz níže |
 | Design handoff | prázdné | `docs/design-droidshop/` | |
