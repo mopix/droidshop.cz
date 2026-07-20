@@ -30,7 +30,16 @@ class EnsureTenantMember
             abort(404);
         }
 
-        $user = $request->user();
+        // Pinned to the 'web' guard explicitly: the tenant admin only ever
+        // runs on 'web'. $request->user() with no guard resolves whatever
+        // Auth::shouldUse() last set (falling back to the default guard),
+        // which is normally 'web' too but is not guaranteed to stay that way
+        // (impersonation, a console flow, a future auth path). If something
+        // ever left the customer guard active here, resolving unpinned would
+        // hand a Customer to belongsToTenant() below — a method only
+        // App\Models\User has — and fatal instead of failing closed. Pinning
+        // means a customer session simply resolves to null on this guard.
+        $user = $request->user('web');
 
         // Throwing rather than redirecting keeps the login target in one place
         // (the guest redirect configured in bootstrap/app.php) and preserves
