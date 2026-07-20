@@ -56,6 +56,25 @@ class AccountController
 
         $customer->save();
 
+        if ($request->wantsPasswordChange()) {
+            // Mirrors PasswordResetController::update(): regenerating here
+            // is what makes a password change actually end a hijacked
+            // session, the scenario UpdateProfileRequest's own docblock
+            // names as the reason current_password is required at all. Scoped
+            // to the password-change branch only — a plain name/phone edit
+            // has no session-fixation reason to rotate the id.
+            //
+            // Auth::guard('customer')->logoutOtherDevices() was considered
+            // and deliberately left out: it depends on the
+            // AuthenticateSession middleware re-checking the session's
+            // stored password hash on every request, and that middleware is
+            // not wired onto the customer guard's routes (bootstrap/app.php
+            // only prepends the tenant pipeline to the web group). Without
+            // it, logoutOtherDevices() would rehash the password in the DB
+            // and do nothing else — a no-op dressed up as a fix.
+            $request->session()->regenerate();
+        }
+
         return redirect()->route('storefront.customers.account.profile')
             ->with('status', 'Údaje byly uloženy.');
     }

@@ -40,7 +40,14 @@
 
     <form method="POST" action="{{ route('storefront.customers.account.addresses.store') }}" class="mt-4 max-w-md space-y-4">
         @csrf
-        @include('customers::storefront.account.partials.address-fields')
+        {{--
+            $address must be passed explicitly as null here: @foreach leaves
+            $address bound to the last iterated item in this view's scope,
+            and @include inherits the parent view's variables. Without this,
+            the "add address" form would silently prefill from whichever
+            address was listed last, is_default checkbox included.
+        --}}
+        @include('customers::storefront.account.partials.address-fields', ['address' => null])
 
         <button type="submit" class="rounded bg-slate-900 px-4 py-2 text-white">Přidat adresu</button>
     </form>

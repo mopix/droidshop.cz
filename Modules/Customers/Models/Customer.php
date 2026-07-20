@@ -79,6 +79,11 @@ class Customer extends Authenticatable implements CustomerAccount
         return trim("{$this->first_name} {$this->last_name}");
     }
 
+    public function accountId(): int
+    {
+        return (int) $this->getKey();
+    }
+
     public function accountEmail(): string
     {
         return $this->email;

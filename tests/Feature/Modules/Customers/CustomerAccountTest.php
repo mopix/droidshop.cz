@@ -139,7 +139,11 @@ class CustomerAccountTest extends TestCase
 
     public function test_updating_the_profile_saves_name_and_phone(): void
     {
-        $customer = $this->makeCustomer($this->tenant, ['first_name' => 'Jan', 'last_name' => 'Novák', 'phone' => null]);
+        // Seeded with different names than are submitted below: a write that
+        // silently dropped first_name/last_name (e.g. only persisting phone)
+        // would still pass an assertion that merely re-submits the seeded
+        // values, so this asserts all three fields actually changed.
+        $customer = $this->makeCustomer($this->tenant, ['first_name' => 'Petra', 'last_name' => 'Malá', 'phone' => null]);
 
         $response = $this->actingAsCustomer($customer)->put($this->url('/ucet/udaje'), [
             'first_name' => 'Jan',
@@ -150,6 +154,8 @@ class CustomerAccountTest extends TestCase
         $response->assertRedirect($this->url('/ucet/udaje'));
 
         $fresh = app(TenantContext::class)->runAs($this->tenant, fn () => $customer->fresh());
+        $this->assertSame('Jan', $fresh->first_name);
+        $this->assertSame('Novák', $fresh->last_name);
         $this->assertSame('+420111222333', $fresh->phone);
     }
 
@@ -222,6 +228,25 @@ class CustomerAccountTest extends TestCase
         $response->assertDontSee('Cizí Město');
     }
 
+    public function test_the_add_address_form_is_not_prefilled_from_an_existing_address(): void
+    {
+        $customer = $this->makeCustomer($this->tenant);
+        app(TenantContext::class)->runAs(
+            $this->tenant,
+            fn () => $customer->addresses()->create($this->addressPayload(['street' => 'Existující ulice 5', 'is_default' => true]))
+        );
+
+        $response = $this->actingAsCustomer($customer)->get($this->url('/ucet/adresy'));
+
+        $response->assertOk();
+        // @foreach leaves $address bound to the last listed address in this
+        // view's scope, and a plain @include inherits it — this catches a
+        // regression back to that: the "add address" form's own street
+        // field must render empty, not carry over the address above it.
+        $response->assertSee('id="street" name="street" type="text" value="" required', false);
+        $response->assertDontSee('value="Existující ulice 5"', false);
+    }
+
     public function test_adding_an_address_belongs_to_the_authenticated_customer(): void
     {
         $customer = $this->makeCustomer($this->tenant);
@@ -249,6 +274,16 @@ class CustomerAccountTest extends TestCase
             fn () => $customer->addresses()->create($this->addressPayload(['street' => 'První', 'is_default' => true]))
         );
 
+        // A second customer's own default of the same kind. An unscoped
+        // CustomerAddress::where('kind', $kind)->update(...) would clear
+        // this too — this address belongs to nobody involved in the request
+        // below, so it must survive untouched.
+        $other = $this->makeCustomer($this->tenant);
+        $othersDefault = app(TenantContext::class)->runAs(
+            $this->tenant,
+            fn () => $other->addresses()->create($this->addressPayload(['street' => 'Cizí výchozí', 'is_default' => true]))
+        );
+
         $this->actingAsCustomer($customer)
             ->post($this->url('/ucet/adresy'), $this->addressPayload(['street' => 'Druhá', 'is_default' => '1']))
             ->assertRedirect($this->url('/ucet/adresy'));
@@ -258,9 +293,11 @@ class CustomerAccountTest extends TestCase
             $this->tenant,
             fn () => CustomerAddress::where('street', 'Druhá')->first()
         );
+        $freshOthersDefault = app(TenantContext::class)->runAs($this->tenant, fn () => $othersDefault->fresh());
 
         $this->assertFalse($freshFirst->is_default);
         $this->assertTrue($second->is_default);
+        $this->assertTrue($freshOthersDefault->is_default);
     }
 
     public function test_a_customer_can_edit_and_delete_their_own_address(): void
@@ -300,7 +337,13 @@ class CustomerAccountTest extends TestCase
         $response = $this->actingAsCustomer($customer)->get($this->url('/ucet/adresy/'.$address->id.'/smazat'));
 
         $response->assertOk();
-        $response->assertSee('<form', false);
+        // Not merely "a <form exists somewhere" — the shop layout renders a
+        // search form in the header on every page, which would make that
+        // assertion pass even against an emptied address-delete.blade.php.
+        // What actually matters: the destroy action targets this specific
+        // address, and the DELETE method spoof is present.
+        $response->assertSee('action="'.$this->url('/ucet/adresy/'.$address->id).'"', false);
+        $response->assertSee('name="_method" value="DELETE"', false);
 
         $stillExists = app(TenantContext::class)->runAs(
             $this->tenant,
@@ -348,5 +391,82 @@ class CustomerAccountTest extends TestCase
             fn () => CustomerAddress::whereKey($address->id)->exists()
         );
         $this->assertTrue($stillExists);
+    }
+
+    public function test_viewing_the_edit_form_of_an_address_the_customer_does_not_own_returns_404(): void
+    {
+        $customer = $this->makeCustomer($this->tenant);
+        $owner = $this->makeCustomer($this->tenant);
+
+        $address = app(TenantContext::class)->runAs(
+            $this->tenant,
+            fn () => $owner->addresses()->create($this->addressPayload(['street' => 'Cizí ulice pro úpravu', 'company' => 'Cizí Firma s.r.o.']))
+        );
+
+        $response = $this->actingAsCustomer($customer)->get($this->url('/ucet/adresy/'.$address->id.'/upravit'));
+
+        $response->assertNotFound();
+        // The GET routes render someone else's street, company, reg_no and
+        // vat_no into a form — only the PUT/DELETE were previously tested
+        // against a foreign address id, leaving this read leak untested.
+        $response->assertDontSee('Cizí ulice pro úpravu');
+        $response->assertDontSee('Cizí Firma s.r.o.');
+    }
+
+    public function test_viewing_the_delete_confirmation_of_an_address_the_customer_does_not_own_returns_404(): void
+    {
+        $customer = $this->makeCustomer($this->tenant);
+        $owner = $this->makeCustomer($this->tenant);
+
+        $address = app(TenantContext::class)->runAs(
+            $this->tenant,
+            fn () => $owner->addresses()->create($this->addressPayload(['street' => 'Cizí ulice pro smazání']))
+        );
+
+        $response = $this->actingAsCustomer($customer)->get($this->url('/ucet/adresy/'.$address->id.'/smazat'));
+
+        $response->assertNotFound();
+        $response->assertDontSee('Cizí ulice pro smazání');
+    }
+
+    public function test_an_address_of_a_customer_at_another_shop_is_404_and_untouched_from_every_route(): void
+    {
+        $other = Tenant::factory()->withDomain('shop2.droidshop')->create(['name' => 'Shop Two']);
+        foreach (['storefront', 'customers'] as $module) {
+            $this->activateModule($other, $module);
+        }
+
+        $customerA = $this->makeCustomer($this->tenant);
+        $customerB = $this->makeCustomer($other);
+
+        $addressB = app(TenantContext::class)->runAs(
+            $other,
+            fn () => $customerB->addresses()->create($this->addressPayload(['street' => 'Adresa obchodu B']))
+        );
+
+        // customerA, signed in on shop A's own host, tries every address
+        // route against a row that belongs to shop B. There is no composite
+        // foreign key tying customer_addresses.tenant_id to its customer's
+        // tenant, so this rests entirely on $customer->addresses() scoping
+        // the lookup query correctly rather than on schema-level protection.
+        $this->actingAsCustomer($customerA)
+            ->get($this->url('/ucet/adresy/'.$addressB->id.'/upravit'))
+            ->assertNotFound();
+
+        $this->actingAsCustomer($customerA)
+            ->get($this->url('/ucet/adresy/'.$addressB->id.'/smazat'))
+            ->assertNotFound();
+
+        $this->actingAsCustomer($customerA)
+            ->put($this->url('/ucet/adresy/'.$addressB->id), $this->addressPayload(['street' => 'Přepsáno']))
+            ->assertNotFound();
+
+        $this->actingAsCustomer($customerA)
+            ->delete($this->url('/ucet/adresy/'.$addressB->id))
+            ->assertNotFound();
+
+        $freshB = app(TenantContext::class)->runAs($other, fn () => $addressB->fresh());
+        $this->assertNotNull($freshB);
+        $this->assertSame('Adresa obchodu B', $freshB->street);
     }
 }

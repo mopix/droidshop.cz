@@ -12,7 +12,13 @@ namespace App\Core\Customers\Contracts;
  */
 interface CustomerAccount
 {
-    public function getKey();
+    /**
+     * The customer's primary key. Named rather than the inherited Eloquent
+     * getKey() (untyped `mixed`) because checkout stores this straight into
+     * carts.customer_id — a caller across the contract boundary needs a
+     * guaranteed int, not whatever the model happens to return.
+     */
+    public function accountId(): int;
 
     public function accountEmail(): string;
 

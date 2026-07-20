@@ -31,6 +31,11 @@ interface CustomerIdentity
      *
      * Scoped to the current tenant like every other customer lookup — the
      * same address may hold an unrelated account at a different shop.
+     *
+     * Never returns a GDPR-anonymised account (Customer::isAnonymised()).
+     * Checkout uses this to attach a cart to an existing identity by e-mail;
+     * matching an erased row would quietly re-link new activity to an
+     * identity the erasure was meant to sever, undoing it in effect.
      */
     public function findByEmail(string $email): ?CustomerAccount;
 }

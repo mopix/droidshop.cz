@@ -6,6 +6,7 @@ use App\Core\Mail\Contracts\MailService;
 use App\Core\Mail\MailKind;
 use App\Core\Tenancy\TenantContext;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Modules\Customers\Mail\VerifyEmail;
 use Modules\Customers\Models\Customer;
 
@@ -31,7 +32,13 @@ class CustomerRegistrar
     {
         return DB::transaction(function () use ($data) {
             $customer = Customer::create([
-                'email' => $data['email'],
+                // Normalised here, once, on write: every lookup
+                // (EloquentCustomerIdentity::findByEmail(),
+                // PasswordResetController) already lowercases the address it
+                // searches for, and that only actually matches stored data
+                // because it does — this makes that true by construction
+                // instead of by relying on the database collation.
+                'email' => Str::lower($data['email']),
                 // The model casts password to hashed, so the plain value is
                 // never what lands in the column.
                 'password' => $data['password'],

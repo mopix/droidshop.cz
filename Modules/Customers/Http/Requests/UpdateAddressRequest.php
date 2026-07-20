@@ -3,6 +3,7 @@
 namespace Modules\Customers\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Modules\Customers\Models\CustomerAddress;
 
@@ -17,6 +18,20 @@ class UpdateAddressRequest extends FormRequest
     public function authorize(): bool
     {
         return true;
+    }
+
+    /**
+     * The "CZ" styling on the country input is CSS-only (text-transform:
+     * uppercase) — it changes what the field looks like, not what it holds.
+     * Without this, a visitor typing "cz" would have it validated, stored
+     * and redisplayed lowercase, only ever looking right by accident of the
+     * font rendering.
+     */
+    protected function prepareForValidation(): void
+    {
+        if ($this->filled('country')) {
+            $this->merge(['country' => Str::upper((string) $this->string('country'))]);
+        }
     }
 
     /**

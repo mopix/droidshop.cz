@@ -16,22 +16,27 @@
         <div>
             <label for="first_name" class="block text-sm font-medium">Jméno</label>
             <input id="first_name" name="first_name" type="text" value="{{ old('first_name', $customer->first_name) }}"
-                   required autocomplete="given-name" class="mt-1 w-full rounded border border-slate-300 px-3 py-2">
-            @error('first_name') <p role="alert" class="mt-1 text-sm text-red-700">{{ $message }}</p> @enderror
+                   required autocomplete="given-name"
+                   @error('first_name') aria-invalid="true" aria-describedby="first_name-error" @enderror
+                   class="mt-1 w-full rounded border border-slate-300 px-3 py-2">
+            @error('first_name') <p id="first_name-error" role="alert" class="mt-1 text-sm text-red-700">{{ $message }}</p> @enderror
         </div>
 
         <div>
             <label for="last_name" class="block text-sm font-medium">Příjmení</label>
             <input id="last_name" name="last_name" type="text" value="{{ old('last_name', $customer->last_name) }}"
-                   required autocomplete="family-name" class="mt-1 w-full rounded border border-slate-300 px-3 py-2">
-            @error('last_name') <p role="alert" class="mt-1 text-sm text-red-700">{{ $message }}</p> @enderror
+                   required autocomplete="family-name"
+                   @error('last_name') aria-invalid="true" aria-describedby="last_name-error" @enderror
+                   class="mt-1 w-full rounded border border-slate-300 px-3 py-2">
+            @error('last_name') <p id="last_name-error" role="alert" class="mt-1 text-sm text-red-700">{{ $message }}</p> @enderror
         </div>
 
         <div>
             <label for="phone" class="block text-sm font-medium">Telefon <span class="font-normal text-slate-500">(nepovinné)</span></label>
             <input id="phone" name="phone" type="tel" value="{{ old('phone', $customer->phone) }}" autocomplete="tel"
+                   @error('phone') aria-invalid="true" aria-describedby="phone-error" @enderror
                    class="mt-1 w-full rounded border border-slate-300 px-3 py-2">
-            @error('phone') <p role="alert" class="mt-1 text-sm text-red-700">{{ $message }}</p> @enderror
+            @error('phone') <p id="phone-error" role="alert" class="mt-1 text-sm text-red-700">{{ $message }}</p> @enderror
         </div>
 
         <fieldset class="rounded border border-slate-200 p-4">
@@ -40,15 +45,17 @@
             <div class="mt-2">
                 <label for="current_password" class="block text-sm font-medium">Současné heslo</label>
                 <input id="current_password" name="current_password" type="password" autocomplete="current-password"
+                       @error('current_password') aria-invalid="true" aria-describedby="current_password-error" @enderror
                        class="mt-1 w-full rounded border border-slate-300 px-3 py-2">
-                @error('current_password') <p role="alert" class="mt-1 text-sm text-red-700">{{ $message }}</p> @enderror
+                @error('current_password') <p id="current_password-error" role="alert" class="mt-1 text-sm text-red-700">{{ $message }}</p> @enderror
             </div>
 
             <div class="mt-3">
                 <label for="password" class="block text-sm font-medium">Nové heslo</label>
                 <input id="password" name="password" type="password" autocomplete="new-password"
+                       @error('password') aria-invalid="true" aria-describedby="password-error" @enderror
                        class="mt-1 w-full rounded border border-slate-300 px-3 py-2">
-                @error('password') <p role="alert" class="mt-1 text-sm text-red-700">{{ $message }}</p> @enderror
+                @error('password') <p id="password-error" role="alert" class="mt-1 text-sm text-red-700">{{ $message }}</p> @enderror
             </div>
 
             <div class="mt-3">

@@ -48,11 +48,16 @@ Route::middleware('auth:customer')->group(function () {
 
     Route::get('/ucet/adresy', [AccountController::class, 'addresses'])->name('account.addresses');
     Route::post('/ucet/adresy', [AccountController::class, 'storeAddress'])->name('account.addresses.store');
-    Route::get('/ucet/adresy/{address}/upravit', [AccountController::class, 'editAddress'])->name('account.addresses.edit');
-    Route::put('/ucet/adresy/{address}', [AccountController::class, 'updateAddress'])->name('account.addresses.update');
+    // whereNumber: the controller type-hints int $address and there is no
+    // implicit route model binding here (ownership is resolved through the
+    // authenticated customer's own relation, not CustomerAddress::findOrFail).
+    // Without the constraint a non-numeric segment reaches the controller
+    // and throws a TypeError (500) instead of a clean 404.
+    Route::get('/ucet/adresy/{address}/upravit', [AccountController::class, 'editAddress'])->name('account.addresses.edit')->whereNumber('address');
+    Route::put('/ucet/adresy/{address}', [AccountController::class, 'updateAddress'])->name('account.addresses.update')->whereNumber('address');
     // A GET confirmation step, not a JS confirm() dialog: the delete itself
     // stays a real DELETE request from a real form on this page, so the
     // whole flow works with JavaScript switched off.
-    Route::get('/ucet/adresy/{address}/smazat', [AccountController::class, 'confirmDeleteAddress'])->name('account.addresses.delete');
-    Route::delete('/ucet/adresy/{address}', [AccountController::class, 'destroyAddress'])->name('account.addresses.destroy');
+    Route::get('/ucet/adresy/{address}/smazat', [AccountController::class, 'confirmDeleteAddress'])->name('account.addresses.delete')->whereNumber('address');
+    Route::delete('/ucet/adresy/{address}', [AccountController::class, 'destroyAddress'])->name('account.addresses.destroy')->whereNumber('address');
 });
