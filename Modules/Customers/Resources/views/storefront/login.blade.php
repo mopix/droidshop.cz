@@ -3,6 +3,12 @@
 @section('content')
     <h1 class="text-2xl font-semibold">Přihlášení</h1>
 
+    @if (session('status'))
+        <p role="status" class="mt-4 rounded border border-green-200 bg-green-50 px-4 py-2 text-sm text-green-800">
+            {{ session('status') }}
+        </p>
+    @endif
+
     <form method="POST" action="{{ route('storefront.customers.login.store') }}" class="mt-6 max-w-md space-y-4">
         @csrf
 

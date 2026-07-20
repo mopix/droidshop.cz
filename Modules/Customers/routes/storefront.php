@@ -1,6 +1,7 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
+use Modules\Customers\Http\Controllers\EmailVerificationController;
 use Modules\Customers\Http\Controllers\PasswordResetController;
 use Modules\Customers\Http\Controllers\RegistrationController;
 use Modules\Customers\Http\Controllers\SessionController;
@@ -22,3 +23,15 @@ Route::middleware('guest:customer')->group(function () {
 Route::post('/odhlaseni', [SessionController::class, 'destroy'])
     ->middleware('auth:customer')
     ->name('logout');
+
+// Reachable by both guests and signed-in customers: the link is what
+// authenticates this request, not the session. See
+// EmailVerificationController::verify() for why guest:customer /
+// auth:customer would both be wrong here.
+Route::get('/overeni-emailu/{token}', [EmailVerificationController::class, 'verify'])->name('verify');
+
+// Unlike verify(), there is no token to authenticate the caller here, so
+// this one does require a signed-in customer.
+Route::post('/overeni-emailu/znovu', [EmailVerificationController::class, 'resend'])
+    ->middleware('auth:customer')
+    ->name('verify.resend');
