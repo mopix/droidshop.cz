@@ -21,6 +21,10 @@ interface MailService
     /**
      * Queue a message for delivery on behalf of a tenant.
      *
+     * The mailable's build()/envelope() must be side-effect free: the
+     * platform calls it once here to read the subject for the log entry,
+     * and again later when the queued job actually delivers it.
+     *
      * @param  string|array<int, string>  $to
      *
      * @throws MissingTenantContext when no tenant is given or current

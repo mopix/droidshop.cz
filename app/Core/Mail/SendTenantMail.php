@@ -9,6 +9,7 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Mail\Mailable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Throwable;
 
@@ -40,6 +41,10 @@ class SendTenantMail implements ShouldQueue
         if ($message === null) {
             // The tenant was deleted between queueing and delivery. Sending
             // now would mail on behalf of a shop that no longer exists.
+            Log::warning('Dropped queued mail: MailMessage no longer exists.', [
+                'message_id' => $this->messageId,
+            ]);
+
             return;
         }
 
@@ -51,10 +56,17 @@ class SendTenantMail implements ShouldQueue
                 'sent_at' => now(),
             ]);
         } catch (Throwable $e) {
-            $message->update([
-                'status' => MailMessage::STATUS_FAILED,
-                'error' => $e->getMessage(),
-            ]);
+            // Only the last attempt is a final failure: with $tries = 3, an
+            // earlier attempt marking the message "failed" would tell a
+            // nájemce checking on an order confirmation that delivery failed
+            // while the queue is still going to retry it. Every attempt still
+            // rethrows so the queue worker keeps retrying regardless.
+            if ($this->attempts() >= $this->tries) {
+                $message->update([
+                    'status' => MailMessage::STATUS_FAILED,
+                    'error' => $e->getMessage(),
+                ]);
+            }
 
             throw $e;
         }

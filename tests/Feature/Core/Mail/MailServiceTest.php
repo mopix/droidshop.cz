@@ -3,13 +3,17 @@
 namespace Tests\Feature\Core\Mail;
 
 use App\Core\Mail\Contracts\MailService;
+use App\Core\Mail\SendTenantMail;
 use App\Core\Tenancy\Exceptions\MissingTenantContext;
 use App\Core\Tenancy\TenantContext;
 use App\Models\MailMessage;
 use App\Models\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Mail\Mailable;
+use Illuminate\Mail\PendingMail;
 use Illuminate\Support\Facades\Mail;
+use Mockery;
+use RuntimeException;
 use Tests\Support\TestMailable;
 use Tests\TestCase;
 
@@ -91,5 +95,63 @@ class MailServiceTest extends TestCase
         );
 
         $this->assertSame(['a@example.test', 'b@example.test'], $message->recipients);
+    }
+
+    public function test_an_explicit_tenant_is_authoritative_over_the_ambient_context(): void
+    {
+        $tenantA = Tenant::factory()->create();
+        $tenantB = Tenant::factory()->create();
+
+        $message = app(TenantContext::class)->runAs(
+            $tenantA,
+            fn () => app(MailService::class)->send($this->mailable(), 'zakaznik@example.test', $tenantB)
+        );
+
+        // Read back without the tenant scope: the assertion must not be
+        // filtered by the very scope this test is checking.
+        $stored = MailMessage::withoutGlobalScopes()->findOrFail($message->id);
+
+        $this->assertSame($tenantB->id, $stored->tenant_id);
+        $this->assertNotSame($tenantA->id, $stored->tenant_id);
+    }
+
+    public function test_a_delivery_failure_on_the_final_attempt_marks_the_message_failed_and_rethrows(): void
+    {
+        $tenant = Tenant::factory()->create();
+
+        $message = app(TenantContext::class)->runAs(
+            $tenant,
+            fn () => MailMessage::create([
+                'tenant_id' => $tenant->id,
+                'mailable' => TestMailable::class,
+                'recipients' => ['zakaznik@example.test'],
+                'subject' => 'Potvrzení objednávky',
+                'status' => MailMessage::STATUS_QUEUED,
+                'queued_at' => now(),
+            ])
+        );
+
+        $pending = Mockery::mock(PendingMail::class);
+        $pending->shouldReceive('send')->once()->andThrow(new RuntimeException('SMTP connection refused'));
+        Mail::shouldReceive('to')->once()->andReturn($pending);
+
+        // Called directly rather than through dispatch(): the sync queue
+        // driver always reports attempts() === 1, so the only way to exercise
+        // the "final attempt" branch is to fake the job being on its last try.
+        $job = new SendTenantMail($message->id, $this->mailable());
+        $job->withFakeQueueInteractions();
+        $job->job->attempts = $job->tries;
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('SMTP connection refused');
+
+        try {
+            app(TenantContext::class)->runAs($tenant, fn () => $job->handle());
+        } finally {
+            $stored = MailMessage::withoutGlobalScopes()->findOrFail($message->id);
+
+            $this->assertSame(MailMessage::STATUS_FAILED, $stored->status);
+            $this->assertNotEmpty($stored->error);
+        }
     }
 }
