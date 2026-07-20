@@ -1,6 +1,13 @@
 # Fáze 1 / vlna 1.1 — Jádro katalogu (`categories` + `products`) — implementační plán
 
-> **STAV: návrh, čeká na schválení.** Větev `feat/catalog-core`.
+> **STAV: dokončeno 2026-07-20**, verze 0.8.0, větev `feat/catalog-core`.
+> Bloky A–J hotové, 443 testů zelených. Skutečný stav a odchylky:
+> [`docs/as-is/2026-07-20-katalog-jadro.md`](../../as-is/2026-07-20-katalog-jadro.md).
+>
+> Odchylky proti tomuto plánu (detail v as-is): převody DPH sedí na `TaxRate`,
+> ne na `Money` (krok B4); Inertia stránky modulů leží v core stromu;
+> soft-deleted produkt si nechává soubory obrázků; sanitizace HTML je vlastní,
+> bez nové závislosti.
 
 > **Pro agenta:** superpowers:executing-plans / subagent-driven-development. Kroky `- [x]` po dokončení.
 
@@ -46,81 +53,81 @@ Do jádra patří tři věci, které modul nesmí vlastnit: číselník sazeb DP
 
 ### A. Autorizace tenant adminu (jádro, blokuje vše ostatní)
 
-- [ ] A1. Test `ModuleAdminRouteTest`: anonymní GET na `/admin/m/pages` vrátí redirect na login (dnes vrací 200 — červený test dokazuje díru); přihlášený uživatel jiného tenanta dostane 403/404; owner tenanta projde.
-- [ ] A2. Rozšířit `mountAdmin()` o `['web', 'auth', 'tenant.member', 'module:'.$key]`. Nový middleware `EnsureTenantMember` — uživatel musí patřit k aktuálnímu tenantovi (`TenantContext`).
-- [ ] A3. `app/Core/Auth/TenantPermissions.php` — čte `permissions` z manifestů aktivních modulů, mapuje na roli (`Owner` = vše, `Staff` = fáze 2, zatím prázdná množina). Registrace Gate v `AuthServiceProvider`.
-- [ ] A4. Test na `products.costs`: owner ho má, staff ne.
-- [ ] A5. Zeleně. Commit `fix: require authentication on module admin routes`.
+- [x] A1. Test `ModuleAdminRouteTest`: anonymní GET na `/admin/m/pages` vrátí redirect na login (dnes vrací 200 — červený test dokazuje díru); přihlášený uživatel jiného tenanta dostane 403/404; owner tenanta projde.
+- [x] A2. Rozšířit `mountAdmin()` o `['web', 'auth', 'tenant.member', 'module:'.$key]`. Nový middleware `EnsureTenantMember` — uživatel musí patřit k aktuálnímu tenantovi (`TenantContext`).
+- [x] A3. `app/Core/Auth/TenantPermissions.php` — čte `permissions` z manifestů aktivních modulů, mapuje na roli (`Owner` = vše, `Staff` = fáze 2, zatím prázdná množina). Registrace Gate v `AuthServiceProvider`.
+- [x] A4. Test na `products.costs`: owner ho má, staff ne.
+- [x] A5. Zeleně. Commit `fix: require authentication on module admin routes`.
 
 ### B. Číselník sazeb DPH (jádro)
 
-- [ ] B1. Test `TaxRateTest`: sazby jsou globální (bez `tenant_id`), obsahují 21/12/0 %, `TaxRates::default()` vrací základní sazbu; výpočet ceny bez DPH z ceny s DPH je haléřově správný přes `Money`.
-- [ ] B2. Migrace `tax_rates` (`code`, `name`, `rate_permille` jako integer — ne float), seeder s CZ sazbami.
-- [ ] B3. `app/Core/Tax/TaxRates.php` — `all()`, `find()`, `default()`, cache. `TaxRate` model bez `BelongsToTenant`.
-- [ ] B4. `Money::netFromGross(TaxRate)` / `grossFromNet()` — zaokrouhlení na haléře, dokumentovaná strategie.
-- [ ] B5. Zeleně. Commit `feat: add core VAT rate registry`.
+- [x] B1. Test `TaxRateTest`: sazby jsou globální (bez `tenant_id`), obsahují 21/12/0 %, `TaxRates::default()` vrací základní sazbu; výpočet ceny bez DPH z ceny s DPH je haléřově správný přes `Money`.
+- [x] B2. Migrace `tax_rates` (`code`, `name`, `rate_permille` jako integer — ne float), seeder s CZ sazbami.
+- [x] B3. `app/Core/Tax/TaxRates.php` — `all()`, `find()`, `default()`, cache. `TaxRate` model bez `BelongsToTenant`.
+- [x] B4. `Money::netFromGross(TaxRate)` / `grossFromNet()` — zaokrouhlení na haléře, dokumentovaná strategie.
+- [x] B5. Zeleně. Commit `feat: add core VAT rate registry`.
 
 ### C. Tabulka `redirects` (jádro)
 
-- [ ] C1. Test `RedirectsTest`: zápis 301 při změně slugu, žádné duplicity, cyklus A→B→A se zkrátí (nový záznam přepíše starý cíl), smazání entity nechá redirect žít.
-- [ ] C2. Migrace `redirects` (`tenant_id`, `from_path`, `to_path`, `status`, unikát `(tenant_id, from_path)`).
-- [ ] C3. `app/Core/Routing/RedirectRegistry.php` — `record(from, to)`, `resolve(path)`. Middleware, který nezmapovanou cestu zkusí přesměrovat, přijde s vlnou storefrontu; teď stačí zápis a čtení.
-- [ ] C4. Zeleně. Commit `feat: add tenant redirect registry`.
+- [x] C1. Test `RedirectsTest`: zápis 301 při změně slugu, žádné duplicity, cyklus A→B→A se zkrátí (nový záznam přepíše starý cíl), smazání entity nechá redirect žít.
+- [x] C2. Migrace `redirects` (`tenant_id`, `from_path`, `to_path`, `status`, unikát `(tenant_id, from_path)`).
+- [x] C3. `app/Core/Routing/RedirectRegistry.php` — `record(from, to)`, `resolve(path)`. Middleware, který nezmapovanou cestu zkusí přesměrovat, přijde s vlnou storefrontu; teď stačí zápis a čtení.
+- [x] C4. Zeleně. Commit `feat: add tenant redirect registry`.
 
 ### D. Admin shell nájemce
 
-- [ ] D1. `resources/js/Layouts/AdminLayout.vue` — hlavička, boční navigace z `NavigationBuilder` (moduly aktivní pro tenanta), jméno uživatele, odhlášení, lišta impersonace, `noindex`, slot flash zpráv.
-- [ ] D2. Sdílená data v `HandleInertiaRequests`: aktuální tenant, navigace, oprávnění uživatele.
-- [ ] D3. Znovupoužít komponenty z `Platform/` — přesunout `DataTable`, `Pagination`, `ConfirmDialog`, `FilterBar` do `resources/js/Components/Ui/`, `Platform/*` na ně napojit (žádná duplicitní sada).
-- [ ] D4. Přepsat `Modules/Pages` admin na nový layout — důkaz, že shell není šitý na katalog.
-- [ ] D5. A11y kontrola agentem `a11y-checker`.
-- [ ] D6. Commit `feat: add tenant admin shell`.
+- [x] D1. `resources/js/Layouts/AdminLayout.vue` — hlavička, boční navigace z `NavigationBuilder` (moduly aktivní pro tenanta), jméno uživatele, odhlášení, lišta impersonace, `noindex`, slot flash zpráv.
+- [x] D2. Sdílená data v `HandleInertiaRequests`: aktuální tenant, navigace, oprávnění uživatele.
+- [x] D3. Znovupoužít komponenty z `Platform/` — přesunout `DataTable`, `Pagination`, `ConfirmDialog`, `FilterBar` do `resources/js/Components/Ui/`, `Platform/*` na ně napojit (žádná duplicitní sada).
+- [x] D4. Přepsat `Modules/Pages` admin na nový layout — důkaz, že shell není šitý na katalog.
+- [x] D5. A11y kontrola agentem `a11y-checker`.
+- [x] D6. Commit `feat: add tenant admin shell`.
 
 ### E. Modul `categories` — datový model a služba
 
-- [ ] E1. Testy `CategoryTreeTest`: vložení kořene a potomka, `path` se přepočítá; přesun podstromu přepočítá `path` všem potomkům; cyklus je odmítnut; hloubka > 4 je odmítnuta; kategorie tenanta A není vidět z tenanta B.
-- [ ] E2. `Modules/Categories/module.json` (base, `requires: {}`, práva `categories.view`, `categories.edit`, nav položka).
-- [ ] E3. Migrace `categories` (`tenant_id`, `parent_id`, `name`, `slug`, `path`, `depth`, `position`, `description`, `image_path`, `is_visible`, `seo_title`, `seo_description`, `seo_image_path`, unikát `(tenant_id, slug)`).
-- [ ] E4. Model `Category` + `CategoryTree` služba (`move`, `reorder`, `breadcrumbs`, `descendants`). Změna slugu zapíše 301 přes `RedirectRegistry`.
-- [ ] E5. Zeleně. Commit `feat: add category tree model`.
+- [x] E1. Testy `CategoryTreeTest`: vložení kořene a potomka, `path` se přepočítá; přesun podstromu přepočítá `path` všem potomkům; cyklus je odmítnut; hloubka > 4 je odmítnuta; kategorie tenanta A není vidět z tenanta B.
+- [x] E2. `Modules/Categories/module.json` (base, `requires: {}`, práva `categories.view`, `categories.edit`, nav položka).
+- [x] E3. Migrace `categories` (`tenant_id`, `parent_id`, `name`, `slug`, `path`, `depth`, `position`, `description`, `image_path`, `is_visible`, `seo_title`, `seo_description`, `seo_image_path`, unikát `(tenant_id, slug)`).
+- [x] E4. Model `Category` + `CategoryTree` služba (`move`, `reorder`, `breadcrumbs`, `descendants`). Změna slugu zapíše 301 přes `RedirectRegistry`.
+- [x] E5. Zeleně. Commit `feat: add category tree model`.
 
 ### F. Modul `categories` — admin UI
 
-- [ ] F1. Feature testy: index vrátí strom; store/update/destroy vyžadují právo; smazání kategorie s produkty bez cíle přesunu selže validací.
-- [ ] F2. `CategoryAdminController` + Form Requesty, routy v `routes/admin.php`.
-- [ ] F3. Vue: strom s přesunem (klávesnicí ovladatelný — drag&drop nesmí být jediná cesta, WCAG 2.2 AA), karta kategorie, potvrzovací dialog mazání s výběrem cílové kategorie.
-- [ ] F4. A11y kontrola. Commit `feat: add category admin screens`.
+- [x] F1. Feature testy: index vrátí strom; store/update/destroy vyžadují právo; smazání kategorie s produkty bez cíle přesunu selže validací.
+- [x] F2. `CategoryAdminController` + Form Requesty, routy v `routes/admin.php`.
+- [x] F3. Vue: strom s přesunem (klávesnicí ovladatelný — drag&drop nesmí být jediná cesta, WCAG 2.2 AA), karta kategorie, potvrzovací dialog mazání s výběrem cílové kategorie.
+- [x] F4. A11y kontrola. Commit `feat: add category admin screens`.
 
 ### G. Modul `products` — datový model a kontrakt
 
-- [ ] G1. Testy `ProductTest`: slug se generuje z názvu, kolize dostane suffix `-2`; cena bez DPH sedí na haléř; `decrementStock` je atomický (souběžný test dvou dekrementů nepřetáhne sklad pod nulu); soft delete nechá produkt v DB; izolace tenantů.
-- [ ] G2. `Modules/Products/module.json` (base, `requires: {categories: "^1.0"}`, práva `products.view`, `products.edit`, `products.costs`).
-- [ ] G3. Migrace: `manufacturers`, `products` (dle §6.2 + `deleted_at`, `stock_alert_qty`), `product_images`, `product_category` (M:N s příznakem `is_primary`).
-- [ ] G4. Modely + `ProductCatalog` kontrakt v `app/Core/Contracts/` (jádro vlastní rozhraní, modul implementaci) — `findBySlug`, `search`, `decrementStock`, `price`. Řetěz `PriceModifier` zatím prázdný, ale bod rozšíření existuje.
-- [ ] G5. `ProductsLimitCounter implements LimitCounter` → registrace limitu `products`.
-- [ ] G6. Sanitizace HTML popisu (whitelist tagů) při zápisu.
-- [ ] G7. Zeleně. Commit `feat: add product catalog model and contract`.
+- [x] G1. Testy `ProductTest`: slug se generuje z názvu, kolize dostane suffix `-2`; cena bez DPH sedí na haléř; `decrementStock` je atomický (souběžný test dvou dekrementů nepřetáhne sklad pod nulu); soft delete nechá produkt v DB; izolace tenantů.
+- [x] G2. `Modules/Products/module.json` (base, `requires: {categories: "^1.0"}`, práva `products.view`, `products.edit`, `products.costs`).
+- [x] G3. Migrace: `manufacturers`, `products` (dle §6.2 + `deleted_at`, `stock_alert_qty`), `product_images`, `product_category` (M:N s příznakem `is_primary`).
+- [x] G4. Modely + `ProductCatalog` kontrakt v `app/Core/Contracts/` (jádro vlastní rozhraní, modul implementaci) — `findBySlug`, `search`, `decrementStock`, `price`. Řetěz `PriceModifier` zatím prázdný, ale bod rozšíření existuje.
+- [x] G5. `ProductsLimitCounter implements LimitCounter` → registrace limitu `products`.
+- [x] G6. Sanitizace HTML popisu (whitelist tagů) při zápisu.
+- [x] G7. Zeleně. Commit `feat: add product catalog model and contract`.
 
 ### H. Modul `products` — obrázky
 
-- [ ] H1. Testy: upload uloží soubor přes `FileStorage`, odmítne špatný MIME i soubor nad 8 MB, respektuje limit `storage_mb`, smazání produktu smaže soubory, obrázek tenanta A není dostupný z tenanta B.
-- [ ] H2. `ProductImageService` — upload, řazení, alt text, hlavní obrázek. Bez generování řezů (vlna 1.2), zatím se servíruje originál.
-- [ ] H3. Commit `feat: add product image uploads`.
+- [x] H1. Testy: upload uloží soubor přes `FileStorage`, odmítne špatný MIME i soubor nad 8 MB, respektuje limit `storage_mb`, smazání produktu smaže soubory, obrázek tenanta A není dostupný z tenanta B.
+- [x] H2. `ProductImageService` — upload, řazení, alt text, hlavní obrázek. Bez generování řezů (vlna 1.2), zatím se servíruje originál.
+- [x] H3. Commit `feat: add product image uploads`.
 
 ### I. Modul `products` — admin UI
 
-- [ ] I1. Feature testy: seznam s filtry a stránkováním po 50; karta produktu uloží všechny záložky; nákupní cena není v odpovědi bez práva `products.costs`; překročený limit `products` vrátí čitelnou chybu.
-- [ ] I2. `ProductAdminController` + Form Requesty (validace dle §16.1: cena ≥ 0, slug `[a-z0-9-]{1,190}`, EAN 8/13 s checksum jako warning, hmotnost 0–200 000 g).
-- [ ] I3. Vue: seznam (fulltext, filtry stav/kategorie/výrobce/skladem, řazení) + karta se záložkami Základní / Ceny / Obrázky / Sklad / SEO.
-- [ ] I4. A11y kontrola. Commit `feat: add product admin screens`.
+- [x] I1. Feature testy: seznam s filtry a stránkováním po 50; karta produktu uloží všechny záložky; nákupní cena není v odpovědi bez práva `products.costs`; překročený limit `products` vrátí čitelnou chybu.
+- [x] I2. `ProductAdminController` + Form Requesty (validace dle §16.1: cena ≥ 0, slug `[a-z0-9-]{1,190}`, EAN 8/13 s checksum jako warning, hmotnost 0–200 000 g).
+- [x] I3. Vue: seznam (fulltext, filtry stav/kategorie/výrobce/skladem, řazení) + karta se záložkami Základní / Ceny / Obrázky / Sklad / SEO.
+- [x] I4. A11y kontrola. Commit `feat: add product admin screens`.
 
 ### J. Uzavření vlny
 
-- [ ] J1. Celá sada testů zeleně na MySQL 8 + Redis.
-- [ ] J2. `./vendor/bin/pint` na dotčené soubory, `npm run build`.
-- [ ] J3. As-is `docs/as-is/2026-07-20-katalog-jadro.md` + aktualizace `STATUS.md` (včetně poznámky, že díra v admin routách modulů se týkala i `Pages`).
-- [ ] J4. `VERSION` → 0.8.0, `CHANGELOG.md` (skill `versioning`).
-- [ ] J5. Merge do `main` po potvrzení uživatelem.
+- [x] J1. Celá sada testů zeleně na MySQL 8 + Redis.
+- [x] J2. `./vendor/bin/pint` na dotčené soubory, `npm run build`.
+- [x] J3. As-is `docs/as-is/2026-07-20-katalog-jadro.md` + aktualizace `STATUS.md` (včetně poznámky, že díra v admin routách modulů se týkala i `Pages`).
+- [x] J4. `VERSION` → 0.8.0, `CHANGELOG.md` (skill `versioning`).
+- [x] J5. Merge do `main` po potvrzení uživatelem.
 
 ---
 

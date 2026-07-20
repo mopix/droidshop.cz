@@ -1,6 +1,6 @@
 # As-is status — DroidShop.cz
 
-Poslední aktualizace: **2026-07-20** · Verze: **0.7.0**
+Poslední aktualizace: **2026-07-20** · Verze: **0.8.0**
 
 ## Oblasti
 
@@ -18,8 +18,12 @@ Poslední aktualizace: **2026-07-20** · Verze: **0.7.0**
 | Referenční modul `Pages` | **hotovo** | — | statické stránky, Blade SSR |
 | Superadmin auth / `platform_admins` / 2FA / impersonace | **hotovo** | §15.4, §6.12 | [detail](2026-07-19-superadmin-auth.md) |
 | Superadmin management UI — tenanti, stavy, tarify, moduly, kill switch | **hotovo** | §6.12, §15.5 | [detail](2026-07-20-superadmin-ui.md); bez metrik a bez zakládání tenantů |
-| Produkty / objednávky / doprava / platby | není | §3.1 | |
-| Storefront šablona | není | §3.1 | |
+| Admin nájemce — shell, navigace z modulů, oprávnění | **hotovo** | §15.4, §15.5 | [detail](2026-07-20-katalog-jadro.md) |
+| Kernel — sazby DPH, redirects, sanitizace HTML | **hotovo** | §6.2, §15.3, §16.1 | [detail](2026-07-20-katalog-jadro.md) |
+| Modul `categories` — strom, admin, 301 | **hotovo** | §6.3, §16.2 | max 4 úrovně; řazení tlačítky, ne drag&drop |
+| Modul `products` — katalog, ceny, sklad, obrázky, SEO | **hotovo** | §6.2, §16.1 | bez variant, CSV importu, řezů obrázků a hromadných operací |
+| Objednávky / doprava / platby | není | §3.1 | |
+| Storefront šablona | není | §3.1 | katalog zatím nemá veřejné routy |
 | Tarify / trial / billing | částečně | §3.1 | tabulka `plans` stojí, přiřazení tenantovi jde z UI; fakturace a trial logika ne |
 | Playwright E2E | není | CLAUDE.md | blokováno omezením certifikátu, viz níže |
 | Design handoff | prázdné | `docs/design-droidshop/` | |
@@ -33,13 +37,17 @@ Nejdůležitější:
 1. `SESSION_DOMAIN` je `null` (host-only cookie) — drží session tenanta na jeho doméně.
 2. `past_due` nechává storefront běžet — nechceme trestat zákazníky nájemce za jeho nezaplacenou fakturu.
 3. `tenants.plan_id` je nullable — onboarding zakládá tenanta před výběrem tarifu.
+4. **Inertia stránky modulů leží v core stromu** (`resources/js/Pages/Modules/<Modul>/`), ne uvnitř modulu — Inertia view finder neumí namapovat krátký název na cestu uvnitř modulu. Detail: [`2026-07-20-katalog-jadro.md`](2026-07-20-katalog-jadro.md).
+5. **Řazení kategorií je tlačítky ↑/↓**, ne drag&drop podle §16.2 — tažení nejde ovládat klávesnicí (WCAG 2.1.1).
 
 ## Známá omezení, na která se narazí dřív než na cokoliv jiného
 
 - **`curl` na subdoménách potřebuje `-k`** — OpenSSL nebere wildcard `*.droidshop` nad jedinou úrovní. Blokuje kontrolní seznam ve `storefront-rendering.md` i Playwright. Oprava = lokální doména `droidshop.test`.
 - **Platformní joby musí implementovat `NotTenantAware`** — jinak je tenant-aware fronta tiše zahodí.
 - **Routa Pages je provizorně `/stranka/{slug}`**, ne `/{page-slug}` podle pravidla storefrontu. Vyřeší se s modulem šablony.
-- **`LimitsService` má zatím jen počítadlo `storage_mb`** (z vlny 0.4). Ostatní (`products`, `emails_month`) přijdou s příslušnými moduly — v superadmin detailu tenanta proto ukazují čerpání 0.
+- **`LimitsService` má počítadla `storage_mb` a `products`.** `emails_month` přijde s modulem `mailer` — v superadmin detailu tenanta proto ukazuje čerpání 0.
+- **`redirects` se zapisují, ale nic je neservíruje.** Přejmenovaný slug kategorie nebo produktu zatím vrátí 404; middleware přijde s vlnou storefrontu.
+- **Soft-deleted produkty dál počítají do `storage_mb`** — obrázky zůstávají, aby šel produkt obnovit a staré objednávky ho zobrazily.
 - **Kill switch přebíjí i core moduly** — vypnutí core modulu vezme e-shopům základní funkčnost. Je to záměr (nouzová brzda), ne chyba.
 - **Stav tenanta se mění bez e-mailu nájemci** — čeká na `MailService`.
 
