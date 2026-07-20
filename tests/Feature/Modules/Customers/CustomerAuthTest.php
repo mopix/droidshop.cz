@@ -190,6 +190,52 @@ class CustomerAuthTest extends TestCase
         $this->assertFalse(Auth::guard('customer')->check());
     }
 
+    public function test_a_lockout_at_one_shop_does_not_lock_out_another_shop(): void
+    {
+        $other = Tenant::factory()->withDomain('shop2.droidshop')->create();
+        foreach (['storefront', 'customers'] as $module) {
+            $this->activateModule($other, $module);
+        }
+
+        // Same address, same password, two unrelated accounts (Customer is
+        // scoped per tenant) — the throttle key must still tell them apart.
+        $this->makeCustomer($this->tenant, [
+            'email' => 'jan@example.test',
+            'password' => Hash::make('tajneheslo123'),
+        ]);
+        $this->makeCustomer($other, [
+            'email' => 'jan@example.test',
+            'password' => Hash::make('tajneheslo123'),
+        ]);
+
+        for ($attempt = 0; $attempt < 5; $attempt++) {
+            $this->post($this->url('/prihlaseni'), [
+                'email' => 'jan@example.test',
+                'password' => 'spatneheslo',
+            ]);
+        }
+
+        // Confirm the lockout is genuinely in effect at shop 1 before crossing
+        // shops: even the correct password must be refused here now.
+        $lockedOut = $this->post($this->url('/prihlaseni'), [
+            'email' => 'jan@example.test',
+            'password' => 'tajneheslo123',
+        ]);
+
+        $lockedOut->assertSessionHasErrors('email');
+        $this->assertFalse(Auth::guard('customer')->check());
+
+        // The same person, logging in at a different shop, must be unaffected
+        // by shop 1's lockout: throttleKey() includes the tenant id.
+        $response = $this->post('http://shop2.droidshop/prihlaseni', [
+            'email' => 'jan@example.test',
+            'password' => 'tajneheslo123',
+        ]);
+
+        $response->assertRedirect('http://shop2.droidshop/ucet');
+        $this->assertTrue(Auth::guard('customer')->check());
+    }
+
     public function test_logging_out_ends_the_session(): void
     {
         $customer = $this->makeCustomer($this->tenant);
