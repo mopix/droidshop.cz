@@ -135,7 +135,7 @@ class ModuleRoutingTest extends TestCase
         $this->actingAs($owner)
             ->get('http://shop1.droidshop/admin/m/pages')
             ->assertOk()
-            ->assertJsonStructure(['pages']);
+            ->assertInertia(fn ($page) => $page->component('Modules/Pages/Index'));
     }
 
     public function test_admin_route_is_404_for_a_tenant_without_the_module(): void

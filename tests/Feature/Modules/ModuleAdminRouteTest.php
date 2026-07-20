@@ -6,6 +6,7 @@ use App\Core\Tenancy\TenantContext;
 use App\Models\Tenant;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Inertia\Testing\AssertableInertia;
 use Tests\Concerns\ActivatesModules;
 use Tests\TestCase;
 
@@ -75,6 +76,30 @@ class ModuleAdminRouteTest extends TestCase
     public function test_user_belonging_to_no_shop_is_refused(): void
     {
         $this->actingAs(User::factory()->create())
+            ->get('http://shop1.droidshop/admin/m/pages')
+            ->assertForbidden();
+    }
+
+    public function test_the_screen_renders_inside_the_shared_admin_shell(): void
+    {
+        // The shell is shared data, not a per-screen prop: a module must not
+        // have to know how the surrounding admin is built.
+        $this->actingAs($this->ownerOf($this->tenantA))
+            ->get('http://shop1.droidshop/admin/m/pages')
+            ->assertInertia(fn (AssertableInertia $page) => $page
+                ->component('Modules/Pages/Index')
+                ->has('tenant.nav')
+                ->where('tenant.name', $this->tenantA->name)
+                ->has('tenant.permissions')
+            );
+    }
+
+    public function test_a_member_without_the_permission_is_refused(): void
+    {
+        $staff = User::factory()->create();
+        $this->tenantA->users()->attach($staff, ['role' => 'staff', 'joined_at' => now()]);
+
+        $this->actingAs($staff)
             ->get('http://shop1.droidshop/admin/m/pages')
             ->assertForbidden();
     }

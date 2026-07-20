@@ -2,21 +2,26 @@
 
 namespace Modules\Pages\Http\Controllers;
 
-use Illuminate\Http\JsonResponse;
+use Inertia\Response;
 use Modules\Pages\Models\Page;
 
 /**
  * Admin listing.
  *
- * JSON for now: the Inertia admin shell arrives with its own wave. What this
- * proves today is that a module's admin route mounts and is gated correctly.
+ * Read-only: editing pages is a later wave. What this screen proves today is
+ * that a module's admin route mounts, is gated correctly, and renders inside
+ * the shared tenant admin shell without knowing anything about it.
  */
 class PageAdminController
 {
-    public function index(): JsonResponse
+    public function index(): Response
     {
-        return response()->json([
-            'pages' => Page::query()->orderBy('title')->get(['id', 'slug', 'title', 'is_published']),
+        abort_unless(request()->user()->can('pages.view'), 403);
+
+        return inertia('Modules/Pages/Index', [
+            'pages' => Page::query()
+                ->orderBy('title')
+                ->get(['id', 'slug', 'title', 'is_published']),
         ]);
     }
 }
