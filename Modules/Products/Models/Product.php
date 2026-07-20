@@ -5,6 +5,7 @@ namespace Modules\Products\Models;
 use App\Core\Catalog\Contracts\CatalogProduct;
 use App\Core\Money\Money;
 use App\Core\Money\MoneyCast;
+use App\Core\Storage\FileStorage;
 use App\Core\Tax\TaxRates;
 use App\Core\Tenancy\BelongsToTenant;
 use App\Models\TaxRate;
@@ -15,6 +16,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Modules\Categories\Models\Category;
+use Modules\Products\Support\SearchText;
 
 class Product extends Model implements CatalogProduct
 {
@@ -68,6 +70,25 @@ class Product extends Model implements CatalogProduct
         return 'slug';
     }
 
+    /**
+     * Keeps the searchable form in step with the product.
+     *
+     * On write rather than on read: search has to compare against something
+     * already folded, and folding a whole table per query would make the
+     * index useless.
+     */
+    protected static function booted(): void
+    {
+        static::saving(function (self $product): void {
+            $product->search_text = SearchText::normalise(
+                $product->name,
+                $product->sku,
+                $product->ean,
+                $product->short_description,
+            );
+        });
+    }
+
     public function taxRate(): BelongsTo
     {
         return $this->belongsTo(TaxRate::class);
@@ -93,6 +114,16 @@ class Product extends Model implements CatalogProduct
     {
         return $this->categories->firstWhere('pivot.is_primary', true)
             ?? $this->categories->first();
+    }
+
+    /**
+     * The image the storefront leads with: the one flagged main, else the
+     * first by position. Never null-checked at the call site by accident —
+     * a product without images is ordinary, not an error.
+     */
+    public function mainImage(): ?ProductImage
+    {
+        return $this->images->firstWhere('is_main', true) ?? $this->images->first();
     }
 
     /**
@@ -176,5 +207,27 @@ class Product extends Model implements CatalogProduct
     public function catalogIsAvailable(int $quantity = 1): bool
     {
         return $this->isAvailable($quantity);
+    }
+
+    public function catalogShortDescription(): ?string
+    {
+        return $this->short_description;
+    }
+
+    public function catalogImageUrl(): ?string
+    {
+        $image = $this->mainImage();
+
+        return $image === null ? null : app(FileStorage::class)->publicUrl($image->path);
+    }
+
+    public function catalogImageAlt(): ?string
+    {
+        return $this->mainImage()?->alt;
+    }
+
+    public function catalogUrl(): string
+    {
+        return $this->url();
     }
 }

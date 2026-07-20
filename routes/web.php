@@ -4,7 +4,7 @@ use App\Core\Storage\FileStorage;
 use App\Http\Controllers\ImpersonationController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\Storage\PrivateFileController;
-use Illuminate\Foundation\Application;
+use App\Http\Controllers\StorefrontEntryController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
@@ -16,14 +16,8 @@ Route::get('/soubory/{tenant}/{path}', PrivateFileController::class)
     ->middleware('signed')
     ->name(FileStorage::SIGNED_ROUTE);
 
-Route::get('/', function () {
-    return Inertia::render('Welcome', [
-        'canLogin' => Route::has('login'),
-        'canRegister' => Route::has('register'),
-        'laravelVersion' => Application::VERSION,
-        'phpVersion' => PHP_VERSION,
-    ]);
-});
+// Platform marketing page or the shop homepage, depending on the host.
+Route::get('/', StorefrontEntryController::class)->name('home');
 
 Route::get('/dashboard', function () {
     return Inertia::render('Dashboard');
