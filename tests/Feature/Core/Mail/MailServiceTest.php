@@ -115,7 +115,38 @@ class MailServiceTest extends TestCase
         $this->assertNotSame($tenantA->id, $stored->tenant_id);
     }
 
-    public function test_a_delivery_failure_on_the_final_attempt_marks_the_message_failed_and_rethrows(): void
+    public function test_a_delivery_failure_surfaces_to_the_caller_and_marks_the_message_failed(): void
+    {
+        $tenant = Tenant::factory()->create();
+
+        $pending = Mockery::mock(PendingMail::class);
+        $pending->shouldReceive('send')->once()->andThrow(new RuntimeException('SMTP connection refused'));
+        Mail::shouldReceive('to')->once()->andReturn($pending);
+
+        // QUEUE_CONNECTION=sync in phpunit.xml: dispatch() runs the job
+        // inline, and SyncQueue surfaces the job's exception back to the
+        // caller after it has already declared the job failed (and called
+        // failed() below), rather than swallowing it. That means send()
+        // never returns here, so the MailMessage row is read back by tenant
+        // instead of via a return value.
+        try {
+            app(TenantContext::class)->runAs(
+                $tenant,
+                fn () => app(MailService::class)->send($this->mailable(), 'zakaznik@example.test')
+            );
+
+            $this->fail('Expected the delivery failure to propagate to the caller.');
+        } catch (RuntimeException $e) {
+            $this->assertSame('SMTP connection refused', $e->getMessage());
+        }
+
+        $stored = MailMessage::withoutGlobalScopes()->where('tenant_id', $tenant->id)->firstOrFail();
+
+        $this->assertSame(MailMessage::STATUS_FAILED, $stored->status);
+        $this->assertNotEmpty($stored->error);
+    }
+
+    public function test_a_retryable_delivery_failure_leaves_the_message_queued_with_the_error_recorded(): void
     {
         $tenant = Tenant::factory()->create();
 
@@ -135,12 +166,12 @@ class MailServiceTest extends TestCase
         $pending->shouldReceive('send')->once()->andThrow(new RuntimeException('SMTP connection refused'));
         Mail::shouldReceive('to')->once()->andReturn($pending);
 
-        // Called directly rather than through dispatch(): the sync queue
-        // driver always reports attempts() === 1, so the only way to exercise
-        // the "final attempt" branch is to fake the job being on its last try.
+        // handle() is called directly, not via dispatch(): this test is
+        // about the unit of behaviour inside handle() itself — a failed
+        // attempt that the queue might still retry never marks the message
+        // failed on its own. The final-failure path (via failed()) is
+        // covered separately above, through the normal dispatch path.
         $job = new SendTenantMail($message->id, $this->mailable());
-        $job->withFakeQueueInteractions();
-        $job->job->attempts = $job->tries;
 
         $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('SMTP connection refused');
@@ -150,7 +181,7 @@ class MailServiceTest extends TestCase
         } finally {
             $stored = MailMessage::withoutGlobalScopes()->findOrFail($message->id);
 
-            $this->assertSame(MailMessage::STATUS_FAILED, $stored->status);
+            $this->assertSame(MailMessage::STATUS_QUEUED, $stored->status);
             $this->assertNotEmpty($stored->error);
         }
     }
