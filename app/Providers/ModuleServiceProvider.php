@@ -24,6 +24,11 @@ class ModuleServiceProvider extends ServiceProvider
         // depending on runtime state.
         $this->loadModuleAssetsFromDisk();
 
+        // A module binds its own contracts and registers its own counters. The
+        // kernel must not know that "products" implements ProductCatalog —
+        // that knowledge in core is exactly what makes a module unremovable.
+        $this->registerModuleProviders();
+
         // Routes also come from disk. The kill switch still works: the
         // `module` middleware consults the registry on every request, so a
         // withdrawn module answers 404 without anything being redeployed.
@@ -62,6 +67,25 @@ class ModuleServiceProvider extends ServiceProvider
 
             return $permissions->allows($user, $tenant, $ability);
         });
+    }
+
+    /**
+     * Registers Modules\<Name>\Providers\ModuleProvider where it exists.
+     *
+     * From disk and unconditionally, like routes and migrations: registration
+     * happens before a tenant is known, and a binding that only existed for
+     * tenants running the module would break every queue worker and console
+     * command. Access stays a per-request decision.
+     */
+    private function registerModuleProviders(): void
+    {
+        foreach ($this->moduleDirectories() as $directory) {
+            $class = 'Modules\\'.basename($directory).'\\Providers\\ModuleProvider';
+
+            if (is_file($directory.'/Providers/ModuleProvider.php') && class_exists($class)) {
+                $this->app->register($class);
+            }
+        }
     }
 
     private function loadModuleAssetsFromDisk(): void

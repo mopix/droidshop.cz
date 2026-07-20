@@ -1,0 +1,35 @@
+{
+    "name": "products",
+    "version": "1.0.0",
+    "title": {
+        "cs": "Produkty"
+    },
+    "description": {
+        "cs": "Katalog produktů — ceny, sklad, obrázky, SEO."
+    },
+    "core": false,
+    "billable": false,
+    "level": "base",
+    "requires": {
+        "categories": "^1.0"
+    },
+    "provides": [
+        "product-catalog"
+    ],
+    "listens": [],
+    "permissions": [
+        "products.view",
+        "products.edit",
+        "products.costs"
+    ],
+    "settings_schema": null,
+    "nav": [
+        {
+            "area": "admin",
+            "label": "Produkty",
+            "route": "admin.products.index",
+            "icon": "package",
+            "order": 10
+        }
+    ]
+}
