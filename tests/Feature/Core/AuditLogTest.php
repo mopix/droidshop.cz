@@ -6,6 +6,7 @@ use App\Core\Enums\TenantStatus;
 use App\Core\Services\AuditLog;
 use App\Core\Tenancy\TenantContext;
 use App\Models\AuditLogEntry;
+use App\Models\PlatformAdmin;
 use App\Models\Tenant;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -54,6 +55,42 @@ class AuditLogTest extends TestCase
         $this->assertNull($entry->tenant_id);
         $this->assertNull($entry->user_id);
         $this->assertDatabaseHas('audit_log', ['action' => 'platform.maintenance_started']);
+    }
+
+    public function test_entry_records_the_acting_platform_admin(): void
+    {
+        // Superadmins live on their own guard, so auth()->id() would leave the
+        // entry anonymous — the identity has to be picked up explicitly.
+        $admin = PlatformAdmin::factory()->create();
+        $this->actingAs($admin, 'platform');
+
+        $entry = $this->audit->log('tenant.status_changed');
+
+        $this->assertNull($entry->user_id);
+        $this->assertSame($admin->id, $entry->meta['platform_admin_id']);
+        $this->assertSame($admin->email, $entry->meta['platform_admin_email']);
+    }
+
+    public function test_platform_admin_identity_does_not_overwrite_caller_meta(): void
+    {
+        $admin = PlatformAdmin::factory()->create();
+        $this->actingAs($admin, 'platform');
+
+        $entry = $this->audit->log('module.globally_disabled', null, ['reason' => 'security incident']);
+
+        $this->assertSame('security incident', $entry->meta['reason']);
+        $this->assertSame($admin->id, $entry->meta['platform_admin_id']);
+    }
+
+    public function test_tenant_user_entry_carries_no_platform_admin(): void
+    {
+        $user = User::factory()->create();
+        $this->actingAs($user);
+
+        $entry = $this->audit->log('settings.updated');
+
+        $this->assertSame($user->id, $entry->user_id);
+        $this->assertArrayNotHasKey('platform_admin_id', $entry->meta ?? []);
     }
 
     public function test_subject_is_recorded_polymorphically(): void
