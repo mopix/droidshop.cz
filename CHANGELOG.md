@@ -11,6 +11,16 @@ Pravidla: [`.claude/skills/versioning/SKILL.md`](.claude/skills/versioning/SKILL
 
 > CHANGELOG vede milníky (minor/major). Detail patchů je v `git log`.
 
+## [0.10.1] – 2026-07-21
+
+**Bezpečnostní záplata etapy 2 (předmergová).** Finální revize větve našla řetězec vedoucí k převzetí účtu a několik děr kolem GDPR výmazu; opraveno před sloučením do `main`.
+
+- **Resetovací token přežíval výmaz zákazníka.** Výmaz uvolnil e-mailovou adresu z unikátního indexu, novou registrací ji obsadil jiný člověk a starý resetovací odkaz původního zákazníka pak přepsal heslo tomu novému a přihlásil útočníka pod jeho účet. `CustomerEraser` teď v téže transakci maže všechny tokeny původní adresy. Incident: [`2026-07-21-error-01`](docs/superpowers/errors/2026-07-21-error-01-token-prezije-vymaz-zakaznika.md)
+- Výmaz redaguje adresu i v `mail_messages.recipients` (řádky zůstávají kvůli počítadlu `emails_month`); `customer_tokens` se čistí při expiraci i denním commandem `customers:prune-tokens`
+- `CustomerIdentity` má jádrovou null-implementaci (checkout poběží i na e-shopu bez modulu) a ptá se `ShopModules` za běhu; přibylo `findById()` pro rehydrataci `carts.customer_id`
+- Reset hesla vyhazuje ostatní session přes vlastní `AuthenticateCustomerSession` (Laravelí `AuthenticateSession` je natvrdo na guardu `web`)
+- Přihlášený zákazník na `/prihlaseni` míří na `/ucet`, ne na staffovský dashboard; hlavička e-shopu konečně odkazuje na účet/přihlášení
+
 ## [0.10.0] – 2026-07-21
 
 **Fáze 1 / vlna 1.3 — etapa 2: modul `customers`.** Koncoví zákazníci e-shopu dostávají vlastní identitu — registrace, přihlášení, reset hesla, verifikace e-mailu, účet a admin s GDPR výmazem.
