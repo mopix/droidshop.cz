@@ -3,6 +3,8 @@
 namespace App\Providers;
 
 use App\Core\Limits\LimitsService;
+use App\Core\Mail\Contracts\MailService;
+use App\Core\Mail\QueuedMailService;
 use App\Core\Storage\StorageLimitCounter;
 use Illuminate\Support\Facades\Vite;
 use Illuminate\Support\ServiceProvider;
@@ -18,6 +20,11 @@ class AppServiceProvider extends ServiceProvider
         // for the whole request or a counter registered here would be invisible
         // to the caller that checks the limit.
         $this->app->singleton(LimitsService::class);
+
+        $this->app->singleton(
+            MailService::class,
+            QueuedMailService::class,
+        );
     }
 
     /**
