@@ -674,26 +674,36 @@ class QueuedMailService implements MailService
             throw new MissingTenantContext('E-mail nelze odeslat bez kontextu e-shopu.');
         }
 
-        $recipients = array_values((array) $to);
+        // An explicit $tenant must be authoritative, not just a label: the
+        // MailMessage::creating hook (BelongsToTenant) stamps tenant_id from
+        // the ambient TenantContext regardless of what we pass to create().
+        // Running the rest inside runAs() makes the ambient context and the
+        // persisted tenant_id agree by construction, so a caller sending "as"
+        // a tenant other than the current request can never have the message
+        // logged against the wrong shop while it goes out under the right
+        // shop's name.
+        return $this->context->runAs($tenant, function (Tenant $tenant) use ($mailable, $to): MailMessage {
+            $recipients = array_values((array) $to);
 
-        $mailable->from($this->sender->fromAddress(), $this->sender->fromName($tenant));
+            $mailable->from($this->sender->fromAddress(), $this->sender->fromName($tenant));
 
-        if ($replyTo = $this->sender->replyTo($tenant)) {
-            $mailable->replyTo($replyTo);
-        }
+            if ($replyTo = $this->sender->replyTo($tenant)) {
+                $mailable->replyTo($replyTo);
+            }
 
-        $message = MailMessage::create([
-            'tenant_id' => $tenant->id,
-            'mailable' => $mailable::class,
-            'recipients' => $recipients,
-            'subject' => $this->subjectOf($mailable),
-            'status' => MailMessage::STATUS_QUEUED,
-            'queued_at' => now(),
-        ]);
+            $message = MailMessage::create([
+                'tenant_id' => $tenant->id,
+                'mailable' => $mailable::class,
+                'recipients' => $recipients,
+                'subject' => $this->subjectOf($mailable),
+                'status' => MailMessage::STATUS_QUEUED,
+                'queued_at' => now(),
+            ]);
 
-        SendTenantMail::dispatch($message->id, $mailable);
+            SendTenantMail::dispatch($message->id, $mailable);
 
-        return $message;
+            return $message;
+        });
     }
 
     /**
