@@ -11,14 +11,15 @@ Pravidla: [`.claude/skills/versioning/SKILL.md`](.claude/skills/versioning/SKILL
 
 > CHANGELOG vede milníky (minor/major). Detail patchů je v `git log`.
 
-## [0.9.1] – 2026-07-20
+## [0.9.2] – 2026-07-20
 
 **Fáze 1 / vlna 1.3 — etapa 1: MailService.** Jádrová služba pro odesílání e-mailu jménem tenanta — první konkrétní volající pro `emails_month` v `LimitsService`.
 
 - Kontrakt `MailService` + implementace `QueuedMailService` — tenant se dořeší (explicitní argument vyhrává nad ambientním kontextem) a celý běh (kvóta, log, identita odesílatele) jede uvnitř `TenantContext::runAs()`
 - `SendTenantMail` — fronta doručení; při chybě během opakování se zapisuje jen text chyby, stav `failed` nastaví jedině Laravelí `failed()` hook (na sync driveru `attempts()` vrací natvrdo 1, takže by podmínka na poslední pokus nikdy nesepnula)
 - `TenantSender` — obálková adresa vždy platformní (SPF/DKIM), tenant dodává jen display name a reply-to; nové sloupce `tenants.mail_from_name` a `tenants.mail_reply_to`
-- `MailLimitCounter` — počítadlo `emails_month` nad `STATUS_SENT` v aktuálním kalendářním měsíci, zaregistrované v `AppServiceProvider`
+- `MailKind` — povinný argument kontraktu, `Transactional` nebo `Bulk`. Vyčerpaný limit nikdy nezastaví potvrzení objednávky ani reset hesla; transakční pošta se počítá, ale neblokuje. Druh se ukládá do `mail_messages.kind`, aby log ukázal, proč zpráva odešla přes strop
+- `MailLimitCounter` — počítadlo `emails_month` nad `queued` i `sent` v aktuálním kalendářním měsíci (klíčem `queued_at`), zaregistrované v `AppServiceProvider`
 - Model `MailMessage` nad tabulkou `mail_messages` (tenant-scoped)
 - **Mimo rozsah etapy:** šablony e-mailů (verifikace, reset hesla, potvrzení objednávky) — přijdou s moduly `customers` a `orders`; `EventBus` zůstává odloženo
 

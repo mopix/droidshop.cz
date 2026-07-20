@@ -1,6 +1,6 @@
 # As-is status — DroidShop.cz
 
-Poslední aktualizace: **2026-07-20** · Verze: **0.9.1**
+Poslední aktualizace: **2026-07-20** · Verze: **0.9.2**
 
 ## Oblasti
 
