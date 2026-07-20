@@ -31,10 +31,10 @@
     </form>
 
     <p class="mt-4 text-sm">
-        Nemáte účet? <a href="{{ route('storefront.customers.register') }}" class="underline">Zaregistrujte se</a>.
+        <a href="{{ route('storefront.customers.password.request') }}" class="underline">Zapomněli jste heslo?</a>
     </p>
 
-    {{-- "Zapomněli jste heslo?" link lands with the route in Task 3
-         (storefront.customers.password.request) — a non-existent named route
-         would make this page 500 on every render until then. --}}
+    <p class="mt-2 text-sm">
+        Nemáte účet? <a href="{{ route('storefront.customers.register') }}" class="underline">Zaregistrujte se</a>.
+    </p>
 @endsection
