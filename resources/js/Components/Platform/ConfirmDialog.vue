@@ -43,6 +43,7 @@ const titleId = `confirm-title-${uid}`
 const messageId = `confirm-message-${uid}`
 const reasonId = `confirm-reason-${uid}`
 const reasonErrorId = `confirm-reason-error-${uid}`
+const reasonHintId = `confirm-reason-hint-${uid}`
 
 const reason = ref('')
 const root = ref<HTMLElement | null>(null)
@@ -53,6 +54,15 @@ const textarea = ref<HTMLTextAreaElement | null>(null)
 const confirmButton = ref<{ $el?: HTMLElement } | null>(null)
 // Element that opened the dialog — focus goes back there on close.
 const trigger = ref<HTMLElement | null>(null)
+
+// Screen readers must hear both the "reason is mandatory" hint and any server
+// error; ids are only referenced while their elements are actually rendered.
+const reasonDescribedBy = computed(() =>
+  [props.reasonError ? reasonErrorId : null, reason.value.trim() ? null : reasonHintId]
+    .filter(Boolean)
+    .join(' ')
+    || undefined,
+)
 
 const canConfirm = computed(
   () => !props.processing && (!props.requireReason || reason.value.trim().length > 0),
@@ -135,13 +145,13 @@ const confirm = () => {
           required
           aria-required="true"
           :aria-invalid="reasonError ? 'true' : undefined"
-          :aria-describedby="reasonError ? reasonErrorId : undefined"
+          :aria-describedby="reasonDescribedBy"
           class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-slate-900 focus:ring-slate-900"
         />
 
         <InputError :id="reasonErrorId" class="mt-1" :message="reasonError" />
 
-        <p v-if="!reason.trim()" class="mt-1 text-sm text-gray-600">
+        <p v-if="!reason.trim()" :id="reasonHintId" class="mt-1 text-sm text-gray-600">
           Bez uvedení důvodu nelze akci potvrdit.
         </p>
       </div>
@@ -154,7 +164,7 @@ const confirm = () => {
           ref="confirmButton"
           type="button"
           :disabled="!canConfirm"
-          class="disabled:opacity-50"
+          class="disabled:border-gray-300 disabled:bg-gray-50 disabled:text-gray-500 disabled:hover:bg-gray-50 disabled:focus:bg-gray-50"
           @click="confirm"
         >
           {{ confirmLabel }}
@@ -165,7 +175,7 @@ const confirm = () => {
           ref="confirmButton"
           type="button"
           :disabled="!canConfirm"
-          class="disabled:opacity-50"
+          class="disabled:border-gray-300 disabled:bg-gray-50 disabled:text-gray-500 disabled:hover:bg-gray-50 disabled:focus:bg-gray-50"
           @click="confirm"
         >
           {{ confirmLabel }}

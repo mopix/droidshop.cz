@@ -41,7 +41,8 @@ const emit = defineEmits<{
         <button
           type="submit"
           :disabled="processing"
-          class="inline-flex items-center rounded-md border border-transparent bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2 disabled:opacity-50"
+          :aria-busy="processing"
+          class="inline-flex items-center rounded-md border border-transparent bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2 disabled:border-gray-300 disabled:bg-gray-50 disabled:text-gray-500 disabled:hover:bg-gray-50"
         >
           {{ submitLabel }}
         </button>

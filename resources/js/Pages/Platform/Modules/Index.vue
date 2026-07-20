@@ -139,7 +139,7 @@ const submit = (url: string, reason: string) => {
           class="inline-flex items-center rounded-md border border-red-300 bg-white px-3 py-1.5 text-sm font-medium text-red-800 hover:bg-red-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-700 focus-visible:ring-offset-2"
           @click="open(row, false)"
         >
-          Stáhnout z provozu<span class="sr-only"> — modul {{ row.name }}</span>
+          Stáhnout z provozu<span class="sr-only"> modul {{ row.name }}</span>
         </button>
 
         <button
@@ -148,7 +148,7 @@ const submit = (url: string, reason: string) => {
           class="inline-flex items-center rounded-md border border-transparent bg-slate-900 px-3 py-1.5 text-sm font-semibold text-white hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2"
           @click="open(row, true)"
         >
-          Vrátit do provozu<span class="sr-only"> — modul {{ row.name }}</span>
+          Vrátit do provozu<span class="sr-only"> modul {{ row.name }}</span>
         </button>
       </template>
 

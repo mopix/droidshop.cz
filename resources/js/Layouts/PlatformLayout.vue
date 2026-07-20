@@ -106,6 +106,8 @@ const logout = (url: string) => router.post(url)
       <p
         v-if="flash.success"
         role="status"
+        aria-live="polite"
+        aria-atomic="true"
         class="rounded-md border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm text-emerald-900"
       >
         {{ flash.success }}
@@ -113,6 +115,8 @@ const logout = (url: string) => router.post(url)
       <p
         v-if="flash.error"
         role="alert"
+        aria-live="assertive"
+        aria-atomic="true"
         class="mt-3 rounded-md border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-900 first:mt-0"
       >
         {{ flash.error }}

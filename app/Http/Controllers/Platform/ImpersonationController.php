@@ -7,6 +7,7 @@ use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\URL;
 use Inertia\Inertia;
+use Symfony\Component\HttpFoundation\Response;
 
 /**
  * Superadmin side of impersonation (spec §6.12).
@@ -19,7 +20,7 @@ use Inertia\Inertia;
  */
 class ImpersonationController
 {
-    public function start(Request $request): \Symfony\Component\HttpFoundation\Response
+    public function start(Request $request): Response
     {
         $data = $request->validate([
             'tenant_id' => ['required', 'integer', 'exists:tenants,id'],

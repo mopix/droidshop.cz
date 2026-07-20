@@ -406,13 +406,18 @@ const limitStateLabel = (limit: LimitUsage): string =>
           <button
             type="button"
             :disabled="statusOptions.length === 0"
-            class="inline-flex items-center rounded-md border border-transparent bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2 disabled:opacity-50"
+            :aria-describedby="statusOptions.length === 0 ? 'status-no-transitions' : undefined"
+            class="inline-flex items-center rounded-md border border-transparent bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2 disabled:border-gray-300 disabled:bg-gray-50 disabled:text-gray-500 disabled:hover:bg-gray-50"
             @click="openStatusDialog"
           >
             Změnit stav
           </button>
 
-          <p v-if="statusOptions.length === 0" class="self-center text-sm text-gray-600">
+          <p
+            v-if="statusOptions.length === 0"
+            id="status-no-transitions"
+            class="self-center text-sm text-gray-600"
+          >
             Z tohoto stavu už nevede žádný ruční přechod.
           </p>
         </div>
@@ -447,7 +452,7 @@ const limitStateLabel = (limit: LimitUsage): string =>
         <button
           type="button"
           :disabled="selectedPlanId === tenant.plan_id || planForm.processing"
-          class="mt-4 inline-flex items-center rounded-md border border-transparent bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2 disabled:opacity-50"
+          class="mt-4 inline-flex items-center rounded-md border border-transparent bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2 disabled:border-gray-300 disabled:bg-gray-50 disabled:text-gray-500 disabled:hover:bg-gray-50"
           @click="openPlanDialog(route('platform.tenants.plan-impact', tenant.uuid))"
         >
           Změnit tarif
@@ -472,7 +477,9 @@ const limitStateLabel = (limit: LimitUsage): string =>
         <ul v-else class="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <li v-for="limit in limits" :key="limit.key">
             <div class="flex items-baseline justify-between gap-2">
-              <span class="text-sm font-medium text-gray-900">{{ limitLabel(limit.key) }}</span>
+              <span :id="`limit-label-${limit.key}`" class="text-sm font-medium text-gray-900">
+                {{ limitLabel(limit.key) }}
+              </span>
               <span class="text-sm tabular-nums text-gray-900">
                 {{ limit.used }} / {{ limit.cap === null ? 'bez omezení' : limit.cap }}
               </span>
@@ -486,7 +493,7 @@ const limitStateLabel = (limit: LimitUsage): string =>
               aria-valuemin="0"
               :aria-valuemax="limit.cap"
               :aria-valuetext="`${limit.used} z ${limit.cap} — ${limitStateLabel(limit)}`"
-              :aria-label="limitLabel(limit.key)"
+              :aria-labelledby="`limit-label-${limit.key}`"
             >
               <div
                 class="h-full rounded-full"
@@ -587,7 +594,7 @@ const limitStateLabel = (limit: LimitUsage): string =>
                 type="button"
                 :disabled="!module.in_plan || !module.enabled_globally || moduleForm.processing"
                 :aria-describedby="moduleBlockedReason(module) ? `module-reason-${module.key}` : undefined"
-                class="inline-flex items-center rounded-md border border-transparent bg-slate-900 px-3 py-1.5 text-sm font-semibold text-white hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2 disabled:opacity-50"
+                class="inline-flex items-center rounded-md border border-transparent bg-slate-900 px-3 py-1.5 text-sm font-semibold text-white hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2 disabled:border-gray-300 disabled:bg-gray-50 disabled:text-gray-500 disabled:hover:bg-gray-50"
                 @click="enableModule(route('platform.tenants.modules.store', tenant.uuid), module)"
               >
                 Zapnout<span class="sr-only"> modul {{ module.name }}</span>
