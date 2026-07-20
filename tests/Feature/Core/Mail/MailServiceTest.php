@@ -185,4 +185,52 @@ class MailServiceTest extends TestCase
             $this->assertNotEmpty($stored->error);
         }
     }
+
+    public function test_failed_resolves_the_message_without_ambient_tenant_context(): void
+    {
+        $tenantA = Tenant::factory()->create();
+        $tenantB = Tenant::factory()->create();
+
+        $messageA = app(TenantContext::class)->runAs(
+            $tenantA,
+            fn () => MailMessage::create([
+                'tenant_id' => $tenantA->id,
+                'mailable' => TestMailable::class,
+                'recipients' => ['zakaznik-a@example.test'],
+                'subject' => 'Potvrzení objednávky',
+                'status' => MailMessage::STATUS_QUEUED,
+                'queued_at' => now(),
+            ])
+        );
+
+        $messageB = app(TenantContext::class)->runAs(
+            $tenantB,
+            fn () => MailMessage::create([
+                'tenant_id' => $tenantB->id,
+                'mailable' => TestMailable::class,
+                'recipients' => ['zakaznik-b@example.test'],
+                'subject' => 'Jiná objednávka',
+                'status' => MailMessage::STATUS_QUEUED,
+                'queued_at' => now(),
+            ])
+        );
+
+        $job = new SendTenantMail($messageA->id, $this->mailable());
+
+        // No ambient tenant: this is the real worker scenario failed() runs
+        // under, and the one that forces resolveMessageAfterFailure() through
+        // its withoutGlobalScopes() fallback rather than the scoped lookup.
+        app(TenantContext::class)->forget();
+
+        $job->failed(new RuntimeException('smtp down'));
+
+        $storedA = MailMessage::withoutGlobalScopes()->findOrFail($messageA->id);
+        $storedB = MailMessage::withoutGlobalScopes()->findOrFail($messageB->id);
+
+        $this->assertSame(MailMessage::STATUS_FAILED, $storedA->status);
+        $this->assertSame('smtp down', $storedA->error);
+
+        $this->assertSame(MailMessage::STATUS_QUEUED, $storedB->status);
+        $this->assertNull($storedB->error);
+    }
 }

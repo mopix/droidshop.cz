@@ -2,6 +2,7 @@
 
 namespace App\Core\Mail;
 
+use App\Core\Tenancy\Exceptions\MissingTenantContext;
 use App\Models\MailMessage;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -112,30 +113,35 @@ class SendTenantMail implements ShouldQueue
      * global scope hides it.
      *
      * The scoped lookup is tried first regardless, in case tenant context
-     * does happen to be present. The fallback bypasses the scope, but stays
-     * exactly as narrow as a scoped lookup would have been: it reads the row
-     * by its own primary key and then re-asserts the match against that same
-     * row's own tenant_id, so this can never be widened by accident into a
-     * query that reaches another tenant's data. $this->messageId is never
-     * user input — it is the id this job's own dispatch created — so there
-     * is no untrusted value here that a scope would otherwise be guarding
-     * against.
+     * does happen to be present — it throws MissingTenantContext rather
+     * than returning null when no tenant is current at all (BelongsToTenant
+     * fails loudly by design), so that case is caught here and treated the
+     * same as a plain miss. The fallback bypasses the scope, but the
+     * isolation here does not come from a tenant check — a primary-key
+     * lookup already identifies at most one row in the whole table, so
+     * re-checking tenant_id against the same row just fetched by that key
+     * is tautological and cannot exclude it or admit any other row. What
+     * actually keeps this safe is that $this->messageId is never user
+     * input — it is the id this job's own dispatch created and fixed at
+     * that time — so a context mismatch here can only ever produce a safe
+     * miss (null), never a foreign tenant's row.
+     *
+     * Making a tenant check genuinely load-bearing would mean threading the
+     * dispatch-time tenant id onto this job's constructor and asserting
+     * against that captured value instead of the row's own column. Left as
+     * a deliberate follow-up, not an oversight.
      */
     private function resolveMessageAfterFailure(): ?MailMessage
     {
-        if ($message = MailMessage::find($this->messageId)) {
-            return $message;
+        try {
+            if ($message = MailMessage::find($this->messageId)) {
+                return $message;
+            }
+        } catch (MissingTenantContext) {
+            // No tenant current at all — the common case here. Fall through
+            // to the scope-bypassing lookup below.
         }
 
-        $row = MailMessage::withoutGlobalScopes()->find($this->messageId);
-
-        if ($row === null) {
-            return null;
-        }
-
-        return MailMessage::withoutGlobalScopes()
-            ->where('id', $row->id)
-            ->where('tenant_id', $row->tenant_id)
-            ->first();
+        return MailMessage::withoutGlobalScopes()->find($this->messageId);
     }
 }
