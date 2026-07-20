@@ -160,7 +160,7 @@ const isLast = props.siblings[props.siblings.length - 1]?.id === props.node.id
           <button
             type="submit"
             :disabled="form.processing"
-            class="rounded-md bg-gray-900 px-4 py-2 text-sm font-semibold text-white hover:bg-gray-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-900 focus-visible:ring-offset-2 disabled:opacity-50"
+            class="rounded-md bg-gray-900 px-4 py-2 text-sm font-semibold text-white hover:bg-gray-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-900 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-gray-400 disabled:text-gray-700"
           >
             Uložit
           </button>
@@ -200,7 +200,7 @@ const isLast = props.siblings[props.siblings.length - 1]?.id === props.node.id
         <button
           type="submit"
           :disabled="moveForm.processing"
-          class="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-800 hover:bg-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-900 disabled:opacity-50"
+          class="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-800 hover:bg-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-900 disabled:cursor-not-allowed disabled:bg-gray-400 disabled:text-gray-700"
         >
           Přesunout
         </button>
