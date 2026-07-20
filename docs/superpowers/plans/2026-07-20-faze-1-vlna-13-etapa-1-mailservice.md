@@ -34,6 +34,7 @@
 | `app/Core/Mail/MailLimitCounter.php` | `emails_month` usage |
 | `app/Core/Mail/Exceptions/MailLimitReached.php` | Thrown when the plan cap is hit |
 | `app/Models/MailMessage.php` | Eloquent model over `mail_messages` |
+| `tests/Support/TestMailable.php` | Named mailable fixture shared by the mail tests |
 | `database/migrations/…_create_mail_messages_table.php` | Log table |
 | `database/migrations/…_add_mail_identity_to_tenants.php` | `mail_from_name`, `mail_reply_to` |
 | `tests/Feature/Core/Mail/MailServiceTest.php` | Contract behaviour |
@@ -430,21 +431,34 @@ use App\Models\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Mail\Mailable;
 use Illuminate\Support\Facades\Mail;
+use Tests\Support\TestMailable;
 use Tests\TestCase;
 
 class MailServiceTest extends TestCase
 {
     use RefreshDatabase;
 
+    /**
+     * A named fixture class, created in this task at tests/Support/TestMailable.php:
+     *
+     *   class TestMailable extends Mailable
+     *   {
+     *       public function __construct(private readonly string $subjectLine = 'Zpráva') {}
+     *
+     *       public function build(): self
+     *       {
+     *           return $this->subject($this->subjectLine)->html('<p>Text.</p>');
+     *       }
+     *   }
+     *
+     * Not an anonymous class: PHP refuses to serialize those, and every queued
+     * job round-trips through serialize() even on the sync driver. It keeps
+     * build() rather than envelope() so the clone path in subjectOf() is the
+     * one under test.
+     */
     private function mailable(): Mailable
     {
-        return new class extends Mailable
-        {
-            public function build(): self
-            {
-                return $this->subject('Potvrzení objednávky')->html('<p>Díky.</p>');
-            }
-        };
+        return new TestMailable('Potvrzení objednávky');
     }
 
     public function test_sending_logs_the_message_against_the_current_tenant(): void
@@ -487,7 +501,7 @@ class MailServiceTest extends TestCase
             fn () => app(MailService::class)->send($this->mailable(), 'zakaznik@example.test')
         );
 
-        Mail::assertSent(Mailable::class, function (Mailable $mail) {
+        Mail::assertSent(TestMailable::class, function (Mailable $mail) {
             return $mail->from[0]['address'] === 'noreply@droidshop.cz'
                 && $mail->from[0]['name'] === 'Obchod U Dubu'
                 && $mail->replyTo[0]['address'] === 'info@dub.test';
@@ -762,6 +776,7 @@ use App\Models\Plan;
 use App\Models\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Mail\Mailable;
+use Tests\Support\TestMailable;
 use Tests\TestCase;
 
 class MailLimitTest extends TestCase
@@ -770,13 +785,10 @@ class MailLimitTest extends TestCase
 
     private function mailable(): Mailable
     {
-        return new class extends Mailable
-        {
-            public function build(): self
-            {
-                return $this->subject('Zpráva')->html('<p>Text.</p>');
-            }
-        };
+        // Named class, not anonymous: PHP refuses to serialize anonymous
+        // classes and every queued job round-trips through serialize(),
+        // even on the sync driver. Built in Task 3.
+        return new TestMailable;
     }
 
     private function tenantWithCap(?int $cap): Tenant
