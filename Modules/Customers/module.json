@@ -1,0 +1,32 @@
+{
+    "name": "customers",
+    "version": "1.0.0",
+    "title": {
+        "cs": "Zákazníci"
+    },
+    "description": {
+        "cs": "Účty koncových zákazníků e-shopu — registrace, přihlášení, adresy."
+    },
+    "core": false,
+    "billable": false,
+    "level": "base",
+    "requires": {},
+    "provides": [
+        "customer-identity"
+    ],
+    "listens": [],
+    "permissions": [
+        "customers.view",
+        "customers.erase"
+    ],
+    "settings_schema": null,
+    "nav": [
+        {
+            "area": "admin",
+            "label": "Zákazníci",
+            "route": "admin.customers.index",
+            "icon": "users",
+            "order": 30
+        }
+    ]
+}

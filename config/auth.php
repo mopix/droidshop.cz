@@ -2,6 +2,7 @@
 
 use App\Models\PlatformAdmin;
 use App\Models\User;
+use Modules\Customers\Models\Customer;
 
 return [
 
@@ -51,6 +52,15 @@ return [
             'driver' => 'session',
             'provider' => 'platform_admins',
         ],
+
+        // The shop's end customers (spec §6.7). A separate guard over a
+        // separate table: a customer session must never be able to become a
+        // tenant-user session, and customer e-mails are unique only within
+        // a tenant.
+        'customer' => [
+            'driver' => 'session',
+            'provider' => 'customers',
+        ],
     ],
 
     /*
@@ -79,6 +89,11 @@ return [
         'platform_admins' => [
             'driver' => 'eloquent',
             'model' => PlatformAdmin::class,
+        ],
+
+        'customers' => [
+            'driver' => 'eloquent',
+            'model' => Customer::class,
         ],
 
         // 'users' => [
