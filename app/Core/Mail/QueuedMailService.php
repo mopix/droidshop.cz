@@ -19,7 +19,7 @@ class QueuedMailService implements MailService
         private readonly LimitsService $limits,
     ) {}
 
-    public function send(Mailable $mailable, string|array $to, ?Tenant $tenant = null): MailMessage
+    public function send(Mailable $mailable, string|array $to, MailKind $kind, ?Tenant $tenant = null): MailMessage
     {
         $tenant ??= $this->context->current();
 
@@ -41,33 +41,44 @@ class QueuedMailService implements MailService
         // called. Checking outside runAs() let an ambient tenant's quota
         // gate an explicit tenant's send (or vice versa), and broke the
         // explicit-tenant-with-no-ambient-context path entirely.
-        return $this->context->runAs($tenant, function (Tenant $tenant) use ($mailable, $to): MailMessage {
-            $verdict = $this->limits->check('emails_month');
+        return $this->context->runAs($tenant, function (Tenant $tenant) use ($mailable, $to, $kind): MailMessage {
+            // Transactional mail skips the cap entirely (product decision,
+            // see MailKind's docblock): it still counts toward usage once
+            // logged below, it just never gets refused.
+            if ($kind === MailKind::Bulk) {
+                $verdict = $this->limits->check('emails_month');
 
-            if (! $verdict->allowed()) {
-                // Refused before the log row exists: a message we never sent must
-                // not show up in the nájemce's outbox as if it had been.
-                throw new MailLimitReached($verdict->message);
+                if (! $verdict->allowed()) {
+                    // Refused before the log row exists: a message we never sent must
+                    // not show up in the nájemce's outbox as if it had been.
+                    throw new MailLimitReached($verdict->message);
+                }
             }
 
             $recipients = array_values((array) $to);
 
-            $mailable->from($this->sender->fromAddress(), $this->sender->fromName($tenant));
+            // Clone before mutating: the caller may reuse one Mailable
+            // instance across several tenants (e.g. a platform notice sent
+            // in a loop). Mutating the original would leave the previous
+            // tenant's display name and reply-to on it for the next one.
+            $outgoing = clone $mailable;
+            $outgoing->from($this->sender->fromAddress(), $this->sender->fromName($tenant));
 
             if ($replyTo = $this->sender->replyTo($tenant)) {
-                $mailable->replyTo($replyTo);
+                $outgoing->replyTo($replyTo);
             }
 
             $message = MailMessage::create([
                 'tenant_id' => $tenant->id,
-                'mailable' => $mailable::class,
+                'mailable' => $outgoing::class,
                 'recipients' => $recipients,
-                'subject' => $this->subjectOf($mailable),
+                'subject' => $this->subjectOf($outgoing),
+                'kind' => $kind,
                 'status' => MailMessage::STATUS_QUEUED,
                 'queued_at' => now(),
             ]);
 
-            SendTenantMail::dispatch($message->id, $mailable);
+            SendTenantMail::dispatch($message->id, $outgoing);
 
             return $message;
         });

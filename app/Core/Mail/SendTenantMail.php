@@ -39,7 +39,24 @@ class SendTenantMail implements ShouldQueue
     public function __construct(
         private readonly int $messageId,
         private readonly Mailable $mailable,
-    ) {}
+    ) {
+        // Defer the push itself until the dispatching transaction really
+        // commits. Every connection in config/queue.php has
+        // 'after_commit' => false, and the next stage of the project sends
+        // this job from inside a DB transaction (order creation →
+        // confirmation e-mail). Without this, a worker could pick the job
+        // up before the mail_messages row — and the order it confirms — is
+        // committed, find nothing, and silently drop the customer's order
+        // confirmation. Setting it here, on the job itself rather than the
+        // queue connection, makes it hold no matter which call site
+        // dispatches this job.
+        //
+        // Queueable declares $afterCommit as null by default; assigning it
+        // here (rather than redeclaring the property with a type) is what
+        // keeps this compatible with that trait — a typed redeclaration
+        // conflicts with the trait's untyped one.
+        $this->afterCommit();
+    }
 
     public function handle(): void
     {
@@ -49,6 +66,19 @@ class SendTenantMail implements ShouldQueue
             // The tenant was deleted between queueing and delivery. Sending
             // now would mail on behalf of a shop that no longer exists.
             Log::warning('Dropped queued mail: MailMessage no longer exists.', [
+                'message_id' => $this->messageId,
+            ]);
+
+            return;
+        }
+
+        if ($message->status === MailMessage::STATUS_SENT) {
+            // Mail::to()->send() can succeed and still leave the job looking
+            // failed to the queue, if the update() just below throws (lost
+            // connection, deadlock, ...). The queue then retries, and
+            // without this guard the customer would receive the same order
+            // confirmation two or three times.
+            Log::info('Skipped an already-delivered queued mail.', [
                 'message_id' => $this->messageId,
             ]);
 
@@ -95,6 +125,15 @@ class SendTenantMail implements ShouldQueue
                 'message_id' => $this->messageId,
             ]);
 
+            return;
+        }
+
+        if ($message->status !== MailMessage::STATUS_QUEUED) {
+            // The queue can call failed() after handle() already delivered
+            // the mail and marked it sent (e.g. a crash between the
+            // successful send and the queue recording the attempt as done).
+            // Overwriting a delivered message here would tell the nájemce
+            // delivery failed for mail the customer actually received.
             return;
         }
 
