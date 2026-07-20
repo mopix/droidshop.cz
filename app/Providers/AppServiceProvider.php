@@ -4,6 +4,7 @@ namespace App\Providers;
 
 use App\Core\Limits\LimitsService;
 use App\Core\Mail\Contracts\MailService;
+use App\Core\Mail\MailLimitCounter;
 use App\Core\Mail\QueuedMailService;
 use App\Core\Storage\StorageLimitCounter;
 use Illuminate\Support\Facades\Vite;
@@ -38,5 +39,11 @@ class AppServiceProvider extends ServiceProvider
         // at boot so LimitsService can answer storage questions from anywhere.
         $this->app->make(LimitsService::class)
             ->registerCounter($this->app->make(StorageLimitCounter::class));
+
+        // The emails_month counter closes the gap left when MailService
+        // shipped without a limit: until now, e-mail usage always read as
+        // zero in the superadmin tenant detail.
+        $this->app->make(LimitsService::class)
+            ->registerCounter($this->app->make(MailLimitCounter::class));
     }
 }

@@ -2,7 +2,9 @@
 
 namespace App\Core\Mail;
 
+use App\Core\Limits\LimitsService;
 use App\Core\Mail\Contracts\MailService;
+use App\Core\Mail\Exceptions\MailLimitReached;
 use App\Core\Tenancy\Exceptions\MissingTenantContext;
 use App\Core\Tenancy\TenantContext;
 use App\Models\MailMessage;
@@ -14,6 +16,7 @@ class QueuedMailService implements MailService
     public function __construct(
         private readonly TenantContext $context,
         private readonly TenantSender $sender,
+        private readonly LimitsService $limits,
     ) {}
 
     public function send(Mailable $mailable, string|array $to, ?Tenant $tenant = null): MailMessage
@@ -22,6 +25,14 @@ class QueuedMailService implements MailService
 
         if ($tenant === null) {
             throw new MissingTenantContext('E-mail nelze odeslat bez kontextu e-shopu.');
+        }
+
+        $verdict = $this->limits->check('emails_month');
+
+        if (! $verdict->allowed()) {
+            // Refused before the log row exists: a message we never sent must
+            // not show up in the nájemce's outbox as if it had been.
+            throw new MailLimitReached($verdict->message);
         }
 
         // An explicit $tenant must be authoritative, not just a label: the
