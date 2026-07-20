@@ -92,4 +92,65 @@ class MailLimitTest extends TestCase
 
         $this->assertSame(2, $context->runAs($tenant, fn () => MailMessage::count()));
     }
+
+    public function test_explicit_tenant_with_room_sends_despite_exhausted_ambient_tenant(): void
+    {
+        $ambient = $this->tenantWithCap(1);
+        $explicit = $this->tenantWithCap(100);
+        $context = app(TenantContext::class);
+
+        // Exhaust the ambient tenant's quota.
+        $context->runAs($ambient, fn () => app(MailService::class)->send($this->mailable(), 'a@example.test'));
+
+        $message = $context->runAs(
+            $ambient,
+            fn () => app(MailService::class)->send($this->mailable(), 'b@example.test', $explicit)
+        );
+
+        $this->assertSame($explicit->id, $message->tenant_id);
+        $this->assertSame(
+            1,
+            MailMessage::withoutGlobalScopes()->where('tenant_id', $explicit->id)->count()
+        );
+    }
+
+    public function test_explicit_tenant_over_cap_is_refused_despite_ambient_tenant_having_room(): void
+    {
+        $ambient = $this->tenantWithCap(100);
+        $explicit = $this->tenantWithCap(1);
+        $context = app(TenantContext::class);
+
+        // Exhaust the explicit tenant's quota (as itself, so the row is logged against it).
+        $context->runAs($explicit, fn () => app(MailService::class)->send($this->mailable(), 'a@example.test'));
+
+        $this->expectException(MailLimitReached::class);
+
+        try {
+            $context->runAs(
+                $ambient,
+                fn () => app(MailService::class)->send($this->mailable(), 'b@example.test', $explicit)
+            );
+        } finally {
+            $this->assertSame(
+                1,
+                MailMessage::withoutGlobalScopes()->where('tenant_id', $explicit->id)->count()
+            );
+        }
+    }
+
+    public function test_explicit_tenant_sends_with_no_ambient_context_at_all(): void
+    {
+        $explicit = $this->tenantWithCap(100);
+        $context = app(TenantContext::class);
+
+        $context->forget();
+
+        $message = app(MailService::class)->send($this->mailable(), 'a@example.test', $explicit);
+
+        $this->assertSame($explicit->id, $message->tenant_id);
+        $this->assertSame(
+            1,
+            MailMessage::withoutGlobalScopes()->where('tenant_id', $explicit->id)->count()
+        );
+    }
 }

@@ -27,14 +27,6 @@ class QueuedMailService implements MailService
             throw new MissingTenantContext('E-mail nelze odeslat bez kontextu e-shopu.');
         }
 
-        $verdict = $this->limits->check('emails_month');
-
-        if (! $verdict->allowed()) {
-            // Refused before the log row exists: a message we never sent must
-            // not show up in the nájemce's outbox as if it had been.
-            throw new MailLimitReached($verdict->message);
-        }
-
         // An explicit $tenant must be authoritative, not just a label: the
         // MailMessage::creating hook (BelongsToTenant) stamps tenant_id from
         // the ambient TenantContext regardless of what we pass to create().
@@ -42,7 +34,22 @@ class QueuedMailService implements MailService
         // context and the persisted tenant_id agree by construction, so a
         // caller sending "as" a different tenant than the current request
         // can never have the message logged against the wrong shop.
+        //
+        // The limit check lives inside this closure too, not before it: it
+        // must be evaluated against the same tenant the message is billed
+        // to, not whatever tenant happened to be ambient when send() was
+        // called. Checking outside runAs() let an ambient tenant's quota
+        // gate an explicit tenant's send (or vice versa), and broke the
+        // explicit-tenant-with-no-ambient-context path entirely.
         return $this->context->runAs($tenant, function (Tenant $tenant) use ($mailable, $to): MailMessage {
+            $verdict = $this->limits->check('emails_month');
+
+            if (! $verdict->allowed()) {
+                // Refused before the log row exists: a message we never sent must
+                // not show up in the nájemce's outbox as if it had been.
+                throw new MailLimitReached($verdict->message);
+            }
+
             $recipients = array_values((array) $to);
 
             $mailable->from($this->sender->fromAddress(), $this->sender->fromName($tenant));
