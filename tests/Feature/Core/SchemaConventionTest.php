@@ -48,6 +48,10 @@ class SchemaConventionTest extends TestCase
 
         // Platform administration, deliberately separate from tenant data.
         'platform_admins',
+
+        // VAT rates are law, not shop configuration. A tenant_id here would
+        // invite a shop to invent its own rates (spec §6.2).
+        'tax_rates',
     ];
 
     public function test_every_domain_table_carries_a_tenant_id(): void
