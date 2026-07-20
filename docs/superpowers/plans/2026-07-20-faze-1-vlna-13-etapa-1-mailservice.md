@@ -938,17 +938,19 @@ Add the dependency and the check. The constructor becomes:
     ) {}
 ```
 
-And in `send()`, immediately after the tenant null check and before any mutation of `$mailable`:
+And in `send()`, **inside** the `runAs($tenant, ...)` closure, immediately before `MailMessage::create()`:
 
 ```php
-        $verdict = $this->limits->check('emails_month');
+            $verdict = $this->limits->check('emails_month');
 
-        if (! $verdict->allowed()) {
-            // Refused before the log row exists: a message we never sent must
-            // not show up in the nájemce's outbox as if it had been.
-            throw new MailLimitReached($verdict->message);
-        }
+            if (! $verdict->allowed()) {
+                // Refused before the log row exists: a message we never sent
+                // must not show up in the nájemce's outbox as if it had been.
+                throw new MailLimitReached($verdict->message);
+            }
 ```
+
+The position matters. `LimitsService::check()` reads the **ambient** `TenantContext`, so outside the closure it would evaluate the quota of whatever tenant happens to be current rather than the tenant being billed. That splits three ways: an explicit tenant with room refused against someone else's exhausted cap; an explicit tenant over cap let through on someone else's allowance; and a caller with no ambient context at all — a console command or queue worker passing `$tenant` explicitly — refused with "Chybí kontext e-shopu." Inside the closure the check sees the same tenant everything else does, and the refusal still precedes the log row.
 
 - [ ] **Step 6: Register the counter**
 
