@@ -38,4 +38,18 @@ interface CustomerIdentity
      * identity the erasure was meant to sever, undoing it in effect.
      */
     public function findByEmail(string $email): ?CustomerAccount;
+
+    /**
+     * The customer at this shop with the given id, or null.
+     *
+     * What rehydrates carts.customer_id back into an account: without this,
+     * the first caller that needs to turn a stored id back into a customer
+     * would have to reach past this contract into Modules\Customers\Models\Customer
+     * directly, and the boundary CustomerIdentity exists to hold would be
+     * gone on day one.
+     *
+     * Same exclusions as findByEmail(): scoped to the current tenant, and
+     * never returns a GDPR-anonymised account.
+     */
+    public function findById(int $id): ?CustomerAccount;
 }

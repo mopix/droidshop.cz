@@ -4,6 +4,7 @@ namespace Tests\Feature\Modules\Customers;
 
 use App\Core\Tenancy\TenantContext;
 use App\Models\AuditLogEntry;
+use App\Models\MailMessage;
 use App\Models\Tenant;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -14,6 +15,7 @@ use Inertia\Testing\AssertableInertia;
 use Modules\Customers\Models\Customer;
 use Modules\Customers\Models\CustomerAddress;
 use Modules\Customers\Services\CustomerEraser;
+use Modules\Customers\Services\CustomerTokens;
 use Tests\Concerns\ActivatesModules;
 use Tests\Concerns\ActsAsCustomer;
 use Tests\TestCase;
@@ -419,6 +421,31 @@ class CustomerAdminTest extends TestCase
         $this->assertFalse($stillAuthenticates);
     }
 
+    public function test_erasure_redacts_the_customers_address_from_the_mail_log_without_deleting_the_row(): void
+    {
+        $customer = $this->makeCustomer($this->tenant, ['email' => 'jan@example.test']);
+
+        // Produces a real mail_messages row through the ordinary password
+        // reset flow, exactly like CustomerPasswordResetTest — a row this
+        // shop's plan usage (emails_month) already counted.
+        $this->post('http://shop1.droidshop/zapomenute-heslo', ['email' => 'jan@example.test'])
+            ->assertRedirect();
+
+        $this->actingAs($this->owner)
+            ->post($this->url('/'.$customer->id.'/vymazat'))
+            ->assertRedirect();
+
+        $this->context->runAs($this->tenant, function (): void {
+            $messages = MailMessage::query()->get();
+
+            // Not deleted: mail_messages backs the emails_month plan
+            // counter, and a missing row would understate what the shop
+            // actually sent.
+            $this->assertCount(1, $messages);
+            $this->assertNotContains('jan@example.test', $messages->first()->recipients);
+        });
+    }
+
     public function test_export_contains_only_this_customers_own_data(): void
     {
         $customer = $this->withAddress(
@@ -476,6 +503,66 @@ class CustomerAdminTest extends TestCase
             'tenant_id' => $this->tenant->id,
             'user_id' => $this->owner->id,
         ]));
+    }
+
+    /**
+     * The account-takeover chain the whole erase() transaction exists to
+     * close: A requests a reset, gets erased, and B — an ordinary stranger
+     * — registers the address the erasure just freed. A's old link must not
+     * be usable against B's account.
+     */
+    public function test_a_token_issued_before_erasure_cannot_hijack_the_account_that_registers_the_freed_address(): void
+    {
+        $victim = $this->makeCustomer($this->tenant, [
+            'email' => 'a@example.test',
+            'password' => Hash::make('puvodniheslo'),
+        ]);
+
+        $token = $this->context->runAs(
+            $this->tenant,
+            fn () => app(CustomerTokens::class)->issue('a@example.test', CustomerTokens::PASSWORD_RESET)
+        );
+
+        // The admin erases A. The placeholder e-mail frees the
+        // (tenant_id, email) unique index for the real address.
+        $this->actingAs($this->owner)
+            ->post($this->url('/'.$victim->id.'/vymazat'))
+            ->assertRedirect();
+
+        // B — nobody to do with A — registers the freed address at the same
+        // shop through the ordinary registration endpoint.
+        $this->post('http://shop1.droidshop/registrace', [
+            'email' => 'a@example.test',
+            'password' => 'bezpecneheslobbb',
+            'password_confirmation' => 'bezpecneheslobbb',
+            'first_name' => 'Bedřich',
+            'last_name' => 'Nový',
+            'terms' => '1',
+        ])->assertRedirect();
+
+        Auth::guard('customer')->logout();
+
+        // A's old link is used against the account that now holds the
+        // address.
+        $response = $this->post('http://shop1.droidshop/obnova-hesla', [
+            'email' => 'a@example.test',
+            'token' => $token,
+            'password' => 'utocnikovoheslo',
+            'password_confirmation' => 'utocnikovoheslo',
+        ]);
+
+        $response->assertSessionHasErrors('email');
+        $this->assertFalse(Auth::guard('customer')->check());
+
+        $registeredCustomer = $this->context->runAs(
+            $this->tenant,
+            fn () => Customer::where('email', 'a@example.test')->first()
+        );
+
+        $this->assertNotNull($registeredCustomer);
+        // B's password is exactly what B set at registration — never
+        // touched by A's replayed token.
+        $this->assertTrue(Hash::check('bezpecneheslobbb', $registeredCustomer->password));
     }
 
     public function test_export_of_another_shops_customer_is_not_reachable(): void

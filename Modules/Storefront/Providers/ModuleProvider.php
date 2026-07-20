@@ -4,6 +4,7 @@ namespace Modules\Storefront\Providers;
 
 use App\Core\Storefront\Contracts\StorefrontHome;
 use App\Core\Tenancy\TenantContext;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\View;
 use Illuminate\Support\ServiceProvider;
 use Modules\Categories\Models\Category;
@@ -54,14 +55,22 @@ class ModuleProvider extends ServiceProvider
     {
         View::composer('storefront::layouts.shop', function ($view): void {
             $tenant = app(TenantContext::class)->current();
+            $shopModules = app(ShopModules::class);
+            $hasCustomers = $shopModules->has('customers');
 
             $view->with([
                 'shopName' => $tenant?->name ?? config('app.name'),
-                'navCategories' => ! app(ShopModules::class)->has('categories') ? collect() : Category::query()
+                'navCategories' => ! $shopModules->has('categories') ? collect() : Category::query()
                     ->visible()
                     ->whereNull('parent_id')
                     ->orderBy('position')
                     ->get(),
+                // Otherwise the customer account area (login, registration,
+                // /ucet) is unreachable by navigation — nothing links to it.
+                // A shop with the module switched off shows nothing at all
+                // rather than a link into 404 territory.
+                'customerAreaEnabled' => $hasCustomers,
+                'signedInCustomer' => $hasCustomers ? Auth::guard('customer')->user() : null,
             ]);
         });
     }

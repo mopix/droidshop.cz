@@ -3,9 +3,11 @@
 namespace Tests\Feature\Modules\Customers;
 
 use App\Core\Customers\Contracts\CustomerIdentity;
+use App\Core\Modules\ModuleRegistry;
 use App\Core\Tenancy\TenantContext;
 use App\Models\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Auth;
 use Tests\Concerns\ActivatesModules;
 use Tests\Concerns\ActsAsCustomer;
 use Tests\TestCase;
@@ -115,5 +117,95 @@ class CustomerIdentityTest extends TestCase
         );
 
         $this->assertNull($found);
+    }
+
+    public function test_find_by_id_returns_the_customer(): void
+    {
+        $customer = $this->makeCustomer($this->tenant);
+
+        $found = app(TenantContext::class)->runAs(
+            $this->tenant,
+            fn () => app(CustomerIdentity::class)->findById($customer->id)
+        );
+
+        $this->assertNotNull($found);
+        $this->assertSame($customer->id, $found->accountId());
+    }
+
+    public function test_find_by_id_does_not_find_a_customer_from_another_shop(): void
+    {
+        $other = Tenant::factory()->withDomain('shop2.droidshop')->create(['name' => 'Shop Two']);
+        foreach (['storefront', 'customers'] as $module) {
+            $this->activateModule($other, $module);
+        }
+
+        $customer = $this->makeCustomer($this->tenant);
+
+        $found = app(TenantContext::class)->runAs(
+            $other,
+            fn () => app(CustomerIdentity::class)->findById($customer->id)
+        );
+
+        $this->assertNull($found);
+    }
+
+    public function test_find_by_id_ignores_a_gdpr_anonymised_account(): void
+    {
+        $customer = $this->makeCustomer($this->tenant);
+
+        app(TenantContext::class)->runAs(
+            $this->tenant,
+            fn () => $customer->forceFill(['anonymised_at' => now()])->save()
+        );
+
+        $found = app(TenantContext::class)->runAs(
+            $this->tenant,
+            fn () => app(CustomerIdentity::class)->findById($customer->id)
+        );
+
+        $this->assertNull($found);
+    }
+
+    /**
+     * Exercises the contract's kernel-side default (App\Core\Customers\NullCustomerIdentity,
+     * bound in App\Providers\AppServiceProvider) indirectly: this deploy
+     * does have the module, so the container still resolves
+     * EloquentCustomerIdentity here, but a tenant that has switched the
+     * module off must see exactly the same "no customer, ever" behaviour the
+     * null implementation gives a deploy that never installed the module at
+     * all — see EloquentCustomerIdentity's own docblock for why that check
+     * has to live in the implementation rather than only at the container.
+     */
+    public function test_the_contract_answers_as_a_guest_only_shop_once_the_tenant_switches_the_module_off(): void
+    {
+        $customer = $this->makeCustomer($this->tenant, ['email' => 'jan@example.test']);
+        $this->actingAsCustomer($customer);
+
+        // Confirms the fixture is meaningful before the deactivation: with
+        // the module on, the guard's own user is genuinely reachable through
+        // the contract.
+        $whileActive = app(TenantContext::class)->runAs($this->tenant, fn () => app(CustomerIdentity::class)->current());
+        $this->assertNotNull($whileActive);
+
+        app(ModuleRegistry::class)->deactivate($this->tenant, 'customers');
+
+        $current = app(TenantContext::class)->runAs($this->tenant, fn () => app(CustomerIdentity::class)->current());
+        $byEmail = app(TenantContext::class)->runAs(
+            $this->tenant,
+            fn () => app(CustomerIdentity::class)->findByEmail('jan@example.test')
+        );
+        $byId = app(TenantContext::class)->runAs(
+            $this->tenant,
+            fn () => app(CustomerIdentity::class)->findById($customer->id)
+        );
+
+        // The guard itself is untouched by the module's activation state —
+        // this is what proves the null answers above come from the runtime
+        // check, not from an incidentally-empty guard.
+        $this->assertTrue(Auth::guard('customer')->check());
+
+        $this->assertNull($current);
+        $this->assertNull($byEmail);
+        $this->assertNull($byId);
     }
 }

@@ -64,14 +64,14 @@ class AccountController
             // to the password-change branch only — a plain name/phone edit
             // has no session-fixation reason to rotate the id.
             //
-            // Auth::guard('customer')->logoutOtherDevices() was considered
-            // and deliberately left out: it depends on the
-            // AuthenticateSession middleware re-checking the session's
-            // stored password hash on every request, and that middleware is
-            // not wired onto the customer guard's routes (bootstrap/app.php
-            // only prepends the tenant pipeline to the web group). Without
-            // it, logoutOtherDevices() would rehash the password in the DB
-            // and do nothing else — a no-op dressed up as a fix.
+            // Evicting every *other* signed-in session for this customer is
+            // handled separately, by the customer.session route middleware
+            // (Modules\Customers\Http\Middleware\AuthenticateCustomerSession)
+            // wrapping this route: on each such session's own next request it
+            // compares the password hash it was issued under to the one just
+            // written here and logs out on a mismatch. Laravel's own
+            // Auth::guard('customer')->logoutOtherDevices() cannot do this —
+            // see that middleware's docblock for why it is guard-blind.
             $request->session()->regenerate();
         }
 

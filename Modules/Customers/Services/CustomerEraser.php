@@ -3,6 +3,7 @@
 namespace Modules\Customers\Services;
 
 use App\Core\Services\AuditLog;
+use App\Models\MailMessage;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -30,9 +31,19 @@ class CustomerEraser
      */
     public const PLACEHOLDER_DOMAIN = 'anonymized.invalid';
 
+    /**
+     * What a redacted mail_messages recipient becomes. Kept e-mail-shaped
+     * (rather than blank or null) only so it survives a re-encode of the
+     * `recipients` JSON array unremarkably; nothing ever sends to it.
+     */
+    private const REDACTED_RECIPIENT_LOCAL_PART = 'smazano';
+
     private const MAX_ATTEMPTS = 5;
 
-    public function __construct(private readonly AuditLog $auditLog) {}
+    public function __construct(
+        private readonly AuditLog $auditLog,
+        private readonly CustomerTokens $tokens,
+    ) {}
 
     public static function isReservedEmail(string $email): bool
     {
@@ -49,19 +60,40 @@ class CustomerEraser
             return;
         }
 
+        // Captured once, before the retry loop below: a failed attempt
+        // already forceFill()s the model in memory with a placeholder before
+        // its save() throws (see the loop), so reading $customer->email
+        // inside the loop or the transaction would see that placeholder, not
+        // the real address, from the second attempt onward.
+        //
+        // This is also the address a surviving customer_tokens row (a live
+        // password reset link, say) is still keyed to. Erasing the row here
+        // without also deleting those tokens frees this exact address for
+        // the next person to register — who would then inherit any token
+        // issued to the person being erased: a stranger's "forgot password"
+        // link would authenticate against the new owner's account.
+        $originalEmail = $customer->email;
+
         $attempt = 0;
 
         while (true) {
             $attempt++;
 
             try {
-                DB::transaction(function () use ($customer): void {
+                DB::transaction(function () use ($customer, $originalEmail): void {
                     // Deletion, the field save and the audit write share one
                     // transaction: a failure partway through (including the
                     // retried save below) must not leave addresses gone with
                     // anonymised_at still null — a half-erased row the
                     // idempotency guard above would not recognise as done.
                     $customer->addresses()->delete();
+
+                    // Every purpose, not just password_reset: an
+                    // email_verification row left behind is exactly as
+                    // reusable against whoever registers this address next.
+                    $this->tokens->deleteAllForAddress($originalEmail);
+
+                    $this->redactMailLog($originalEmail);
 
                     $customer->forceFill([
                         'first_name' => null,
@@ -100,6 +132,38 @@ class CustomerEraser
                 // rather than trusting the guard blindly.
             }
         }
+    }
+
+    /**
+     * Redacts this address out of the tenant's mail log without deleting the
+     * rows: mail_messages backs the emails_month plan counter (see
+     * MailLimitCounter), and deleting rows here would quietly refund usage
+     * that was genuinely sent, understating what the shop actually used.
+     * Only the recipient strings inside `recipients` are rewritten —
+     * everything else about the attempt (when, which template, whether it
+     * was ever delivered) stays exactly as it was, because that is the
+     * nájemce's own delivery record, not the customer's personal data.
+     */
+    private function redactMailLog(string $originalEmail): void
+    {
+        // Every stored address is written lowercase already (CustomerRegistrar),
+        // but this is not itself the source of that guarantee, so it is not
+        // trusted here — a mismatch would only mean rows silently survive
+        // erasure, not a hard failure, so it is worth normalising defensively.
+        $needle = Str::lower($originalEmail);
+
+        MailMessage::query()
+            ->whereJsonContains('recipients', $needle)
+            ->get()
+            ->each(function (MailMessage $message) use ($needle): void {
+                $message->update([
+                    'recipients' => collect($message->recipients)
+                        ->map(fn (string $recipient) => Str::lower($recipient) === $needle
+                            ? self::REDACTED_RECIPIENT_LOCAL_PART.'@'.self::PLACEHOLDER_DOMAIN
+                            : $recipient)
+                        ->all(),
+                ]);
+            });
     }
 
     /**

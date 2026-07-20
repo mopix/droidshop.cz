@@ -82,12 +82,50 @@ class CustomerTokens
         }
 
         if (now()->greaterThan($row->expires_at)) {
+            // Spent here too, not just left for the caller to reject: an
+            // expired row that lingers still holds a plaintext-adjacent
+            // e-mail address (see prune()) and, worse, is exactly the row a
+            // GDPR erasure of this address must not leave behind — see
+            // CustomerEraser::erase().
+            DB::table('customer_tokens')->where('id', $row->id)->delete();
+
             return false;
         }
 
         DB::table('customer_tokens')->where('id', $row->id)->delete();
 
         return true;
+    }
+
+    /**
+     * Deletes every token — any purpose — for one address at this tenant.
+     *
+     * Used by CustomerEraser: a surviving token for an address that has just
+     * been freed by an erasure is a live credential for whoever registers
+     * that address next (see the class docblock's account-takeover chain).
+     * All purposes, not just the one the caller happens to be thinking about
+     * — a strayed email_verification row is exactly as dangerous as a
+     * password_reset one once the address is reassigned.
+     */
+    public function deleteAllForAddress(string $email): void
+    {
+        DB::table('customer_tokens')
+            ->where('tenant_id', $this->tenantId())
+            ->where('email', Str::lower($email))
+            ->delete();
+    }
+
+    /**
+     * Deletes every token, at every tenant, that has expired without ever
+     * being followed up on. Not tenant-scoped: platform maintenance, run by
+     * customers:prune-tokens (Modules\Customers\Console\PruneExpiredTokens)
+     * across every shop, the same way Products' reindex command does.
+     */
+    public function pruneExpired(): int
+    {
+        return DB::table('customer_tokens')
+            ->where('expires_at', '<', now())
+            ->delete();
     }
 
     private function tenantId(): int

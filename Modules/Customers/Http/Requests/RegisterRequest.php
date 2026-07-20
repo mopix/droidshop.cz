@@ -4,6 +4,7 @@ namespace Modules\Customers\Http\Requests;
 
 use App\Core\Tenancy\TenantContext;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Password;
 use Modules\Customers\Services\CustomerEraser;
@@ -13,6 +14,20 @@ class RegisterRequest extends FormRequest
     public function authorize(): bool
     {
         return true;
+    }
+
+    /**
+     * Normalised before the uniqueness check runs, not just before
+     * CustomerRegistrar writes it: the unique rule below reads the raw
+     * request value, and only actually catches "jAn@..." colliding with a
+     * stored "jan@..." because of this — not because of the database
+     * collation, which the write side must not depend on either.
+     */
+    protected function prepareForValidation(): void
+    {
+        if ($this->has('email')) {
+            $this->merge(['email' => Str::lower((string) $this->string('email'))]);
+        }
     }
 
     /**

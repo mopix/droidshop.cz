@@ -32,12 +32,12 @@ class CustomerRegistrar
     {
         return DB::transaction(function () use ($data) {
             $customer = Customer::create([
-                // Normalised here, once, on write: every lookup
-                // (EloquentCustomerIdentity::findByEmail(),
-                // PasswordResetController) already lowercases the address it
-                // searches for, and that only actually matches stored data
-                // because it does — this makes that true by construction
-                // instead of by relying on the database collation.
+                // Lowercased here on write, and by every caller that reads
+                // or searches an address before it reaches the database
+                // (LoginRequest, RegisterRequest, EloquentCustomerIdentity::findByEmail(),
+                // PasswordResetController) — matching addresses is true by
+                // construction on both sides, not because MySQL's default
+                // collation happens to compare case-insensitively.
                 'email' => Str::lower($data['email']),
                 // The model casts password to hashed, so the plain value is
                 // never what lands in the column.

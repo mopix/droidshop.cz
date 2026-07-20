@@ -29,7 +29,7 @@ class CustomerAdminController
 
     public function index(Request $request): Response
     {
-        abort_unless($request->user()->can('customers.view'), 403);
+        abort_unless($request->user('web')->can('customers.view'), 403);
 
         $customers = Customer::query()
             ->orderByDesc('id')
@@ -44,7 +44,7 @@ class CustomerAdminController
 
     public function show(Request $request, Customer $customer): Response
     {
-        abort_unless($request->user()->can('customers.view'), 403);
+        abort_unless($request->user('web')->can('customers.view'), 403);
 
         $customer->load('addresses');
 
@@ -58,14 +58,14 @@ class CustomerAdminController
                 )->all(),
             ],
             'can' => [
-                'erase' => $request->user()->can('customers.erase'),
+                'erase' => $request->user('web')->can('customers.erase'),
             ],
         ]);
     }
 
     public function erase(Request $request, Customer $customer): RedirectResponse
     {
-        abort_unless($request->user()->can('customers.erase'), 403);
+        abort_unless($request->user('web')->can('customers.erase'), 403);
 
         $this->eraser->erase($customer);
 
@@ -79,7 +79,7 @@ class CustomerAdminController
      */
     public function export(Request $request, Customer $customer): JsonResponse
     {
-        abort_unless($request->user()->can('customers.view'), 403);
+        abort_unless($request->user('web')->can('customers.view'), 403);
 
         $customer->load('addresses');
 

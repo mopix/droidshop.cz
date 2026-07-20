@@ -22,7 +22,7 @@ Route::middleware('guest:customer')->group(function () {
 });
 
 Route::post('/odhlaseni', [SessionController::class, 'destroy'])
-    ->middleware('auth:customer')
+    ->middleware(['auth:customer', 'customer.session'])
     ->name('logout');
 
 // Reachable by both guests and signed-in customers: the link is what
@@ -34,13 +34,17 @@ Route::get('/overeni-emailu/{token}', [EmailVerificationController::class, 'veri
 // Unlike verify(), there is no token to authenticate the caller here, so
 // this one does require a signed-in customer.
 Route::post('/overeni-emailu/znovu', [EmailVerificationController::class, 'resend'])
-    ->middleware('auth:customer')
+    ->middleware(['auth:customer', 'customer.session'])
     ->name('verify.resend');
 
 // The account area. Every route here requires a signed-in customer — see
 // AccountController for how each write is additionally scoped to the
 // authenticated customer's own rows, never trusting an id from the request.
-Route::middleware('auth:customer')->group(function () {
+// customer.session (Modules\Customers\Http\Middleware\AuthenticateCustomerSession)
+// is what makes a password change here evict every other signed-in session
+// for this customer — see that class's docblock for why Laravel's own
+// AuthenticateSession middleware cannot do this for a non-default guard.
+Route::middleware(['auth:customer', 'customer.session'])->group(function () {
     Route::get('/ucet', [AccountController::class, 'index'])->name('account');
 
     Route::get('/ucet/udaje', [AccountController::class, 'editProfile'])->name('account.profile');

@@ -90,16 +90,27 @@ class CustomerAccountTest extends TestCase
         $response = $this->actingAsCustomer($customer)->get($this->url('/ucet'));
 
         $response->assertOk();
-        $response->assertSee('noindex', false);
+        // Not just the substring "noindex" anywhere on the page — the shop
+        // layout could mention that word in body copy and still pass a
+        // looser assertion. This pins the actual robots meta tag the
+        // account surface depends on to stay out of search results.
+        $response->assertSee('<meta name="robots" content="noindex', false);
     }
 
-    public function test_the_overview_renders_for_a_customer_with_no_addresses_and_no_orders(): void
+    public function test_the_overview_shows_a_placeholder_for_a_customer_with_no_order_history_yet(): void
     {
+        // Order history is deliberately absent (AccountController's own
+        // docblock: the orders module does not exist yet). This is what
+        // test_the_overview_renders_for_a_customer_with_no_addresses_and_no_orders
+        // used to stand in for with a bare assertOk() — subsumed by the test
+        // above for "does the page render", and given a real assertion here
+        // instead of being deleted outright.
         $customer = $this->makeCustomer($this->tenant);
 
         $response = $this->actingAsCustomer($customer)->get($this->url('/ucet'));
 
         $response->assertOk();
+        $response->assertSee('Historie objednávek se zobrazí po dokončení modulu objednávek.');
     }
 
     public function test_the_overview_shows_only_the_signed_in_customers_own_name(): void
@@ -205,6 +216,67 @@ class CustomerAccountTest extends TestCase
 
         $fresh = app(TenantContext::class)->runAs($this->tenant, fn () => $customer->fresh());
         $this->assertTrue(Hash::check('noveheslo123', $fresh->password));
+    }
+
+    /**
+     * The other password-change path AuthenticateCustomerSession protects —
+     * see the identical scenario against the reset flow in
+     * CustomerPasswordResetTest::test_completing_a_password_reset_evicts_a_session_that_was_already_signed_in()
+     * for why this cannot be Laravel's own logoutOtherDevices() +
+     * AuthenticateSession middleware.
+     */
+    public function test_changing_the_password_from_the_account_page_evicts_a_session_that_was_already_signed_in(): void
+    {
+        $this->makeCustomer($this->tenant, [
+            'email' => 'jan@example.test',
+            'password' => Hash::make('puvodniheslo'),
+        ]);
+
+        $cookieName = config('session.cookie');
+
+        // The hijacked session: a real login, then one authenticated request
+        // so the eviction middleware has a password hash recorded for this
+        // session to compare against once the change below rewrites it.
+        $this->post($this->url('/prihlaseni'), [
+            'email' => 'jan@example.test',
+            'password' => 'puvodniheslo',
+        ])->assertRedirect($this->url('/ucet'));
+        $this->get($this->url('/ucet'))->assertOk();
+
+        $hijackedSessionId = $this->app['session']->getId();
+
+        // A fresh browser from here on. See the identical reasoning in
+        // CustomerPasswordResetTest for why the guard cache has to be
+        // dropped explicitly.
+        $this->app['session']->flush();
+        Auth::forgetGuards();
+
+        // The legitimate owner, on a different, currently signed-in device,
+        // changes their own password.
+        $this->post($this->url('/prihlaseni'), [
+            'email' => 'jan@example.test',
+            'password' => 'puvodniheslo',
+        ])->assertRedirect($this->url('/ucet'));
+        $this->get($this->url('/ucet'))->assertOk();
+
+        $this->put($this->url('/ucet/udaje'), [
+            'first_name' => 'Jan',
+            'last_name' => 'Novák',
+            'current_password' => 'puvodniheslo',
+            'password' => 'noveheslo123',
+            'password_confirmation' => 'noveheslo123',
+        ])->assertRedirect($this->url('/ucet/udaje'));
+
+        $this->app['session']->flush();
+        Auth::forgetGuards();
+
+        // The hijacked session presents its old cookie again. Its stored
+        // password hash no longer matches, so it must be treated as a guest.
+        $response = $this->withCookie($cookieName, $hijackedSessionId)
+            ->get($this->url('/ucet'));
+
+        $response->assertRedirect($this->url('/prihlaseni'));
+        $this->assertFalse(Auth::guard('customer')->check());
     }
 
     public function test_the_addresses_page_lists_only_the_customers_own_addresses(): void

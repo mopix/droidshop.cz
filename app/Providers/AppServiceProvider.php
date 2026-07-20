@@ -2,6 +2,8 @@
 
 namespace App\Providers;
 
+use App\Core\Customers\Contracts\CustomerIdentity;
+use App\Core\Customers\NullCustomerIdentity;
 use App\Core\Limits\LimitsService;
 use App\Core\Mail\Contracts\MailService;
 use App\Core\Mail\MailLimitCounter;
@@ -26,6 +28,16 @@ class AppServiceProvider extends ServiceProvider
             MailService::class,
             QueuedMailService::class,
         );
+
+        // The kernel's own default for a contract a module owns. Module
+        // providers register (and, per ModuleServiceProvider, boot) after
+        // this provider's register() phase has already run, so
+        // Modules\Customers\Providers\ModuleProvider's own bind() simply
+        // overwrites this one when the module is part of the deploy — last
+        // bind() wins in the container. Without this default, resolving
+        // CustomerIdentity on a deploy without the module throws instead of
+        // answering "no customer", which is what the contract promises.
+        $this->app->bind(CustomerIdentity::class, NullCustomerIdentity::class);
     }
 
     /**

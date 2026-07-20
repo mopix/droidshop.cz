@@ -74,6 +74,26 @@ $app = Application::configure(basePath: dirname(__DIR__))
                 ? route('platform.login')
                 : route('login');
         });
+
+        // The mirror image of the guest redirect above: Laravel's `guest`
+        // middleware (RedirectIfAuthenticated) defaults to route('dashboard')
+        // for anyone already authenticated — a staff-only Inertia page. Left
+        // at that default, a signed-in customer opening /prihlaseni or
+        // /registrace (guest:customer) would be bounced there, fail the
+        // dashboard's own `auth` (web guard) check, and land on the tenant
+        // staff login instead — confusing at best, and on a shop with no
+        // staff account handy, a dead end. Same per-guard read as
+        // redirectGuestsTo: gathered route middleware, not path or name, so
+        // it stays correct for any future guest:* group.
+        $middleware->redirectUsersTo(function ($request) {
+            $routeMiddleware = $request->route()?->gatherMiddleware() ?? [];
+
+            if (in_array('guest:customer', $routeMiddleware, true)) {
+                return route('storefront.customers.account');
+            }
+
+            return route('dashboard');
+        });
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         // Renamed slugs keep answering (spec §15.3). Hung off the 404 rather

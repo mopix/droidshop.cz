@@ -36,6 +36,20 @@ class LoginRequest extends FormRequest
     }
 
     /**
+     * Normalised before validation, not just before the credentials query
+     * below: stored addresses are lowercased on write (CustomerRegistrar),
+     * so matching them here by construction rather than by relying on the
+     * database collation being case-insensitive is what makes "jAn@..."
+     * authenticate against a row stored as "jan@...".
+     */
+    protected function prepareForValidation(): void
+    {
+        if ($this->has('email')) {
+            $this->merge(['email' => Str::lower((string) $this->string('email'))]);
+        }
+    }
+
+    /**
      * @return array<string, mixed>
      */
     public function rules(): array

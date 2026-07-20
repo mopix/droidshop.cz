@@ -30,6 +30,16 @@
                     <button type="submit" class="rounded bg-slate-900 px-4 py-2 text-white">Hledat</button>
                 </div>
             </form>
+
+            @if ($customerAreaEnabled)
+                <nav aria-label="Účet zákazníka" class="text-sm">
+                    @if ($signedInCustomer)
+                        <a href="{{ route('storefront.customers.account') }}" class="hover:underline">Můj účet</a>
+                    @else
+                        <a href="{{ route('storefront.customers.login') }}" class="hover:underline">Přihlásit se</a>
+                    @endif
+                </nav>
+            @endif
         </div>
 
         @if ($navCategories->isNotEmpty())

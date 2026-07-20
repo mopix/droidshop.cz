@@ -84,11 +84,15 @@ class PasswordResetController
 
     public function update(UpdatePasswordRequest $request, CustomerTokens $tokens): RedirectResponse
     {
+        $request->ensureIsNotRateLimited();
+
         $email = Str::lower((string) $request->string('email'));
 
         $consumed = $tokens->consume($email, CustomerTokens::PASSWORD_RESET, (string) $request->string('token'));
 
         if (! $consumed) {
+            $request->hit();
+
             // One message for every failure mode (wrong, expired, reused or
             // foreign-tenant token): a different answer would tell an
             // attacker which of those it was.
@@ -98,11 +102,15 @@ class PasswordResetController
         $customer = Customer::where('email', $email)->first();
 
         if ($customer === null) {
+            $request->hit();
+
             // The token was genuinely valid and scoped to this tenant, but
             // the account it belonged to is gone (e.g. GDPR erasure between
             // issuing and consuming the token). Same message either way.
             throw ValidationException::withMessages(['email' => self::GENERIC_FAILURE]);
         }
+
+        $request->clearRateLimit();
 
         // The model casts password to hashed, so the plain value never lands
         // in the column as-is.

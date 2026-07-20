@@ -52,7 +52,10 @@ class CustomerAuthTest extends TestCase
         // with JavaScript switched off.
         $response->assertSee('<form', false);
         $response->assertSee('name="email"', false);
-        $response->assertSee('noindex', false);
+        // Not just the substring "noindex" anywhere on the page — pins the
+        // actual robots meta tag rather than any incidental mention of the
+        // word in the rendered layout.
+        $response->assertSee('<meta name="robots" content="noindex', false);
     }
 
     public function test_registering_creates_a_customer_and_logs_them_in(): void
@@ -234,6 +237,57 @@ class CustomerAuthTest extends TestCase
 
         $response->assertRedirect('http://shop2.droidshop/ucet');
         $this->assertTrue(Auth::guard('customer')->check());
+    }
+
+    /**
+     * Laravel's `guest` middleware (RedirectIfAuthenticated) defaults to
+     * route('dashboard') for anyone already authenticated — a staff-only
+     * Inertia page behind the 'web' guard. Left at that default, a
+     * signed-in customer would be bounced there, fail the dashboard's own
+     * auth check, and land on the tenant staff login instead of anywhere
+     * useful. See bootstrap/app.php's redirectUsersTo() for the fix.
+     */
+    public function test_a_signed_in_customer_visiting_login_is_redirected_to_their_own_account_not_the_staff_dashboard(): void
+    {
+        $customer = $this->makeCustomer($this->tenant);
+
+        $response = $this->actingAsCustomer($customer)->get($this->url('/prihlaseni'));
+
+        $response->assertRedirect($this->url('/ucet'));
+    }
+
+    public function test_the_shop_header_links_to_login_for_a_guest(): void
+    {
+        // Without a link into it, the customer area (registration, login,
+        // /ucet) is unreachable by navigation — nothing else on the
+        // storefront points here.
+        $response = $this->get($this->url('/prihlaseni'));
+
+        $response->assertOk();
+        $response->assertSee('href="'.$this->url('/prihlaseni').'"', false);
+    }
+
+    public function test_the_shop_header_links_to_the_account_for_a_signed_in_customer(): void
+    {
+        $customer = $this->makeCustomer($this->tenant);
+
+        $response = $this->actingAsCustomer($customer)->get($this->url('/ucet'));
+
+        $response->assertOk();
+        $response->assertSee('href="'.$this->url('/ucet').'"', false);
+    }
+
+    public function test_the_shop_header_has_no_customer_link_when_the_module_is_not_active(): void
+    {
+        $tenant = Tenant::factory()->withDomain('shop3.droidshop')->create(['name' => 'Shop Three']);
+        // Deliberately customers-less: only the theme itself.
+        $this->activateModule($tenant, 'storefront');
+
+        $response = $this->get('http://shop3.droidshop/');
+
+        $response->assertOk();
+        $response->assertDontSee('href="http://shop3.droidshop/prihlaseni"', false);
+        $response->assertDontSee('href="http://shop3.droidshop/ucet"', false);
     }
 
     public function test_logging_out_ends_the_session(): void
