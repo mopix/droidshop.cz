@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Core\Mail\MailKind;
 use App\Core\Tenancy\BelongsToTenant;
 use Illuminate\Database\Eloquent\Model;
 
@@ -30,6 +31,7 @@ class MailMessage extends Model
     {
         return [
             'recipients' => 'array',
+            'kind' => MailKind::class,
             'queued_at' => 'datetime',
             'sent_at' => 'datetime',
         ];

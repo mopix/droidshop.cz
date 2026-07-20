@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Core\Mail;
 
+use App\Core\Mail\MailKind;
 use App\Core\Tenancy\TenantContext;
 use App\Models\MailMessage;
 use App\Models\Tenant;
@@ -23,6 +24,7 @@ class MailIsolationTest extends TestCase
             'mailable' => 'App\\Mail\\Example',
             'recipients' => ['a@example.test'],
             'subject' => 'Pro A',
+            'kind' => MailKind::Transactional,
             'status' => MailMessage::STATUS_QUEUED,
             'queued_at' => now(),
         ]));
@@ -31,6 +33,7 @@ class MailIsolationTest extends TestCase
             'mailable' => 'App\\Mail\\Example',
             'recipients' => ['b@example.test'],
             'subject' => 'Pro B',
+            'kind' => MailKind::Transactional,
             'status' => MailMessage::STATUS_QUEUED,
             'queued_at' => now(),
         ]));
@@ -48,6 +51,7 @@ class MailIsolationTest extends TestCase
             'mailable' => 'App\\Mail\\Example',
             'recipients' => ['a@example.test'],
             'subject' => 'Test',
+            'kind' => MailKind::Transactional,
             'status' => MailMessage::STATUS_QUEUED,
             'queued_at' => now(),
         ]));

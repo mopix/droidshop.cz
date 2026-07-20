@@ -40,9 +40,10 @@ class AppServiceProvider extends ServiceProvider
         $this->app->make(LimitsService::class)
             ->registerCounter($this->app->make(StorageLimitCounter::class));
 
-        // The emails_month counter closes the gap left when MailService
-        // shipped without a limit: until now, e-mail usage always read as
-        // zero in the superadmin tenant detail.
+        // The emails_month counter is what lets LimitsService answer plan
+        // questions about mail: it counts queued and sent messages logged
+        // this calendar month (see MailLimitCounter's docblock for why
+        // queued counts too, and why failed does not).
         $this->app->make(LimitsService::class)
             ->registerCounter($this->app->make(MailLimitCounter::class));
     }

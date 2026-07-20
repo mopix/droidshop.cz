@@ -3,6 +3,7 @@
 namespace App\Core\Mail\Contracts;
 
 use App\Core\Mail\Exceptions\MailLimitReached;
+use App\Core\Mail\MailKind;
 use App\Core\Tenancy\Exceptions\MissingTenantContext;
 use App\Models\MailMessage;
 use App\Models\Tenant;
@@ -25,10 +26,15 @@ interface MailService
      * platform calls it once here to read the subject for the log entry,
      * and again later when the queued job actually delivers it.
      *
+     * $kind has no default on purpose: a call site must always say whether
+     * this is transactional mail (order confirmations, password resets —
+     * never blocked by the monthly cap) or bulk mail (newsletters, marketing
+     * — the thing the cap exists to constrain). See MailKind's docblock.
+     *
      * @param  string|array<int, string>  $to
      *
      * @throws MissingTenantContext when no tenant is given or current
-     * @throws MailLimitReached when the plan's monthly cap is exhausted
+     * @throws MailLimitReached when $kind is Bulk and the plan's monthly cap is exhausted
      */
-    public function send(Mailable $mailable, string|array $to, ?Tenant $tenant = null): MailMessage;
+    public function send(Mailable $mailable, string|array $to, MailKind $kind, ?Tenant $tenant = null): MailMessage;
 }
