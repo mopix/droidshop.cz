@@ -71,12 +71,20 @@ class OrderWorkflow
     ): void {
         $this->transition($order, 'fulfillment_status', 'fulfillment', self::FULFILLMENT_TRANSITIONS, $to, $actorType, $actorId, $note);
 
-        // Dispatched after transition()'s DB::transaction has committed (auto
-        // invoicing, wave 1.5 Task 4), so a listener reading the order sees the
-        // shipped state. Every call here is a genuine move — shipped is not
-        // idempotent like payment, a repeat throws IllegalTransition above.
+        // Deferred to DB::afterCommit (auto invoicing, wave 1.5 Task 4), not
+        // dispatched inline: transition()'s DB::transaction() is not
+        // necessarily the outermost one — a caller (e.g. a future admin
+        // action wrapping several transitions) may already hold one open, in
+        // which case this call is only a savepoint and Event::dispatch() here
+        // would fire while the real write can still roll back. afterCommit
+        // runs the callback once the outermost transaction actually commits,
+        // or immediately if none is open, so a listener reading the order
+        // (auto-issuing an invoice, sending mail) always sees durably
+        // committed, un-rollback-able state. Every call here is a genuine
+        // move — shipped is not idempotent like payment, a repeat throws
+        // IllegalTransition above.
         if ($to === Order::FULFILLMENT_SHIPPED) {
-            Event::dispatch(new OrderShipped($order));
+            DB::afterCommit(fn () => Event::dispatch(new OrderShipped($order)));
         }
     }
 
@@ -106,11 +114,19 @@ class OrderWorkflow
 
         $this->transition($order, 'payment_status', 'payment', self::PAYMENT_TRANSITIONS, $to, $actorType, $actorId, $note);
 
-        // Dispatched after transition()'s DB::transaction has committed (auto
-        // invoicing, wave 1.5 Task 4). The early return above already filtered
-        // out the idempotent no-op, so every dispatch here is a real move.
+        // Deferred to DB::afterCommit (auto invoicing, wave 1.5 Task 4), not
+        // dispatched inline: EloquentOrderSettlement::settlePaid() already
+        // wraps this whole call in its own outer DB::transaction(), so
+        // transition()'s inner transaction is only a savepoint — an inline
+        // Event::dispatch() here would run while the outer transaction is
+        // still open and could still roll back. afterCommit runs the callback
+        // once the outermost transaction actually commits, or immediately if
+        // none is open, so a listener (auto-issuing an invoice, which itself
+        // writes and dispatches a PDF job) only ever sees durably committed
+        // state. The early return above already filtered out the idempotent
+        // no-op, so every dispatch here is a real move.
         if ($to === Order::PAYMENT_PAID) {
-            Event::dispatch(new OrderPaymentSettled($order));
+            DB::afterCommit(fn () => Event::dispatch(new OrderPaymentSettled($order)));
         }
 
         return true;

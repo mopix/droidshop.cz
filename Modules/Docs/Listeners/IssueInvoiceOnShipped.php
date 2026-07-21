@@ -10,9 +10,10 @@ use Throwable;
 /**
  * Auto-issues the invoice the moment an order is marked shipped, for tenants
  * who chose to invoice on dispatch rather than on payment (e.g. cash on
- * delivery, where shipped happens well before paid). Runs after the
- * fulfillment transition's transaction has committed, so the order it reads
- * is the shipped one.
+ * delivery, where shipped happens well before paid). OrderShipped is
+ * dispatched via DB::afterCommit against the outermost transaction, so this
+ * handler only ever runs once that real commit has happened — the order it
+ * reads is durably the shipped one, never a state that could still roll back.
  *
  * InvoiceIssuer already guards module activity (ShopModules) and idempotency
  * ((order, type) lookup) — this listener does neither, it only decides whether

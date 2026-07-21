@@ -9,9 +9,12 @@ use Throwable;
 
 /**
  * Auto-issues the invoice the moment an order is settled paid, when the tenant
- * has left auto_issue_on at its default. Runs after the settlement transaction
- * has committed (the event fires post-commit), so the order it reads is the
- * paid one.
+ * has left auto_issue_on at its default. OrderPaymentSettled is dispatched via
+ * DB::afterCommit against the outermost transaction (settlePaid() wraps the
+ * transition in its own transaction, so the transition's own commit is only a
+ * savepoint) — this handler only ever runs once that real commit has
+ * happened, so the order it reads is durably the paid one, never a state that
+ * could still roll back.
  *
  * InvoiceIssuer already guards module activity (ShopModules) and idempotency
  * ((order, type) lookup) — this listener does neither, it only decides whether

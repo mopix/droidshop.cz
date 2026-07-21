@@ -11,6 +11,7 @@ use App\Core\Tax\TaxRates;
 use App\Core\Tenancy\TenantContext;
 use App\Models\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Modules\Checkout\Models\Cart;
 use Modules\Docs\Models\Document;
 use Modules\Orders\Models\Order;
@@ -175,5 +176,45 @@ class AutoIssueTest extends TestCase
         $this->settlePaid($order->uuid);
 
         $this->assertSame(1, $this->documentCount($order->id));
+    }
+
+    /**
+     * Regression (Task 4 review): EloquentOrderSettlement::settlePaid()
+     * already wraps OrderWorkflow's own transition() transaction inside its
+     * own outer DB::transaction() — a real caller (a payment webhook) hits
+     * exactly this nesting. This test adds one more transaction on top, on
+     * purpose, to reproduce that shape from the caller's side: if the event
+     * were dispatched inline rather than deferred via DB::afterCommit, the
+     * listener would run — and issue the invoice — while this test's own
+     * wrapping transaction is still open; a later rollback of that
+     * transaction could not un-render a PDF or un-send a mail already sent by
+     * the listener. Asserting 0 documents inside the transaction and 1 after
+     * it closes proves the dispatch waits for the real commit.
+     *
+     * Tenant context is held open across the whole transaction (not just the
+     * settlePaid() call), matching how a real request/job keeps a tenant
+     * current for its entire lifetime: the deferred listener fires exactly
+     * when this test's DB::transaction() call returns, so it needs the tenant
+     * to still be current at that point, precisely as it would be in
+     * production.
+     */
+    public function test_the_invoice_is_not_issued_until_the_outermost_transaction_commits(): void
+    {
+        $this->context->runAs($this->tenant, fn () => app(SettingsService::class)->set('docs', 'auto_issue_on', 'paid'));
+        $order = $this->placeUnpaidOrder();
+
+        $this->context->runAs($this->tenant, function () use ($order): void {
+            DB::transaction(function () use ($order): void {
+                app(OrderSettlement::class)->settlePaid($order->uuid, 'test');
+
+                // Still inside the open outer transaction: the deferred
+                // listener has not run yet, so no invoice exists.
+                $this->assertSame(0, Document::query()->where('order_id', $order->id)->count());
+            });
+
+            // The outer transaction has now closed for real: the deferred
+            // OrderPaymentSettled listener has run and issued the invoice.
+            $this->assertSame(1, Document::query()->where('order_id', $order->id)->count());
+        });
     }
 }
