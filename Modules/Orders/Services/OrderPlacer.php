@@ -449,6 +449,10 @@ class OrderPlacer implements OrderPlacement
             'fee' => $charged->amount,
             'tax_rate_id' => $option->taxRateId(),
             'currency' => $charged->currency,
+            // The provider key (e.g. 'comgate') so the confirmation can name
+            // the gateway to send the shopper to. Not a credential — it is
+            // just which kind of method this is (spec §16.5).
+            'provider' => $option->provider(),
         ];
     }
 
@@ -468,11 +472,14 @@ class OrderPlacer implements OrderPlacement
 
     private function confirmation(Order $order, PlacementRequest $request): PlacedOrder
     {
-        // The payment provider a shopper is sent to next, or null when the
-        // method needs no further step. Every method in this wave is offline
-        // (cash on delivery, bank transfer), so there is no gateway to name —
-        // an online gateway module (wave 1.4) is what fills this in.
-        return new class($order->uuid, $order->number, $order->total, null) implements PlacedOrder
+        // The chosen method's provider key, carried on the payment snapshot.
+        // Whether it actually needs a gateway redirect is not decided here —
+        // the checkout asks the PaymentGatewayRegistry, which knows an online
+        // provider ('comgate') from an offline one (cash on delivery, bank
+        // transfer resolve to no driver and fall through to the thank-you).
+        $provider = $order->payment_snapshot['provider'] ?? null;
+
+        return new class($order->uuid, $order->number, $order->total, $provider) implements PlacedOrder
         {
             public function __construct(
                 private readonly string $uuid,

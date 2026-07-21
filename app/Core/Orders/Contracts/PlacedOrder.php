@@ -21,9 +21,11 @@ interface PlacedOrder
     public function total(): Money;
 
     /**
-     * The payment provider the shopper must be sent to next (e.g. a gateway
-     * key), or null when the chosen method needs no further step (cash on
-     * delivery, bank transfer).
+     * The chosen method's provider key (e.g. 'comgate'), or null when no
+     * payment method was selected. Whether it needs a gateway redirect is the
+     * caller's question for PaymentGatewayRegistry — an offline provider
+     * (cash on delivery, bank transfer) resolves to no driver and the shopper
+     * goes straight to the thank-you page; an online one is redirected first.
      */
     public function paymentProvider(): ?string;
 }

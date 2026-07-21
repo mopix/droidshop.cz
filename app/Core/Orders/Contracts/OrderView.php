@@ -35,6 +35,15 @@ interface OrderView
 
     public function orderPaymentStatus(): string;
 
+    /**
+     * The gateway's transaction reference stored at payment initiation, or
+     * null for an order that never went to an online gateway. The payment
+     * return and webhook look up the order by uuid and re-verify THIS stored
+     * reference — never a reference from the request — so a paid transaction
+     * cannot be pointed at someone else's order.
+     */
+    public function orderPaymentReference(): ?string;
+
     public function orderItemsTotal(): Money;
 
     public function orderShippingTotal(): Money;

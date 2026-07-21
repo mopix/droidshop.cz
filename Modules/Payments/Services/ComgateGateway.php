@@ -6,10 +6,10 @@ use App\Core\Money\Money;
 use App\Core\Orders\Contracts\OrderBook;
 use App\Core\Payments\Contracts\PaymentGateway;
 use App\Core\Payments\Contracts\PaymentInitiation;
+use App\Core\Payments\Exceptions\GatewayError;
 use App\Core\Payments\PaymentResult;
 use App\Core\Payments\PaymentStatus;
 use Illuminate\Support\Facades\Http;
-use Modules\Payments\Exceptions\GatewayError;
 use Modules\Payments\Support\GatewayInitiation;
 use Modules\Shipping\Models\PaymentMethod;
 

@@ -1,6 +1,6 @@
 <?php
 
-namespace Modules\Payments\Exceptions;
+namespace App\Core\Payments\Exceptions;
 
 use RuntimeException;
 
@@ -8,8 +8,12 @@ use RuntimeException;
  * A gateway call could not be completed — transport failure, a non-zero
  * protocol code, or a response missing fields we need. Distinct from a payment
  * simply not being paid yet (that is a PaymentResult, not an error): this is
- * the gateway or the network misbehaving, and the checkout surfaces it as
- * "payment could not be started, try again" without losing the order.
+ * the gateway or the network misbehaving.
+ *
+ * Lives in the kernel so callers outside the payments module (the checkout,
+ * settling a payment) can catch "the gateway failed" without importing a
+ * module-internal class — the checkout surfaces it as "payment could not be
+ * started, try again" and keeps the already-placed order intact.
  */
 final class GatewayError extends RuntimeException
 {

@@ -12,8 +12,10 @@ use App\Core\Mail\MailLimitCounter;
 use App\Core\Mail\QueuedMailService;
 use App\Core\Orders\Contracts\OrderBook;
 use App\Core\Orders\Contracts\OrderPlacement;
+use App\Core\Orders\Contracts\OrderSettlement;
 use App\Core\Orders\NullOrderBook;
 use App\Core\Orders\NullOrderPlacement;
+use App\Core\Orders\NullOrderSettlement;
 use App\Core\Payments\Contracts\PaymentGatewayRegistry;
 use App\Core\Payments\NullPaymentGatewayRegistry;
 use App\Core\Shipping\Contracts\PaymentOptions;
@@ -72,6 +74,7 @@ class AppServiceProvider extends ServiceProvider
         // throws rather than pretending to succeed — see its own docblock.
         $this->app->bind(OrderPlacement::class, NullOrderPlacement::class);
         $this->app->bind(OrderBook::class, NullOrderBook::class);
+        $this->app->bind(OrderSettlement::class, NullOrderSettlement::class);
 
         // Same pattern for the payment gateway registry: a guest-safe default
         // so app(PaymentGatewayRegistry::class) resolves on a deploy without
