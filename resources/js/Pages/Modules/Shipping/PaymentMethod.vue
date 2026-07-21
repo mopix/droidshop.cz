@@ -15,6 +15,11 @@ export type PaymentMethodRow = {
   /** Only the masked tail ever reaches the browser — never the full account. */
   account_masked: string | null
   account_set: boolean
+  /** Comgate merchant id — not a secret, handed back in the clear. */
+  comgate_merchant: string | null
+  comgate_test: boolean
+  /** The Comgate secret is a credential: only its presence is exposed. */
+  secret_set: boolean
 }
 
 type TaxRate = { id: number; name: string; percent: number }
@@ -30,6 +35,7 @@ const emit = defineEmits<{ (e: 'close'): void }>()
 
 const PROVIDER_COD = 'cod'
 const PROVIDER_BANK_TRANSFER = 'bank_transfer'
+const PROVIDER_COMGATE = 'comgate'
 
 const build = () => ({
   provider: props.method?.provider ?? PROVIDER_COD,
@@ -40,6 +46,11 @@ const build = () => ({
   is_active: props.method?.is_active ?? true,
   // The account is a credential: it is never pre-filled, only entered anew.
   account: '',
+  // Comgate. merchant is not secret and is pre-filled; secret is a credential
+  // handled exactly like account (empty = keep the stored one).
+  merchant: props.method?.comgate_merchant ?? '',
+  secret: '',
+  test: props.method?.comgate_test ?? false,
 })
 
 const form = useForm(build())
@@ -55,6 +66,13 @@ form.transform((data) => {
     delete out.account
   }
 
+  // Same keep-on-blank rule for the Comgate secret: an untouched field is
+  // dropped so the server keeps the stored credential. On create it lets the
+  // required rule fire.
+  if (typeof out.secret !== 'string' || (out.secret as string).trim() === '') {
+    delete out.secret
+  }
+
   return out
 })
 
@@ -62,6 +80,9 @@ form.transform((data) => {
 // account already set, it stays hidden behind a "změnit" affordance so the
 // admin does not have to retype a secret they cannot see.
 const changingAccount = ref(false)
+// The Comgate secret behaves like the account: hidden behind a "změnit"
+// affordance once one is stored, so the admin need not retype what they cannot see.
+const changingSecret = ref(false)
 
 watch(
   () => props.show,
@@ -71,14 +92,20 @@ watch(
     Object.assign(form, build())
     form.clearErrors()
     changingAccount.value = false
+    changingSecret.value = false
   },
 )
 
 const isBankTransfer = computed(() => form.provider === PROVIDER_BANK_TRANSFER)
+const isComgate = computed(() => form.provider === PROVIDER_COMGATE)
 const isEdit = computed(() => props.method !== null)
 const accountAlreadySet = computed(() => props.method?.account_set ?? false)
 const showAccountInput = computed(
   () => isBankTransfer.value && (!accountAlreadySet.value || changingAccount.value),
+)
+const secretAlreadySet = computed(() => props.method?.secret_set ?? false)
+const showSecretInput = computed(
+  () => isComgate.value && (!secretAlreadySet.value || changingSecret.value),
 )
 const titleId = 'payment-form-title'
 
@@ -118,6 +145,7 @@ const submit = () => {
           >
             <option :value="PROVIDER_COD">Dobírka</option>
             <option :value="PROVIDER_BANK_TRANSFER">Bankovní převod (QR)</option>
+            <option :value="PROVIDER_COMGATE">Platební karta (Comgate)</option>
           </select>
           <p v-if="form.errors.provider" class="mt-1 text-sm text-red-700">{{ form.errors.provider }}</p>
         </div>
@@ -251,6 +279,85 @@ const submit = () => {
             Ponechat stávající účet
           </button>
         </div>
+      </fieldset>
+
+      <!-- Comgate card gateway. The merchant id is not secret and is shown; the
+           secret is a credential, stored encrypted and never handed back —
+           changing it means typing it again. -->
+      <fieldset v-show="isComgate" class="mt-6 rounded-md border border-gray-200 p-4">
+        <legend class="px-1 text-sm font-medium text-gray-700">Nastavení brány Comgate</legend>
+
+        <div>
+          <label for="pay-merchant" class="block text-sm font-medium text-gray-700">
+            Comgate merchant ID
+          </label>
+          <input
+            id="pay-merchant"
+            v-model="form.merchant"
+            type="text"
+            maxlength="64"
+            autocomplete="off"
+            :required="isComgate"
+            class="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-gray-900 focus:ring-gray-900"
+            aria-describedby="pay-merchant-hint"
+            :aria-invalid="form.errors.merchant ? 'true' : undefined"
+          />
+          <p id="pay-merchant-hint" class="mt-1 text-sm text-gray-600">
+            Najdete v administraci Comgate. Není tajné.
+          </p>
+          <p v-if="form.errors.merchant" class="mt-1 text-sm text-red-700">{{ form.errors.merchant }}</p>
+        </div>
+
+        <div class="mt-4">
+          <div v-if="secretAlreadySet && !changingSecret" class="flex flex-wrap items-center gap-3">
+            <p class="text-sm text-gray-700">Comgate secret je uložen.</p>
+            <button
+              type="button"
+              class="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-900"
+              @click="changingSecret = true"
+            >
+              Změnit secret
+            </button>
+          </div>
+
+          <div v-else-if="showSecretInput">
+            <label for="pay-secret" class="block text-sm font-medium text-gray-700">Comgate secret</label>
+            <input
+              id="pay-secret"
+              v-model="form.secret"
+              type="password"
+              maxlength="128"
+              autocomplete="off"
+              :required="isComgate && !secretAlreadySet"
+              class="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-gray-900 focus:ring-gray-900"
+              aria-describedby="pay-secret-hint"
+              :aria-invalid="form.errors.secret ? 'true' : undefined"
+            />
+            <p id="pay-secret-hint" class="mt-1 text-sm text-gray-600">
+              <template v-if="secretAlreadySet">Ponechte prázdné = beze změny.</template>
+              <template v-else>Tajný klíč pro komunikaci s bránou. Ukládá se šifrovaně a zpět se nezobrazí.</template>
+            </p>
+            <p v-if="form.errors.secret" class="mt-1 text-sm text-red-700">{{ form.errors.secret }}</p>
+
+            <button
+              v-if="secretAlreadySet"
+              type="button"
+              class="mt-2 text-sm font-medium text-gray-700 underline hover:no-underline focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-900"
+              @click="((changingSecret = false), (form.secret = ''), form.clearErrors('secret'))"
+            >
+              Ponechat stávající secret
+            </button>
+          </div>
+        </div>
+
+        <label class="mt-4 flex items-center gap-2 text-sm text-gray-800">
+          <input
+            v-model="form.test"
+            type="checkbox"
+            class="rounded border-gray-300 text-gray-900 focus:ring-gray-900"
+          />
+          Testovací režim
+        </label>
       </fieldset>
 
       <div class="mt-6 flex justify-end gap-3">

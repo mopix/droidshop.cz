@@ -37,6 +37,7 @@ const FULFILLMENT_LABELS: Record<string, string> = {
 const PAYMENT_LABELS: Record<string, string> = {
   unpaid: 'Nezaplaceno',
   paid: 'Zaplaceno',
+  failed: 'Platba selhala',
   refunded: 'Vráceno',
 }
 
@@ -67,6 +68,7 @@ const badgeClass: Record<string, string> = {
   cancelled: 'bg-gray-100 text-gray-800 ring-gray-500/40',
   unpaid: 'bg-amber-50 text-amber-900 ring-amber-700/40',
   paid: 'bg-emerald-50 text-emerald-900 ring-emerald-700/40',
+  failed: 'bg-red-50 text-red-900 ring-red-700/40',
   refunded: 'bg-gray-100 text-gray-800 ring-gray-500/40',
 }
 
