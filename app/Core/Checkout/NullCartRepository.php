@@ -3,8 +3,8 @@
 namespace App\Core\Checkout;
 
 use App\Core\Checkout\Contracts\CartRepository;
+use App\Core\Checkout\Contracts\CartShape;
 use Illuminate\Support\Str;
-use Modules\Checkout\Models\Cart;
 
 /**
  * The kernel's own answer to CartRepository, bound by default
@@ -14,37 +14,38 @@ use Modules\Checkout\Models\Cart;
  *
  * Every shop looks like it has an empty, unsaved cart through this
  * implementation: forToken() never touches the database, and every mutator
- * is a no-op. That is what makes app(CartRepository::class) safe to call
- * unconditionally instead of throwing a container resolution error on a
- * deploy that never installed the module at all — the storefront can render
- * a basket page even though nothing about it can be persisted.
+ * is a no-op. Crucially, forToken() returns TransientCart — a plain value
+ * object, not Modules\Checkout\Models\Cart — because this class must resolve
+ * on a deploy that does not have the checkout module's code at all;
+ * referencing the module's Eloquent model here would fatal with a
+ * missing-class error the moment it were touched. That is what makes
+ * app(CartRepository::class) safe to call unconditionally instead of
+ * throwing a container resolution error — the storefront can render a
+ * basket page even though nothing about it can be persisted.
  */
 final class NullCartRepository implements CartRepository
 {
-    public function forToken(?string $token): Cart
+    public function forToken(?string $token): CartShape
     {
-        return new Cart([
-            'token' => Str::random(40),
-            'expires_at' => now()->addDays(14),
-        ]);
+        return new TransientCart(Str::random(40), now()->addDays(14));
     }
 
-    public function addItem(Cart $cart, int $productId, int $quantity): void
+    public function addItem(CartShape $cart, int $productId, int $quantity): void
     {
         // No-op: there is nowhere to persist a line item.
     }
 
-    public function setQuantity(Cart $cart, int $itemId, int $quantity): void
+    public function setQuantity(CartShape $cart, int $itemId, int $quantity): void
     {
         // No-op.
     }
 
-    public function removeItem(Cart $cart, int $itemId): void
+    public function removeItem(CartShape $cart, int $itemId): void
     {
         // No-op.
     }
 
-    public function attachToCustomer(Cart $cart, int $customerId): void
+    public function attachToCustomer(CartShape $cart, int $customerId): void
     {
         // No-op.
     }

@@ -2,20 +2,17 @@
 
 namespace App\Core\Checkout\Contracts;
 
-use Modules\Checkout\Models\Cart;
-
 /**
  * How the rest of the platform reads and mutates a shopper's cart.
  *
- * Unlike the read-only shapes the kernel exposes for shipping and payment
- * options, the cart is a write-heavy aggregate that storefront controllers
- * and Blade views hold onto for a whole request (`$cart->items`, quantity
- * edits, totals) — so this contract is typed directly against the module's
- * `Cart` model rather than against a kernel-level shape interface. The
+ * Every method is typed against CartShape, not the checkout module's
+ * Eloquent model — the same boundary ProductCatalog keeps against
+ * CatalogProduct and ShippingOptions keeps against ShippingOption. The
  * implementation is bound by the checkout module. When the module is not
  * deployed, or is deactivated for the current tenant, a null implementation
- * hands back an unsaved, in-memory cart so a storefront theme can render an
- * empty basket without a manifest dependency on this module.
+ * hands back a cart that was never persisted so a storefront theme can
+ * render an empty basket without a manifest dependency on this module —
+ * and without ever loading a class the module owns.
  */
 interface CartRepository
 {
@@ -27,7 +24,7 @@ interface CartRepository
      * entirely), always yields a fresh cart rather than an error — the
      * caller's job is to persist whatever token comes back.
      */
-    public function forToken(?string $token): Cart;
+    public function forToken(?string $token): CartShape;
 
     /**
      * Adds a product to the cart, snapshotting today's catalogue price.
@@ -36,17 +33,17 @@ interface CartRepository
      * of creating a second row — one row per product per cart, enforced by
      * `cart_item_unique`.
      */
-    public function addItem(Cart $cart, int $productId, int $quantity): void;
+    public function addItem(CartShape $cart, int $productId, int $quantity): void;
 
     /**
      * Sets a line's quantity. Zero (or less) removes the row.
      */
-    public function setQuantity(Cart $cart, int $itemId, int $quantity): void;
+    public function setQuantity(CartShape $cart, int $itemId, int $quantity): void;
 
-    public function removeItem(Cart $cart, int $itemId): void;
+    public function removeItem(CartShape $cart, int $itemId): void;
 
     /**
      * Links an anonymous cart to a signed-in customer, e.g. after login.
      */
-    public function attachToCustomer(Cart $cart, int $customerId): void;
+    public function attachToCustomer(CartShape $cart, int $customerId): void;
 }

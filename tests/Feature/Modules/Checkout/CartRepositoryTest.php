@@ -65,13 +65,13 @@ class CartRepositoryTest extends TestCase
         $cartA = $this->context->runAs($this->tenant, fn () => $this->repository()->forToken(null));
         $cartB = $this->context->runAs($this->tenant, fn () => $this->repository()->forToken(null));
 
-        $this->assertNotSame($cartA->id, $cartB->id);
-        $this->assertNotSame($cartA->token, $cartB->token);
-        $this->assertSame(40, strlen($cartA->token));
-        $this->assertNotNull($cartA->expires_at);
+        $this->assertNotSame($cartA->cartId(), $cartB->cartId());
+        $this->assertNotSame($cartA->cartToken(), $cartB->cartToken());
+        $this->assertSame(40, strlen($cartA->cartToken()));
+        $this->assertNotNull($cartA->cartExpiresAt());
         $this->assertEqualsWithDelta(
             now()->addDays(14)->timestamp,
-            $cartA->expires_at->timestamp,
+            $cartA->cartExpiresAt()->timestamp,
             5,
         );
     }
@@ -80,9 +80,9 @@ class CartRepositoryTest extends TestCase
     {
         $created = $this->context->runAs($this->tenant, fn () => $this->repository()->forToken(null));
 
-        $found = $this->context->runAs($this->tenant, fn () => $this->repository()->forToken($created->token));
+        $found = $this->context->runAs($this->tenant, fn () => $this->repository()->forToken($created->cartToken()));
 
-        $this->assertSame($created->id, $found->id);
+        $this->assertSame($created->cartId(), $found->cartId());
     }
 
     public function test_a_foreign_tenants_token_does_not_resolve_and_a_new_cart_is_made_instead(): void
@@ -92,10 +92,10 @@ class CartRepositoryTest extends TestCase
 
         $cartA = $this->context->runAs($this->tenant, fn () => $this->repository()->forToken(null));
 
-        $cartB = $this->context->runAs($other, fn () => $this->repository()->forToken($cartA->token));
+        $cartB = $this->context->runAs($other, fn () => $this->repository()->forToken($cartA->cartToken()));
 
-        $this->assertNotSame($cartA->id, $cartB->id);
-        $this->assertNotSame($cartA->token, $cartB->token);
+        $this->assertNotSame($cartA->cartId(), $cartB->cartId());
+        $this->assertNotSame($cartA->cartToken(), $cartB->cartToken());
     }
 
     public function test_add_item_snapshots_the_catalog_price_and_a_second_call_merges_quantity_instead_of_a_new_row(): void
@@ -108,11 +108,13 @@ class CartRepositoryTest extends TestCase
             $this->repository()->addItem($cart, $product->id, 1);
             $this->repository()->addItem($cart, $product->id, 2);
 
-            $cart->refresh();
+            // cartItems() always issues a fresh query (see CartShape's
+            // docblock), so no refresh() is needed to see the merge above.
+            $items = $cart->cartItems();
 
-            $this->assertCount(1, $cart->items);
+            $this->assertCount(1, $items);
 
-            $item = $cart->items->first();
+            $item = $items->first();
             $this->assertSame(3, $item->quantity);
             $this->assertSame(19_900_00, $item->unit_price->amount);
             $this->assertSame('CZK', $item->unit_price->currency);
@@ -126,14 +128,14 @@ class CartRepositoryTest extends TestCase
         $this->context->runAs($this->tenant, function () use ($product) {
             $cart = $this->repository()->forToken(null);
             $this->repository()->addItem($cart, $product->id, 2);
-            $item = $cart->items()->first();
+            $item = $cart->cartItems()->first();
 
             $this->repository()->setQuantity($cart, $item->id, 0);
 
             $this->assertDatabaseMissing('cart_items', ['id' => $item->id]);
 
             $this->repository()->addItem($cart, $product->id, 1);
-            $second = $cart->items()->first();
+            $second = $cart->cartItems()->first();
 
             $this->repository()->removeItem($cart, $second->id);
 
@@ -149,8 +151,8 @@ class CartRepositoryTest extends TestCase
 
         $cart = $this->context->runAs($other, fn () => $this->repository()->forToken(null));
 
-        $this->assertFalse($cart->exists);
-        $this->assertNotNull($cart->token);
+        $this->assertNull($cart->cartId());
+        $this->assertNotNull($cart->cartToken());
         $this->assertDatabaseCount('carts', 0);
     }
 
@@ -159,13 +161,16 @@ class CartRepositoryTest extends TestCase
         // On a deploy without the checkout module the module provider never
         // registers, so the container keeps the kernel's null binding. The
         // module provider always loads from disk in these tests, so we assert
-        // the null class directly rather than trying to unregister it.
+        // the null class directly rather than trying to unregister it. This
+        // must not touch Modules\Checkout\Models\Cart at all — that class is
+        // exactly what a deploy without the module does not have.
         $repository = new NullCartRepository;
 
         $cart = $repository->forToken(null);
 
-        $this->assertFalse($cart->exists);
-        $this->assertNotNull($cart->token);
+        $this->assertNull($cart->cartId());
+        $this->assertNotNull($cart->cartToken());
+        $this->assertTrue($cart->cartItems()->isEmpty());
 
         // No-ops must not throw, even against a cart with no tenant context.
         $repository->addItem($cart, 1, 1);

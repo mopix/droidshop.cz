@@ -4,7 +4,9 @@ namespace Modules\Checkout\Services;
 
 use App\Core\Catalog\Contracts\ProductCatalog;
 use App\Core\Checkout\Contracts\CartRepository;
+use App\Core\Checkout\Contracts\CartShape;
 use Illuminate\Support\Str;
+use LogicException;
 use Modules\Checkout\Models\Cart;
 use Modules\Storefront\Support\ShopModules;
 
@@ -15,6 +17,12 @@ class EloquentCartRepository implements CartRepository
         private readonly ProductCatalog $catalog,
     ) {}
 
+    /**
+     * Narrower than the interface's CartShape return type, which PHP allows
+     * (covariant returns) — this implementation is the only source of a real,
+     * persisted Cart, so callers inside this module may keep depending on
+     * the concrete type instead of re-widening back to the shape.
+     */
     public function forToken(?string $token): Cart
     {
         if (! $this->modules->has('checkout')) {
@@ -41,11 +49,13 @@ class EloquentCartRepository implements CartRepository
         ]);
     }
 
-    public function addItem(Cart $cart, int $productId, int $quantity): void
+    public function addItem(CartShape $cart, int $productId, int $quantity): void
     {
         if (! $this->modules->has('checkout')) {
             return;
         }
+
+        $cart = $this->persisted($cart);
 
         $existing = $cart->items()->where('product_id', $productId)->first();
 
@@ -65,11 +75,13 @@ class EloquentCartRepository implements CartRepository
         ]);
     }
 
-    public function setQuantity(Cart $cart, int $itemId, int $quantity): void
+    public function setQuantity(CartShape $cart, int $itemId, int $quantity): void
     {
         if (! $this->modules->has('checkout')) {
             return;
         }
+
+        $cart = $this->persisted($cart);
 
         $item = $cart->items()->whereKey($itemId)->first();
 
@@ -86,20 +98,24 @@ class EloquentCartRepository implements CartRepository
         $item->update(['quantity' => $quantity]);
     }
 
-    public function removeItem(Cart $cart, int $itemId): void
+    public function removeItem(CartShape $cart, int $itemId): void
     {
         if (! $this->modules->has('checkout')) {
             return;
         }
+
+        $cart = $this->persisted($cart);
 
         $cart->items()->whereKey($itemId)->delete();
     }
 
-    public function attachToCustomer(Cart $cart, int $customerId): void
+    public function attachToCustomer(CartShape $cart, int $customerId): void
     {
         if (! $this->modules->has('checkout')) {
             return;
         }
+
+        $cart = $this->persisted($cart);
 
         $cart->update(['customer_id' => $customerId]);
     }
@@ -110,5 +126,28 @@ class EloquentCartRepository implements CartRepository
             'token' => Str::random(40),
             'expires_at' => now()->addDays(14),
         ]);
+    }
+
+    /**
+     * Narrows the interface's CartShape parameter back to the concrete
+     * model these mutators actually need to write through.
+     *
+     * Every mutator gates on ShopModules::has('checkout') first, so the only
+     * CartShape that can reach this point is one this class's own
+     * forToken() handed out while the gate was open — always a real Cart.
+     * The exception is a defensive backstop against a caller mixing a
+     * TransientCart (from NullCartRepository, or from this class's own gate-
+     * closed path) into an active-module call, not a path any current
+     * caller takes.
+     */
+    private function persisted(CartShape $cart): Cart
+    {
+        if (! $cart instanceof Cart) {
+            throw new LogicException(
+                'CartRepository mutator received a cart that was never persisted by this implementation.'
+            );
+        }
+
+        return $cart;
     }
 }
