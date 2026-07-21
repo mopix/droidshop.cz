@@ -4,6 +4,9 @@ namespace Modules\Orders\Services;
 
 use App\Core\Orders\Exceptions\IllegalTransition;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
+use Modules\Orders\Events\OrderPaymentSettled;
+use Modules\Orders\Events\OrderShipped;
 use Modules\Orders\Models\Order;
 
 /**
@@ -67,6 +70,14 @@ class OrderWorkflow
         ?string $note = null,
     ): void {
         $this->transition($order, 'fulfillment_status', 'fulfillment', self::FULFILLMENT_TRANSITIONS, $to, $actorType, $actorId, $note);
+
+        // Dispatched after transition()'s DB::transaction has committed (auto
+        // invoicing, wave 1.5 Task 4), so a listener reading the order sees the
+        // shipped state. Every call here is a genuine move — shipped is not
+        // idempotent like payment, a repeat throws IllegalTransition above.
+        if ($to === Order::FULFILLMENT_SHIPPED) {
+            Event::dispatch(new OrderShipped($order));
+        }
     }
 
     /**
@@ -94,6 +105,13 @@ class OrderWorkflow
         }
 
         $this->transition($order, 'payment_status', 'payment', self::PAYMENT_TRANSITIONS, $to, $actorType, $actorId, $note);
+
+        // Dispatched after transition()'s DB::transaction has committed (auto
+        // invoicing, wave 1.5 Task 4). The early return above already filtered
+        // out the idempotent no-op, so every dispatch here is a real move.
+        if ($to === Order::PAYMENT_PAID) {
+            Event::dispatch(new OrderPaymentSettled($order));
+        }
 
         return true;
     }
