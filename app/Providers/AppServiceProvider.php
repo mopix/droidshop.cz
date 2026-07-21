@@ -8,6 +8,10 @@ use App\Core\Limits\LimitsService;
 use App\Core\Mail\Contracts\MailService;
 use App\Core\Mail\MailLimitCounter;
 use App\Core\Mail\QueuedMailService;
+use App\Core\Shipping\Contracts\PaymentOptions;
+use App\Core\Shipping\Contracts\ShippingOptions;
+use App\Core\Shipping\NullPaymentOptions;
+use App\Core\Shipping\NullShippingOptions;
 use App\Core\Storage\StorageLimitCounter;
 use Illuminate\Support\Facades\Vite;
 use Illuminate\Support\ServiceProvider;
@@ -38,6 +42,14 @@ class AppServiceProvider extends ServiceProvider
         // CustomerIdentity on a deploy without the module throws instead of
         // answering "no customer", which is what the contract promises.
         $this->app->bind(CustomerIdentity::class, NullCustomerIdentity::class);
+
+        // Same pattern for the shipping/payment contracts checkout consumes:
+        // guest-safe defaults so app(ShippingOptions::class) and
+        // app(PaymentOptions::class) resolve even on a deploy without the
+        // shipping module. Modules\Shipping\Providers\ModuleProvider overwrites
+        // both when the module is present.
+        $this->app->bind(ShippingOptions::class, NullShippingOptions::class);
+        $this->app->bind(PaymentOptions::class, NullPaymentOptions::class);
     }
 
     /**

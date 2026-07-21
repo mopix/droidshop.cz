@@ -2,7 +2,9 @@
 
 namespace Modules\Shipping\Models;
 
+use App\Core\Money\Money;
 use App\Core\Money\MoneyCast;
+use App\Core\Shipping\Contracts\PaymentOption;
 use App\Core\Tenancy\BelongsToTenant;
 use App\Models\TaxRate;
 use Illuminate\Database\Eloquent\Model;
@@ -15,8 +17,11 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
  * Offline only in this wave — cash on delivery and bank transfer with a QR
  * code. An online gateway is its own module (wave 1.4), which is why the
  * settings that can hold a credential are encrypted here already.
+ *
+ * Implements the kernel's read-only PaymentOption shape directly so checkout
+ * never touches this model.
  */
-class PaymentMethod extends Model
+class PaymentMethod extends Model implements PaymentOption
 {
     use BelongsToTenant;
 
@@ -46,6 +51,28 @@ class PaymentMethod extends Model
 
     public function shippingMethods(): BelongsToMany
     {
-        return $this->belongsToMany(ShippingMethod::class)->withTimestamps();
+        // Explicit table: our pivot is shipping_method_payment_method, not
+        // Laravel's alphabetical default payment_method_shipping_method.
+        return $this->belongsToMany(ShippingMethod::class, 'shipping_method_payment_method')->withTimestamps();
+    }
+
+    public function id(): int
+    {
+        return (int) $this->getKey();
+    }
+
+    public function name(): string
+    {
+        return $this->name;
+    }
+
+    public function fee(): Money
+    {
+        return $this->fee;
+    }
+
+    public function taxRateId(): ?int
+    {
+        return $this->tax_rate_id;
     }
 }
