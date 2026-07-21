@@ -6,6 +6,7 @@ use App\Core\Enums\TenantStatus;
 use App\Core\Modules\ModuleRegistry;
 use App\Core\Tax\TaxRates;
 use App\Core\Tenancy\TenantContext;
+use App\Models\Module;
 use App\Models\Plan;
 use App\Models\PlatformAdmin;
 use App\Models\Tenant;
@@ -18,7 +19,7 @@ use Modules\Shipping\Models\PaymentMethod;
 use Modules\Shipping\Models\ShippingMethod;
 
 /**
- * A ready-to-click demo shop for local review — a tenant on demo.droidshop with
+ * A ready-to-click demo shop for local review — a tenant on obchod.droidshop with
  * modules on, a handful of products, delivery and payment methods (including a
  * Comgate gateway in test mode). Idempotent: re-running updates rather than
  * duplicating. NOT for production — credentials are the well-known "password".
@@ -29,7 +30,7 @@ use Modules\Shipping\Models\ShippingMethod;
  */
 class DemoShopSeeder extends Seeder
 {
-    private const MODULES = ['products', 'shipping', 'customers', 'checkout', 'orders', 'payments'];
+    private const MODULES = ['categories', 'products', 'shipping', 'customers', 'checkout', 'orders', 'payments'];
 
     public function run(): void
     {
@@ -50,11 +51,13 @@ class DemoShopSeeder extends Seeder
                 'mail_reply_to' => 'demo@droidshop.cz',
             ]);
 
-        if (! $tenant->domains()->where('domain', 'demo.droidshop')->exists()) {
-            $tenant->domains()->create(['domain' => 'demo.droidshop', 'is_primary' => true]);
+        if (! $tenant->domains()->where('domain', 'obchod.droidshop')->exists()) {
+            $tenant->domains()->create(['domain' => 'obchod.droidshop', 'is_primary' => true]);
         }
 
-        foreach (self::MODULES as $key) {
+        // Grant every deployed module in the plan, so activation's dependency
+        // pull-in never trips the plan gate (a demo plan includes everything).
+        foreach (Module::query()->pluck('key') as $key) {
             if (! $plan->modules()->where('module_key', $key)->exists()) {
                 $plan->modules()->attach($key);
             }
