@@ -1,0 +1,15 @@
+{
+    "name": "checkout",
+    "version": "1.0.0",
+    "title": { "cs": "Košík a pokladna" },
+    "description": { "cs": "Nákupní košík, pokladna a odeslání objednávky." },
+    "core": false,
+    "billable": false,
+    "level": "base",
+    "requires": { "products": "*" },
+    "provides": ["cart"],
+    "listens": [],
+    "permissions": [],
+    "settings_schema": null,
+    "nav": []
+}

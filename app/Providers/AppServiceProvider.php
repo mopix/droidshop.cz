@@ -2,6 +2,8 @@
 
 namespace App\Providers;
 
+use App\Core\Checkout\Contracts\CartRepository;
+use App\Core\Checkout\NullCartRepository;
 use App\Core\Customers\Contracts\CustomerIdentity;
 use App\Core\Customers\NullCustomerIdentity;
 use App\Core\Limits\LimitsService;
@@ -50,6 +52,12 @@ class AppServiceProvider extends ServiceProvider
         // both when the module is present.
         $this->app->bind(ShippingOptions::class, NullShippingOptions::class);
         $this->app->bind(PaymentOptions::class, NullPaymentOptions::class);
+
+        // Same pattern for the cart: a guest-safe default so
+        // app(CartRepository::class) resolves even on a deploy without the
+        // checkout module. Modules\Checkout\Providers\ModuleProvider
+        // overwrites it.
+        $this->app->bind(CartRepository::class, NullCartRepository::class);
     }
 
     /**
