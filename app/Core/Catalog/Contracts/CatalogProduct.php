@@ -26,6 +26,17 @@ interface CatalogProduct
 
     public function catalogVat(): Money;
 
+    /**
+     * The VAT rate applied to this product's price, as a percentage
+     * (e.g. 21.0).
+     *
+     * Orders need this at the moment of purchase, to snapshot
+     * order_items.tax_rate independently of whatever the rate is later
+     * changed to (spec §16.1) — see App\Models\TaxRate's own docblock for
+     * why the conversion itself never lives on Money.
+     */
+    public function catalogTaxRatePercent(): float;
+
     public function catalogWeightGrams(): int;
 
     public function catalogShortDescription(): ?string;

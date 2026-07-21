@@ -10,6 +10,10 @@ use App\Core\Limits\LimitsService;
 use App\Core\Mail\Contracts\MailService;
 use App\Core\Mail\MailLimitCounter;
 use App\Core\Mail\QueuedMailService;
+use App\Core\Orders\Contracts\OrderBook;
+use App\Core\Orders\Contracts\OrderPlacement;
+use App\Core\Orders\NullOrderBook;
+use App\Core\Orders\NullOrderPlacement;
 use App\Core\Shipping\Contracts\PaymentOptions;
 use App\Core\Shipping\Contracts\ShippingOptions;
 use App\Core\Shipping\NullPaymentOptions;
@@ -58,6 +62,14 @@ class AppServiceProvider extends ServiceProvider
         // checkout module. Modules\Checkout\Providers\ModuleProvider
         // overwrites it.
         $this->app->bind(CartRepository::class, NullCartRepository::class);
+
+        // Same pattern for orders: app(OrderPlacement::class) and
+        // app(OrderBook::class) resolve even on a deploy without the orders
+        // module. Modules\Orders\Providers\ModuleProvider overwrites both.
+        // Unlike the carts/shipping defaults, NullOrderPlacement::place()
+        // throws rather than pretending to succeed — see its own docblock.
+        $this->app->bind(OrderPlacement::class, NullOrderPlacement::class);
+        $this->app->bind(OrderBook::class, NullOrderBook::class);
     }
 
     /**

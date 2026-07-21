@@ -1,0 +1,33 @@
+{
+    "name": "orders",
+    "version": "1.0.0",
+    "title": {
+        "cs": "Objednávky"
+    },
+    "description": {
+        "cs": "Přijaté objednávky, jejich stavy a historie."
+    },
+    "core": false,
+    "billable": false,
+    "level": "base",
+    "requires": {},
+    "provides": [
+        "order-book"
+    ],
+    "listens": [],
+    "permissions": [
+        "orders.view",
+        "orders.edit",
+        "orders.cancel"
+    ],
+    "settings_schema": null,
+    "nav": [
+        {
+            "area": "admin",
+            "label": "Objednávky",
+            "route": "admin.orders.index",
+            "icon": "receipt",
+            "order": 50
+        }
+    ]
+}

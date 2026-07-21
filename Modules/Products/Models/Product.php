@@ -199,6 +199,20 @@ class Product extends Model implements CatalogProduct
         return $this->vat();
     }
 
+    public function catalogTaxRatePercent(): float
+    {
+        $rates = app(TaxRates::class);
+
+        // tax_rate_id is a required column today (see the products
+        // migration), but a caller of the contract must not have to know
+        // that — fall back to the shop's default rate rather than crash.
+        $rate = $this->tax_rate_id !== null
+            ? $rates->findById($this->tax_rate_id)
+            : $rates->default();
+
+        return $rate->percent();
+    }
+
     public function catalogWeightGrams(): int
     {
         return $this->weight_g;
