@@ -90,4 +90,13 @@ class EloquentOrderBook implements OrderBook
 
         return Order::query()->where('uuid', $uuid)->first();
     }
+
+    public function findByReference(string $reference): ?OrderView
+    {
+        if (! $this->modules->has('orders')) {
+            return null;
+        }
+
+        return Order::query()->where('payment_reference', $reference)->first();
+    }
 }

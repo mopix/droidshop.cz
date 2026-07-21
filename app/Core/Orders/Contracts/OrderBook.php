@@ -33,4 +33,12 @@ interface OrderBook
     public function paginateForAdmin(OrderFilter $filter): LengthAwarePaginator;
 
     public function findForAdmin(string $uuid): ?OrderView;
+
+    /**
+     * Finds an order by the gateway transaction reference stored on it at
+     * payment initiation. Used by the payment webhook, which knows the
+     * gateway's transaction id but not the order uuid. Tenant-scoped like
+     * every read here.
+     */
+    public function findByReference(string $reference): ?OrderView;
 }

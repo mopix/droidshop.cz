@@ -10,6 +10,7 @@ use App\Core\Payments\Exceptions\GatewayError;
 use App\Core\Payments\PaymentResult;
 use App\Core\Payments\PaymentStatus;
 use Illuminate\Support\Facades\Http;
+use Modules\Payments\Support\ComgateSignature;
 use Modules\Payments\Support\GatewayInitiation;
 use Modules\Shipping\Models\PaymentMethod;
 
@@ -53,6 +54,12 @@ final class ComgateGateway implements PaymentGateway
             throw GatewayError::orderMissing($orderUuid);
         }
 
+        // Where the shopper comes back to, carrying our own order uuid so the
+        // return controller knows which order without trusting a gateway param.
+        // All three outcomes land on the same page; it re-verifies the real
+        // status regardless of which URL Comgate chose.
+        $returnUrl = route('storefront.payments.return', ['order' => $orderUuid]);
+
         $response = $this->post('create', [
             'price' => (string) $order->orderTotal()->amount,
             'curr' => $order->orderCurrency(),
@@ -62,6 +69,9 @@ final class ComgateGateway implements PaymentGateway
             'refId' => $order->orderNumber(),
             'email' => $order->orderEmail(),
             'method' => 'ALL',
+            'url_paid' => $returnUrl,
+            'url_pending' => $returnUrl,
+            'url_cancelled' => $returnUrl,
             // prepareOnly returns the redirect URL instead of a 302, so we own
             // the redirect and can drop the cart cookie first.
             'prepareOnly' => 'true',
@@ -98,6 +108,20 @@ final class ComgateGateway implements PaymentGateway
         );
 
         return new PaymentResult($status, $reference, $amount);
+    }
+
+    public function verifyNotification(array $payload): bool
+    {
+        $secret = $payload['secret'] ?? null;
+
+        return ComgateSignature::matches(is_string($secret) ? $secret : null, $this->secret);
+    }
+
+    public function referenceFromNotification(array $payload): ?string
+    {
+        $transId = $payload['transId'] ?? null;
+
+        return (is_string($transId) && $transId !== '') ? $transId : null;
     }
 
     /**
