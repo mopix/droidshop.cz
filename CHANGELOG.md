@@ -11,6 +11,31 @@ Pravidla: [`.claude/skills/versioning/SKILL.md`](.claude/skills/versioning/SKILL
 
 > CHANGELOG vede milníky (minor/major). Detail patchů je v `git log`.
 
+## [0.13.0] – 2026-07-21
+
+**Fáze 1 / vlna 1.4 — modul `payments`: online platební brána Comgate.** Zákazník zaplatí kartou přes Comgate: po odeslání objednávky redirect na bránu, po ověřeném zaplacení `payment_status = paid` a děkovná stránka s potvrzením. Neúspěch/vypršení vrátí sklad a nechá objednávku pro nový nákup. Vypnutý modul nechá pokladnu na dobírku/převod (spec §16.6).
+
+### Jádro — `app/Core/Payments/`
+
+- Kontrakty `PaymentGateway` (driver) + `PaymentGatewayRegistry` (`for($provider)`/`available()`) — **registry/driver architektura**, víc bran koexistuje per tenant; `NullPaymentGatewayRegistry` guest-safe.
+- `PaymentResult` + enum `PaymentStatus`, `PaymentInitiation`, jádrová výjimka `GatewayError`.
+- Nový kontrakt `App\Core\Orders\Contracts\OrderSettlement` (`attachReference`/`settlePaid`/`settleFailed`) — seam, přes který `payments` mění stav a vrací sklad bez sahání do `OrderWorkflow`.
+
+### Modul `payments`
+
+- `ComgateGateway` (v1.0 e-commerce HTTP-POST protokol, `Http` fasáda, bez composer balíčku), `EloquentPaymentGatewayRegistry`, `ComgateSignature`.
+- `PaymentSettlement` (verify-before-trust), controllery `/platba/navrat` a `/platba/notifikace` (mimo CSRF, podpis brány), job `ExpireUnpaidOrder`.
+
+### Bezpečnost
+
+- `payment_status = paid` jen po server-to-server `verify()` — podvržený návrat ani webhook payload nic nesettluje; kontrola částky; reference vázaná na objednávku serverově.
+- Idempotence duplicitní notifikace (webhook + návrat) přes `from==to` no-op + `lockForUpdate`.
+- Credentials brány `encrypted:array`, maskované, keep-on-update.
+
+### Testy
+
+Nové: `PaymentGatewayRegistryTest`, `ComgateGatewayTest`, `PaymentCallbackTest`, `ExpireUnpaidOrderTest`; rozšířeny `OrderWorkflowTest`, `PaymentMethodAdminTest`, `CheckoutRedirectTest`. Celá suite **813 passed**.
+
 ## [0.12.0] – 2026-07-21
 
 **Fáze 1 / vlna 1.3 — etapy 4+5 (sloučené): moduly `checkout` + `orders`.** Zákazník projde nákup od detailu produktu po děkovnou stránku bez zapnutého JavaScriptu, vznikne reálná objednávka a nájemce ji v adminu vidí, edituje, mění oba stavy a stornuje. Uzavírá MVP cíl vlny 1.3 (spec §3.1, §16.3, §16.4).

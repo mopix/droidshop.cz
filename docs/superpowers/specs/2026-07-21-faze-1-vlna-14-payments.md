@@ -1,7 +1,7 @@
 # Fáze 1, vlna 1.4 — Online platební brána (`payments`)
 
 **Datum:** 2026-07-21
-**Status:** approved
+**Status:** done
 **Související plán:** `docs/superpowers/plans/2026-07-21-faze-1-vlna-14-payments.md` (vznikne po schválení)
 
 ## Kontext

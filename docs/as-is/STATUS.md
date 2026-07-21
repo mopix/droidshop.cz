@@ -1,6 +1,6 @@
 # As-is status — DroidShop.cz
 
-Poslední aktualizace: **2026-07-21** · Verze: **0.12.0**
+Poslední aktualizace: **2026-07-21** · Verze: **0.13.0**
 
 ## Oblasti
 
@@ -23,9 +23,10 @@ Poslední aktualizace: **2026-07-21** · Verze: **0.12.0**
 | Kernel — sazby DPH, redirects, sanitizace HTML | **hotovo** | §6.2, §15.3, §16.1 | [detail](2026-07-20-katalog-jadro.md) |
 | Modul `categories` — strom, admin, 301 | **hotovo** | §6.3, §16.2 | max 4 úrovně; řazení tlačítky, ne drag&drop |
 | Modul `products` — katalog, ceny, sklad, obrázky, SEO | **hotovo** | §6.2, §16.1 | bez variant, CSV importu, řezů obrázků a hromadných operací |
-| Modul `checkout` — košík, pokladna, odeslání objednávky | **hotovo** | §3.1, §16.3 | [detail](2026-07-21-checkout.md); Blade SSR + progressive enhancement, funguje bez JS; cenová autorita `ProductCatalog`, ne `cart_items.unit_price`; SPAYD QR pro bankovní převod; bez online brány (vlna 1.4) |
+| Modul `checkout` — košík, pokladna, odeslání objednávky | **hotovo** | §3.1, §16.3 | [detail](2026-07-21-checkout.md); Blade SSR + progressive enhancement, funguje bez JS; cenová autorita `ProductCatalog`, ne `cart_items.unit_price`; SPAYD QR pro bankovní převod; online platba kartou přes bránu (vlna 1.4) redirectuje na `PaymentGatewayRegistry` |
 | Modul `orders` — perzistence, admin, dvojitý stavový automat | **hotovo** | §16.4 | [detail](2026-07-21-checkout.md); idempotentní odeslání, odpis skladu v téže transakci, edice s deltou skladu, ruční založení, storno; historie objednávek v účtu zákazníka hotová |
-| Modul `shipping` — způsoby dopravy a platby, matice | **hotovo** | §16.5 | admin-only + storefront options renderuje checkout; kontrakty `ShippingOptions`/`PaymentOptions` s guest-safe null bindingy; účet pro QR šifrovaný (`encrypted:array`), adminovi jen maskovaný; prázdná řada matice = všechny platby povoleny; online brány = vlna 1.4 |
+| Modul `shipping` — způsoby dopravy a platby, matice | **hotovo** | §16.5 | admin-only + storefront options renderuje checkout; kontrakty `ShippingOptions`/`PaymentOptions` s guest-safe null bindingy; účet pro QR šifrovaný (`encrypted:array`), adminovi jen maskovaný; prázdná řada matice = všechny platby povoleny; provider `comgate` s maskovanými credentials přidán vlnou 1.4 |
+| Modul `payments` — online brána Comgate, návrat, webhook, expirace | **hotovo** | §16.6 | [detail](2026-07-21-payments.md); registry/driver (víc bran per tenant), verify-before-trust, idempotentní webhook mimo CSRF, `OrderSettlement` kontrakt, expirační job vrací sklad; jen Comgate driver, GoPay/Stripe = design-for |
 | Modul `storefront` — layout, homepage, hledání, chybové stránky | **hotovo** | §4.1.1 | [detail](2026-07-20-storefront-katalog.md) |
 | Veřejný katalog — kategorie, produkt, řazení a filtr bez JS | **hotovo** | §16.1, §16.2 | bez košíku |
 | SEO výstupy — canonical, OG, JSON-LD, sitemap, robots, 301, 410 | **hotovo** | §3.1, §15.3 | page cache §15.6 chybí |
