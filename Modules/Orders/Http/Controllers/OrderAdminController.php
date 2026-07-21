@@ -144,6 +144,7 @@ class OrderAdminController
             'customer_id' => $order->orderCustomerId(),
             'fulfillment_status' => $order->orderFulfillmentStatus(),
             'payment_status' => $order->orderPaymentStatus(),
+            'payment_reference' => $order->orderPaymentReference(),
             'items_total' => $order->orderItemsTotal()->amount,
             'shipping_total' => $order->orderShippingTotal()->amount,
             'total' => $order->orderTotal()->amount,

@@ -42,6 +42,7 @@ class OrderStateController
     private const PAYMENT_LABELS = [
         Order::PAYMENT_UNPAID => 'Nezaplaceno',
         Order::PAYMENT_PAID => 'Zaplaceno',
+        Order::PAYMENT_FAILED => 'Platba selhala',
         Order::PAYMENT_REFUNDED => 'Vráceno',
     ];
 
