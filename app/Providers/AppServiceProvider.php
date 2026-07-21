@@ -14,6 +14,8 @@ use App\Core\Orders\Contracts\OrderBook;
 use App\Core\Orders\Contracts\OrderPlacement;
 use App\Core\Orders\NullOrderBook;
 use App\Core\Orders\NullOrderPlacement;
+use App\Core\Payments\Contracts\PaymentGatewayRegistry;
+use App\Core\Payments\NullPaymentGatewayRegistry;
 use App\Core\Shipping\Contracts\PaymentOptions;
 use App\Core\Shipping\Contracts\ShippingOptions;
 use App\Core\Shipping\NullPaymentOptions;
@@ -70,6 +72,14 @@ class AppServiceProvider extends ServiceProvider
         // throws rather than pretending to succeed — see its own docblock.
         $this->app->bind(OrderPlacement::class, NullOrderPlacement::class);
         $this->app->bind(OrderBook::class, NullOrderBook::class);
+
+        // Same pattern for the payment gateway registry: a guest-safe default
+        // so app(PaymentGatewayRegistry::class) resolves on a deploy without
+        // the payments module. Its for() returns null and available() is empty,
+        // so checkout offers no online method and never attempts a redirect.
+        // Modules\Payments\Providers\ModuleProvider overwrites it with a
+        // registry that knows the deployed, tenant-configured drivers.
+        $this->app->bind(PaymentGatewayRegistry::class, NullPaymentGatewayRegistry::class);
     }
 
     /**
