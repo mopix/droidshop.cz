@@ -25,6 +25,7 @@ Pravidla: [`.claude/skills/versioning/SKILL.md`](.claude/skills/versioning/SKILL
 ### Modul `checkout` — košík a pokladna (Blade SSR, `noindex`)
 
 - `carts`/`cart_items`, košík vázaný na `carts.token` (kryptograficky náhodný cookie), volitelně na přihlášeného zákazníka
+- Po přihlášení zákazníka se anonymní košík připojí k účtu (`CartMerger` na `Login` eventu guardu `customer`) — stejný produkt sečte množství, nepřepíše; přihlášení bez anonymního cookie znovu nasměruje cookie na uložený košík zákazníka
 - `/kosik`, `/pokladna/doprava`, `/pokladna/udaje`, `/dekujeme/{uuid}` — celý tok funguje bez JS; **veškerá cenová logika na serveru** (`CartPricer`), podvržená cena/doprava v POST se ignoruje
 - Změna ceny mezi vložením do košíku a odesláním zobrazí banner a přepočte (`PriceChanged`), nikdy nenaúčtuje starou cenu
 - SPAYD QR pro platbu převodem jako inline SVG (`endroid/qr-code ^6.0`, `SvgWriter`, bez GD) — účet se čte živě z platební metody, nikdy ze snímku objednávky (žádný credential ve snímku, spec §16.5)
@@ -46,7 +47,7 @@ Pravidla: [`.claude/skills/versioning/SKILL.md`](.claude/skills/versioning/SKILL
 
 ### Testy
 
-Celá sada **770 passed** (bylo 656 na startu etapy 4/5, 762 po Task 8). Nově `AccountOrdersTest` (8), oprava `CustomerAccountTest` (placeholder → odkaz na historii objednávek).
+Celá sada **775 passed** (bylo 656 na startu etapy 4/5, 762 po Task 8, 770 po historii objednávek). Nově `AccountOrdersTest` (8) a `CartMergeOnLoginTest` (5), oprava `CustomerAccountTest` (placeholder → odkaz na historii objednávek).
 
 ### Mimo rozsah etapy
 
