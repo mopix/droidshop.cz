@@ -63,11 +63,37 @@
                 @endif
             </p>
 
-            {{-- No cart module yet: the page must not link at a route that
-                 does not exist. --}}
-            <p class="mt-6 text-sm text-slate-600">
-                Objednávky spustíme brzy. Pro dotaz k produktu nás kontaktujte.
-            </p>
+            @if ($cartEnabled && $product->isAvailable())
+                {{--
+                    A real HTML form, no JS: this POST plus the redirect back
+                    from CartController::add is the entire "add to cart"
+                    interaction — an Alpine/Vue island may enhance it later
+                    (no reload), but it must never be the only way it works
+                    (.claude/rules/storefront-rendering.md).
+                --}}
+                <form method="POST" action="{{ route('storefront.checkout.add') }}" class="mt-6 flex items-end gap-3">
+                    @csrf
+                    <input type="hidden" name="product_id" value="{{ $product->id }}">
+
+                    <div>
+                        <label for="mnozstvi" class="block text-sm text-slate-600">Množství</label>
+                        <input id="mnozstvi" name="quantity" type="number" value="1" min="1" max="99"
+                               inputmode="numeric" class="mt-1 w-20 rounded border border-slate-300 px-2 py-2">
+                    </div>
+
+                    <button type="submit" class="rounded bg-slate-900 px-6 py-2 text-white">
+                        Přidat do košíku
+                    </button>
+                </form>
+            @elseif ($cartEnabled)
+                <p class="mt-6 text-sm text-slate-600">
+                    Produkt je momentálně vyprodaný. Pro dotaz nás kontaktujte.
+                </p>
+            @else
+                <p class="mt-6 text-sm text-slate-600">
+                    Objednávky spustíme brzy. Pro dotaz k produktu nás kontaktujte.
+                </p>
+            @endif
         </div>
     </div>
 

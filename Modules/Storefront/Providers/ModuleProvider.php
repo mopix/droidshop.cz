@@ -71,6 +71,14 @@ class ModuleProvider extends ServiceProvider
                 // rather than a link into 404 territory.
                 'customerAreaEnabled' => $hasCustomers,
                 'signedInCustomer' => $hasCustomers ? Auth::guard('customer')->user() : null,
+                // The header link to /kosik. Deliberately no item count here:
+                // this composer runs on every storefront page, including ones
+                // a future page-cache layer may serve from a shared cache
+                // keyed only by tenant and path — baking a personal cart
+                // count into that HTML would hand one visitor's basket to
+                // the next (spec §15.6). A count belongs to the mini-cart
+                // island (CartSummaryController), not this composer.
+                'cartEnabled' => $shopModules->has('checkout'),
             ]);
         });
     }

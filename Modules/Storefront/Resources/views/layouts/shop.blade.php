@@ -31,6 +31,17 @@
                 </div>
             </form>
 
+            @if ($cartEnabled)
+                {{--
+                    A plain link, no item count: the count is per-visitor
+                    state and this layout is shared by every storefront page,
+                    including ones a page-cache layer may one day serve from
+                    a shared cache (spec §15.6). The mini-cart island fetches
+                    its own count from GET /api/kosik/souhrn instead.
+                --}}
+                <a href="{{ route('storefront.checkout.show') }}" class="text-sm hover:underline">Košík</a>
+            @endif
+
             @if ($customerAreaEnabled)
                 <nav aria-label="Účet zákazníka" class="text-sm">
                     @if ($signedInCustomer)

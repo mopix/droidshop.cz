@@ -7,13 +7,17 @@ use Illuminate\Contracts\View\View;
 use Illuminate\Http\Response;
 use Modules\Products\Models\Product;
 use Modules\Storefront\Support\Seo;
+use Modules\Storefront\Support\ShopModules;
 
 /**
  * Public product detail (spec §16.1).
  */
 class ProductStorefrontController
 {
-    public function __construct(private readonly FileStorage $files) {}
+    public function __construct(
+        private readonly FileStorage $files,
+        private readonly ShopModules $modules,
+    ) {}
 
     public function __invoke(string $slug): View|Response
     {
@@ -41,6 +45,10 @@ class ProductStorefrontController
             'product' => $product,
             'category' => $category,
             'images' => $product->images,
+            // A shop that never turned checkout on must not offer a form
+            // that posts into a 404 (module:checkout gates /kosik per
+            // tenant) — same reasoning as layout.shop's customerAreaEnabled.
+            'cartEnabled' => $this->modules->has('checkout'),
             'seo' => new Seo(
                 title: $product->seo_title ?: $product->name,
                 description: $product->seo_description ?: $product->short_description,

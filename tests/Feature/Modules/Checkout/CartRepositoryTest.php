@@ -2,14 +2,19 @@
 
 namespace Tests\Feature\Modules\Checkout;
 
+use App\Core\Catalog\Contracts\ProductCatalog;
 use App\Core\Checkout\Contracts\CartRepository;
 use App\Core\Checkout\NullCartRepository;
 use App\Core\Tax\TaxRates;
 use App\Core\Tenancy\TenantContext;
 use App\Models\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Modules\Checkout\Models\Cart;
+use Modules\Checkout\Models\CartItem;
+use Modules\Checkout\Services\EloquentCartRepository;
 use Modules\Products\Models\Product;
 use Modules\Products\Services\ProductWriter;
+use Modules\Storefront\Support\ShopModules;
 use Tests\Concerns\ActivatesModules;
 use Tests\TestCase;
 
@@ -118,6 +123,52 @@ class CartRepositoryTest extends TestCase
             $this->assertSame(3, $item->quantity);
             $this->assertSame(19_900_00, $item->unit_price->amount);
             $this->assertSame('CZK', $item->unit_price->currency);
+        });
+    }
+
+    /**
+     * A real two-request race is not deterministic under single-threaded
+     * PHPUnit, so the collision is forced instead of raced: a first
+     * addItem() creates the row normally, then a repository subclass whose
+     * existingItem() lookup is stubbed to miss once calls addItem() for the
+     * same product — its create() therefore collides with the already-
+     * committed row on cart_item_unique, the exact state a losing
+     * concurrent "add to cart" double-click would be in. The catch must
+     * recover by merging into the winning row instead of throwing.
+     */
+    public function test_a_concurrent_add_item_collision_merges_quantity_instead_of_throwing(): void
+    {
+        $product = $this->makeProduct($this->tenant, ['price' => 10_000]);
+
+        $this->context->runAs($this->tenant, function () use ($product) {
+            $cart = $this->repository()->forToken(null);
+
+            // The winner: a normal addItem() creates the row.
+            $this->repository()->addItem($cart, $product->id, 1);
+
+            // The loser: its first existingItem() lookup is forced to miss,
+            // so it proceeds straight to create() and collides.
+            $racy = new class(app(ShopModules::class), app(ProductCatalog::class)) extends EloquentCartRepository
+            {
+                public int $lookupCalls = 0;
+
+                protected function existingItem(Cart $cart, int $productId): ?CartItem
+                {
+                    $this->lookupCalls++;
+
+                    if ($this->lookupCalls === 1) {
+                        return null;
+                    }
+
+                    return parent::existingItem($cart, $productId);
+                }
+            };
+
+            $racy->addItem($cart, $product->id, 2);
+
+            $items = $cart->cartItems();
+            $this->assertCount(1, $items);
+            $this->assertSame(3, $items->first()->quantity);
         });
     }
 

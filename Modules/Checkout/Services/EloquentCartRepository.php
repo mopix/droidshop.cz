@@ -5,9 +5,11 @@ namespace Modules\Checkout\Services;
 use App\Core\Catalog\Contracts\ProductCatalog;
 use App\Core\Checkout\Contracts\CartRepository;
 use App\Core\Checkout\Contracts\CartShape;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Str;
 use LogicException;
 use Modules\Checkout\Models\Cart;
+use Modules\Checkout\Models\CartItem;
 use Modules\Storefront\Support\ShopModules;
 
 class EloquentCartRepository implements CartRepository
@@ -57,7 +59,7 @@ class EloquentCartRepository implements CartRepository
 
         $cart = $this->persisted($cart);
 
-        $existing = $cart->items()->where('product_id', $productId)->first();
+        $existing = $this->existingItem($cart, $productId);
 
         if ($existing !== null) {
             $existing->increment('quantity', $quantity);
@@ -65,14 +67,43 @@ class EloquentCartRepository implements CartRepository
             return;
         }
 
-        // The price is read from the catalogue at the moment of insertion.
-        // It is a snapshot for display only — the pricing authority stays
-        // ProductCatalog::price(), read again wherever a total is computed.
-        $cart->items()->create([
-            'product_id' => $productId,
-            'quantity' => $quantity,
-            'unit_price' => $this->catalog->price($productId),
-        ]);
+        try {
+            // The price is read from the catalogue at the moment of insertion.
+            // It is a snapshot for display only — the pricing authority stays
+            // ProductCatalog::price(), read again wherever a total is computed.
+            $cart->items()->create([
+                'product_id' => $productId,
+                'quantity' => $quantity,
+                'unit_price' => $this->catalog->price($productId),
+            ]);
+        } catch (UniqueConstraintViolationException $e) {
+            // A concurrent addItem() for the same product committed between
+            // our lookup above and this insert — the ordinary shape of a
+            // same-product double-click, or two open tabs. cart_item_unique
+            // caught it before two rows could exist; merge into the row that
+            // won instead of surfacing a 500 (mirrors OrderPlacer's own
+            // recovery from order_idem_unique).
+            $winner = $this->existingItem($cart, $productId);
+
+            if ($winner === null) {
+                // Not a duplicate-key collision we can resolve to a row —
+                // some other constraint, or the row vanished. Never swallow it.
+                throw $e;
+            }
+
+            $winner->increment('quantity', $quantity);
+        }
+    }
+
+    /**
+     * protected, not private, so a test can force the lookup to miss even
+     * though a row already exists — the only way to exercise the
+     * UniqueConstraintViolationException recovery path deterministically in
+     * single-threaded PHPUnit (mirrors OrderPlacer::existingOrder()).
+     */
+    protected function existingItem(Cart $cart, int $productId): ?CartItem
+    {
+        return $cart->items()->where('product_id', $productId)->first();
     }
 
     public function setQuantity(CartShape $cart, int $itemId, int $quantity): void
