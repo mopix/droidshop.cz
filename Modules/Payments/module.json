@@ -1,0 +1,21 @@
+{
+    "name": "payments",
+    "version": "1.0.0",
+    "title": {
+        "cs": "Online platby"
+    },
+    "description": {
+        "cs": "Online platební brána (Comgate) — přesměrování na bránu, ověření platby a webhook. Vypnutím zůstane pokladna funkční na dobírku a převod."
+    },
+    "core": false,
+    "billable": false,
+    "level": "base",
+    "requires": {},
+    "provides": [
+        "payment-gateway"
+    ],
+    "listens": [],
+    "permissions": [],
+    "settings_schema": null,
+    "nav": []
+}

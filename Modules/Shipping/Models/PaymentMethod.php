@@ -29,6 +29,11 @@ class PaymentMethod extends Model implements PaymentOption
 
     public const PROVIDER_BANK_TRANSFER = 'bank_transfer';
 
+    // Online gateway (module payments, wave 1.4). settings holds the tenant's
+    // Comgate credentials (merchant, secret, test), encrypted like the QR
+    // account above.
+    public const PROVIDER_COMGATE = 'comgate';
+
     protected $guarded = [];
 
     protected $hidden = ['settings'];
