@@ -13,7 +13,7 @@ use App\Core\Documents\Exceptions\DocumentIssuanceUnavailable;
  * so they simply do not exist when it is off. A guest checkout that never asks
  * for a document is entirely unaffected.
  */
-class NullDocumentIssuer implements DocumentIssuer
+final class NullDocumentIssuer implements DocumentIssuer
 {
     public function issue(string $orderUuid, string $type = 'invoice'): DocumentView
     {

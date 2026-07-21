@@ -11,7 +11,7 @@ class NullDocumentIssuerTest extends TestCase
 {
     public function test_kernel_binds_null_issuer_by_default(): void
     {
-        // Modul docs se v testu nezaktivoval, takže platí jádrový null binding.
+        // The docs module was not activated in this test, so the kernel's null binding applies.
         $this->assertInstanceOf(NullDocumentIssuer::class, app(DocumentIssuer::class));
     }
 

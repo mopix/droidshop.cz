@@ -2,6 +2,8 @@
 
 namespace App\Core\Documents\Contracts;
 
+use App\Core\Documents\Exceptions\DocumentIssuanceUnavailable;
+
 /**
  * Issuing a document for an order, from outside the docs module.
  *
@@ -18,6 +20,8 @@ interface DocumentIssuer
      * not allocate a new number nor write a second row.
      *
      * @param  string  $type  one of invoice|proforma|credit_note; wave 1.5 issues only invoice
+     *
+     * @throws DocumentIssuanceUnavailable when no implementation is active
      */
     public function issue(string $orderUuid, string $type = 'invoice'): DocumentView;
 }
