@@ -4,6 +4,7 @@ namespace Modules\Checkout\Support;
 
 use App\Core\Checkout\Contracts\CartShape;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cookie as CookieFacade;
 use Symfony\Component\HttpFoundation\Cookie;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -64,6 +65,39 @@ final class CartCookie
         $response->headers->setCookie($cookie);
 
         return $response;
+    }
+
+    /**
+     * Queues the cart cookie for whatever response the current request
+     * eventually produces, for a caller that runs before a Response exists
+     * — namely Modules\Checkout\Listeners\MergeCartOnCustomerLogin, an auth
+     * `Login` event listener.
+     *
+     * `Cookie::queue()` (the facade, not this class's own `Cookie` import)
+     * stores a pre-built Symfony Cookie verbatim when handed one directly
+     * (`Illuminate\Cookie\CookieJar::queue()` checks `instanceof Cookie`
+     * before ever calling its own `make()`), so this skips the same
+     * `config('session.domain')` fallback `attach()` above avoids.
+     * `AddQueuedCookiesToResponse` attaches the queued cookie to the
+     * response later in the request lifecycle, and `EncryptCookies` still
+     * encrypts it there exactly as if `attach()` had set it directly.
+     */
+    public static function queueRefresh(CartShape $cart, Request $request): void
+    {
+        if ($cart->cartId() === null) {
+            return;
+        }
+
+        $cookie = Cookie::create(self::NAME)
+            ->withValue($cart->cartToken())
+            ->withExpires(now()->addMinutes(self::MINUTES))
+            ->withPath('/')
+            ->withDomain(null)
+            ->withSecure($request->secure())
+            ->withHttpOnly(true)
+            ->withSameSite('lax');
+
+        CookieFacade::queue($cookie);
     }
 
     /**

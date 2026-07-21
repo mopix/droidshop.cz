@@ -151,6 +151,34 @@ class EloquentCartRepository implements CartRepository
         $cart->update(['customer_id' => $customerId]);
     }
 
+    public function findForCustomer(int $customerId): ?Cart
+    {
+        if (! $this->modules->has('checkout')) {
+            return null;
+        }
+
+        // orderByDesc('id'), not first(): a customer should only ever
+        // acquire one live cart going forward, but this is the read that
+        // decides the merge at login, so it stays defensive against any
+        // pre-existing duplicate rather than picking an arbitrary one.
+        return Cart::query()
+            ->where('customer_id', $customerId)
+            ->whereNull('converted_at')
+            ->orderByDesc('id')
+            ->first();
+    }
+
+    public function retire(CartShape $cart): void
+    {
+        if (! $this->modules->has('checkout')) {
+            return;
+        }
+
+        $cart = $this->persisted($cart);
+
+        $cart->update(['converted_at' => now()]);
+    }
+
     public function chooseShipping(CartShape $cart, ?int $shippingMethodId, ?int $paymentMethodId): void
     {
         if (! $this->modules->has('checkout')) {

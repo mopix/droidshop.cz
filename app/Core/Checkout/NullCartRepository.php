@@ -50,6 +50,18 @@ final class NullCartRepository implements CartRepository
         // No-op.
     }
 
+    public function findForCustomer(int $customerId): ?CartShape
+    {
+        // Nothing is ever persisted through this implementation, so no
+        // customer can have a cart to find.
+        return null;
+    }
+
+    public function retire(CartShape $cart): void
+    {
+        // No-op.
+    }
+
     public function chooseShipping(CartShape $cart, ?int $shippingMethodId, ?int $paymentMethodId): void
     {
         // No-op: nowhere to persist a choice without the module.

@@ -48,6 +48,27 @@ interface CartRepository
     public function attachToCustomer(CartShape $cart, int $customerId): void;
 
     /**
+     * The customer's own live cart, if they already have one.
+     *
+     * Read by Modules\Checkout\Services\CartMerger at login to decide
+     * whether an anonymous cart attaches outright (no prior cart) or its
+     * items merge into what the customer already had (rozhodnutí 7) — never
+     * a cart that has already been converted to an order or retired.
+     */
+    public function findForCustomer(int $customerId): ?CartShape;
+
+    /**
+     * Freezes a cart that will never be shopped from again.
+     *
+     * Used when its items have just been merged into the customer's other
+     * cart at login, so a leftover cookie token can never resurrect it as a
+     * second live cart for the same customer. Shares the same "done, kept
+     * only for history" marker a cart gets when it becomes an order
+     * (Cart::STATE_CONVERTED) — either way, nobody adds to this row again.
+     */
+    public function retire(CartShape $cart): void;
+
+    /**
      * Persists the shipping method chosen on `/pokladna/doprava`, and the
      * payment method chosen alongside it.
      *
