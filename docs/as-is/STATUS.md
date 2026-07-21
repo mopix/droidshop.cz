@@ -1,6 +1,6 @@
 # As-is status — DroidShop.cz
 
-Poslední aktualizace: **2026-07-21** · Verze: **0.10.0**
+Poslední aktualizace: **2026-07-21** · Verze: **0.11.0**
 
 ## Oblasti
 
@@ -23,7 +23,8 @@ Poslední aktualizace: **2026-07-21** · Verze: **0.10.0**
 | Kernel — sazby DPH, redirects, sanitizace HTML | **hotovo** | §6.2, §15.3, §16.1 | [detail](2026-07-20-katalog-jadro.md) |
 | Modul `categories` — strom, admin, 301 | **hotovo** | §6.3, §16.2 | max 4 úrovně; řazení tlačítky, ne drag&drop |
 | Modul `products` — katalog, ceny, sklad, obrázky, SEO | **hotovo** | §6.2, §16.1 | bez variant, CSV importu, řezů obrázků a hromadných operací |
-| Objednávky / doprava / platby | není | §3.1 | |
+| Objednávky / pokladna (checkout) | není | §3.1, §16.3 | čeká na modul `checkout` (etapa 4), který spotřebuje kontrakty modulu `shipping` |
+| Modul `shipping` — způsoby dopravy a platby, matice | **hotovo** | §16.5 | admin-only, bez storefrontu (options renderuje checkout); kontrakty `ShippingOptions`/`PaymentOptions` s guest-safe null bindingy; účet pro QR šifrovaný (`encrypted:array`), adminovi jen maskovaný; prázdná řada matice = všechny platby povoleny; online brány = vlna 1.4 |
 | Modul `storefront` — layout, homepage, hledání, chybové stránky | **hotovo** | §4.1.1 | [detail](2026-07-20-storefront-katalog.md) |
 | Veřejný katalog — kategorie, produkt, řazení a filtr bez JS | **hotovo** | §16.1, §16.2 | bez košíku |
 | SEO výstupy — canonical, OG, JSON-LD, sitemap, robots, 301, 410 | **hotovo** | §3.1, §15.3 | page cache §15.6 chybí |

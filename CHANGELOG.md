@@ -11,6 +11,30 @@ Pravidla: [`.claude/skills/versioning/SKILL.md`](.claude/skills/versioning/SKILL
 
 > CHANGELOG vede milníky (minor/major). Detail patchů je v `git log`.
 
+## [0.11.0] – 2026-07-21
+
+**Fáze 1 / vlna 1.3 — etapa 3: modul `shipping`.** Nájemce si v adminu definuje, jak jeho e-shop doručuje a přijímá platby — způsoby dopravy (osobní odběr, paušální dopravce), způsoby platby (dobírka, převod s QR) a matici, která platba patří ke které dopravě. Modul je admin-only; volby renderuje až budoucí checkout. Online platební brány jsou vlna 1.4.
+
+### Datový model a jádro
+
+- Tři tenant-scoped tabulky: `shipping_methods`, `payment_methods` a pivot `shipping_method_payment_method`. Ceny jako celé haléře (`MoneyCast` + companion sloupec `currency`), DPH nese `TaxRate`, ne `Money`
+- `payment_methods.settings` je **šifrované at rest** (`encrypted:array`) — bankovní účet pro QR je credential podle §16.5. První tenant-scoped použití `encrypted` castu; sloupec je `text`, ne `json`, protože cast píše opaque ciphertext
+- Dva jádrové kontrakty `App\Core\Shipping\Contracts\ShippingOptions` a `PaymentOptions` (+ read-only shapes `ShippingOption`/`PaymentOption`, které modely implementují přímo) — jak si checkout vyžádá aktivní, správně filtrované volby, aniž by sahal na tabulky modulu
+- Guest-safe null bindingy v jádře; modul je přebíjí a každá implementace se ptá `ShopModules->has('shipping')` za běhu, takže deaktivovaný modul odpoví prázdno bez `requires` v manifestu (precedent `CustomerIdentity` z etapy 2)
+
+### Admin (Inertia, `resources/js/Pages/Modules/Shipping/`)
+
+- CRUD způsobů dopravy i platby s řazením tlačítky ovladatelnými klávesnicí (WCAG 2.1.1, ne drag&drop jako jediná cesta)
+- Účet pro QR se adminovi vrací jen **maskovaný** (poslední 4 znaky) + afordance „změnit"; writer přepíše `settings`, jen když admin pošle novou hodnotu — otevření a uložení formuláře beze změny účet nevymaže
+- Matice doprava × platba jako checkbox mřížka; **prázdná řada = všechny aktivní platby povoleny** (jinak by nedotčená obrazovka udělala e-shop, který nepřijme objednávku). Uložení nahradí pivot řádky v transakci, tenant-scoped
+- Oprávnění `shipping.manage`, položka v adminní navigaci
+
+### Mimo rozsah etapy
+
+- Žádný storefront povrch — volby dopravy a platby vykreslí až modul `checkout` (etapa 4), který tyto kontrakty spotřebuje
+- Online platební brány (Comgate/GoPay) — vlna 1.4; proto je šifrování settings připravené už teď
+- Váhový strop metody (`max_weight_g`) filtruje v `available()`, ale samotnou váhu košíku dodá až checkout
+
 ## [0.10.1] – 2026-07-21
 
 **Bezpečnostní záplata etapy 2 (předmergová).** Finální revize větve našla řetězec vedoucí k převzetí účtu a několik děr kolem GDPR výmazu; opraveno před sloučením do `main`.
