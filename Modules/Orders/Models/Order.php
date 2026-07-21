@@ -87,6 +87,11 @@ class Order extends Model implements OrderView
     // module itself uses to write line items (see
     // App\Core\Orders\Contracts\OrderView).
 
+    public function orderInternalId(): int
+    {
+        return $this->id;
+    }
+
     public function orderUuid(): string
     {
         return $this->uuid;
@@ -164,5 +169,15 @@ class Order extends Model implements OrderView
     public function orderPaymentSnapshot(): ?array
     {
         return $this->payment_snapshot;
+    }
+
+    public function orderBilling(): array
+    {
+        return $this->billing ?? [];
+    }
+
+    public function orderVatSummary(): array
+    {
+        return $this->vat_summary ?? [];
     }
 }
