@@ -11,6 +11,9 @@ use App\Core\Orders\Exceptions\OrderPlacementUnavailable;
 use App\Core\Orders\Exceptions\PriceChanged;
 use App\Core\Orders\NullOrderPlacement;
 use App\Core\Orders\PlacementRequest;
+use App\Core\Sequences\SequenceService;
+use App\Core\Shipping\Contracts\PaymentOptions;
+use App\Core\Shipping\Contracts\ShippingOptions;
 use App\Core\Tax\TaxRates;
 use App\Core\Tenancy\TenantContext;
 use App\Models\Tenant;
@@ -19,10 +22,12 @@ use Modules\Checkout\Models\Cart;
 use Modules\Orders\Models\Order;
 use Modules\Orders\Models\OrderEvent;
 use Modules\Orders\Models\OrderItem;
+use Modules\Orders\Services\OrderPlacer;
 use Modules\Products\Models\Product;
 use Modules\Products\Services\ProductWriter;
 use Modules\Shipping\Models\PaymentMethod;
 use Modules\Shipping\Models\ShippingMethod;
+use Modules\Storefront\Support\ShopModules;
 use Tests\Concerns\ActivatesModules;
 use Tests\TestCase;
 
@@ -268,6 +273,65 @@ class OrderPlacerTest extends TestCase
     }
 
     /**
+     * Scenario 2b (AK 2, concurrent half) — two submits that both pass the
+     * idempotency SELECT before either commits: the losing Order::create()
+     * hits order_idem_unique, and place() must recover to the winning order
+     * instead of surfacing the duplicate-key error as a 500.
+     *
+     * A real two-thread race is not deterministic under single-threaded
+     * PHPUnit, so the collision is forced instead of raced: a first order is
+     * placed normally, then a placer subclass whose in-transaction idempotency
+     * lookup is stubbed to miss re-submits the same (cart, token). Its
+     * Order::create() therefore collides with the already-committed row — the
+     * exact state a losing concurrent request would be in — driving the
+     * UniqueConstraintViolationException catch path. See the report's honesty
+     * note for what this does and does not cover versus a genuine race.
+     */
+    public function test_a_concurrent_collision_recovers_to_the_existing_order(): void
+    {
+        $product = $this->makeProduct(['price' => 12300]);
+        $cart = $this->makeCart([$product->id => 1]);
+        $token = 'race-token';
+
+        // The winner: a normally placed order holding the idempotency key.
+        $winner = $this->place($this->request($cart, ['checkoutToken' => $token]));
+
+        // The loser: a placer whose first (in-transaction) idempotency lookup
+        // is forced to miss, so it proceeds to an insert that collides with the
+        // winner's row. The catch must re-read and return the winner.
+        $result = $this->context->runAs($this->tenant, function () use ($cart, $token) {
+            $placer = new class(app(ShopModules::class), app(ProductCatalog::class), app(ShippingOptions::class), app(PaymentOptions::class), app(SequenceService::class), app(TaxRates::class)) extends OrderPlacer
+            {
+                public int $lookupCalls = 0;
+
+                protected function existingOrder(PlacementRequest $request): ?Order
+                {
+                    $this->lookupCalls++;
+
+                    // First call is the in-transaction idempotency SELECT:
+                    // pretend the winner is not yet visible (the concurrent
+                    // race window). Later calls — the catch's recovery read —
+                    // see the truth.
+                    if ($this->lookupCalls === 1) {
+                        return null;
+                    }
+
+                    return parent::existingOrder($request);
+                }
+            };
+
+            return $placer->place($this->request($cart, ['checkoutToken' => $token]));
+        });
+
+        // Exactly one order exists, and the loser was handed the winner's.
+        $this->assertSame(1, $this->context->runAs($this->tenant, fn () => Order::query()->count()));
+        $this->assertSame($winner->uuid(), $result->uuid());
+        $this->assertSame($winner->number(), $result->number());
+        // The collided attempt wrote no extra lines either.
+        $this->assertSame(1, $this->context->runAs($this->tenant, fn () => OrderItem::query()->count()));
+    }
+
+    /**
      * Scenario 3 (AK 3) — the last unit: a second checkout on a depleted
      * product fails with InsufficientStock and writes nothing.
      *
@@ -339,7 +403,14 @@ class OrderPlacerTest extends TestCase
             $this->place($this->request($cart));
             $this->fail('Expected PriceChanged when the catalogue price moved.');
         } catch (PriceChanged $e) {
-            // expected
+            // The exception carries both figures so the checkout controller can
+            // render "cena se změnila z 500 na 550 Kč" (AK 4): old = the cart
+            // snapshot the shopper agreed to, new = the catalogue's price now.
+            $this->assertSame($product->id, $e->productId);
+            $this->assertSame(50000, $e->oldPrice->amount);
+            $this->assertSame('CZK', $e->oldPrice->currency);
+            $this->assertSame(55000, $e->newPrice->amount);
+            $this->assertSame('CZK', $e->newPrice->currency);
         }
 
         // Nothing was written: not the order, not its lines, not its events.

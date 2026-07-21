@@ -19,6 +19,7 @@ use App\Core\Shipping\Contracts\ShippingOption;
 use App\Core\Shipping\Contracts\ShippingOptions;
 use App\Core\Tax\TaxRates;
 use App\Models\TaxRate;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 use Modules\Orders\Models\Order;
 use Modules\Orders\Models\OrderEvent;
@@ -60,18 +61,45 @@ class OrderPlacer implements OrderPlacement
             throw OrderPlacementUnavailable::moduleNotActive();
         }
 
+        try {
+            return $this->placeInTransaction($request);
+        } catch (UniqueConstraintViolationException $e) {
+            // A concurrent submit committed its order between our idempotency
+            // lookup and our own insert: both requests passed the SELECT while
+            // neither had committed, then both reached Order::create(). The
+            // order_idem_unique index did its job — only one row was ever
+            // written — and the losing insert is this exception. AK 2 says the
+            // loser must still return the same PlacedOrder, not a 500.
+            //
+            // The re-read is deliberately OUT here, after the transaction has
+            // rolled back: inside it, MySQL REPEATABLE READ still holds the
+            // stale snapshot from before the winner committed, so a re-query
+            // there would miss the row and rethrow needlessly.
+            $existing = $this->existingOrder($request);
+
+            if ($existing !== null) {
+                return $this->confirmation($existing, $request);
+            }
+
+            // A unique violation we cannot resolve to an existing order (some
+            // other constraint, or a row that vanished): never swallow it.
+            throw $e;
+        }
+    }
+
+    private function placeInTransaction(PlacementRequest $request): PlacedOrder
+    {
         return DB::transaction(function () use ($request) {
             $cartId = $request->cart->cartId();
 
             // 1. Idempotency: a retried submit on the same (cart, token) must
             //    return the order already placed, never a duplicate. The
             //    order_idem_unique index backs this at the DB level; the
-            //    lookup here answers the ordinary double-click without ever
-            //    reaching the insert.
-            $existing = Order::query()
-                ->where('cart_id', $cartId)
-                ->where('checkout_token', $request->checkoutToken)
-                ->first();
+            //    lookup here answers the ordinary sequential double-click
+            //    without ever reaching the insert. The concurrent double
+            //    submit — two requests both past this lookup — is caught by
+            //    place()'s UniqueConstraintViolationException handler instead.
+            $existing = $this->existingOrder($request);
 
             if ($existing !== null) {
                 return $this->confirmation($existing, $request);
@@ -167,6 +195,24 @@ class OrderPlacer implements OrderPlacement
         });
     }
 
+    /**
+     * The order already placed for this idempotency key, or null.
+     *
+     * Tenant-scoped through Order's global scope; the same read backs both the
+     * sequential idempotency branch and the concurrent-collision recovery.
+     *
+     * protected, not private, so a test can subclass and force the in-
+     * transaction lookup to miss — the only way to exercise the concurrent
+     * double-submit catch path deterministically in a single-threaded test.
+     */
+    protected function existingOrder(PlacementRequest $request): ?Order
+    {
+        return Order::query()
+            ->where('cart_id', $request->cart->cartId())
+            ->where('checkout_token', $request->checkoutToken)
+            ->first();
+    }
+
     public function find(string $uuid): ?OrderView
     {
         if (! $this->modules->has('orders')) {
@@ -204,7 +250,10 @@ class OrderPlacer implements OrderPlacement
                 : new Money((int) $item->unit_price, $currentPrice->currency);
 
             if (! $currentPrice->equals($snapshot)) {
-                throw PriceChanged::forProduct($productId);
+                // Old = the figure the shopper agreed to in the cart, new =
+                // what the catalogue now charges — both handed to the caller
+                // so it can say exactly what moved (AK 4).
+                throw PriceChanged::forProduct($productId, $snapshot, $currentPrice);
             }
 
             $product = $this->catalog->findById($productId);
