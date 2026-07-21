@@ -75,4 +75,35 @@ class PaymentMethod extends Model implements PaymentOption
     {
         return $this->tax_rate_id;
     }
+
+    /**
+     * Whether an account for the QR payment is stored at all.
+     *
+     * The admin needs to know the account is set without ever seeing it, so the
+     * screen can show "účet nastaven" and a "změnit" affordance.
+     */
+    public function accountSet(): bool
+    {
+        return $this->accountValue() !== null;
+    }
+
+    /**
+     * The last four characters of the stored account, for display — never the
+     * whole thing. The full account leaves the server for no request.
+     */
+    public function maskedAccount(): ?string
+    {
+        $account = $this->accountValue();
+
+        return $account === null ? null : '…'.substr($account, -4);
+    }
+
+    private function accountValue(): ?string
+    {
+        $settings = $this->settings ?? [];
+        // `account` is written by the admin; `iban` covers rows seeded directly.
+        $account = $settings['account'] ?? $settings['iban'] ?? null;
+
+        return ($account === null || $account === '') ? null : (string) $account;
+    }
 }
