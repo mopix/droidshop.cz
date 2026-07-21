@@ -11,6 +11,49 @@ Pravidla: [`.claude/skills/versioning/SKILL.md`](.claude/skills/versioning/SKILL
 
 > CHANGELOG vede milníky (minor/major). Detail patchů je v `git log`.
 
+## [0.12.0] – 2026-07-21
+
+**Fáze 1 / vlna 1.3 — etapy 4+5 (sloučené): moduly `checkout` + `orders`.** Zákazník projde nákup od detailu produktu po děkovnou stránku bez zapnutého JavaScriptu, vznikne reálná objednávka a nájemce ji v adminu vidí, edituje, mění oba stavy a stornuje. Uzavírá MVP cíl vlny 1.3 (spec §3.1, §16.3, §16.4).
+
+### Jádro — tři nové kontrakty po vzoru `ProductCatalog`
+
+- `App\Core\Checkout\Contracts\CartRepository` (+ shape `CartShape`) — guest-safe null binding (`NullCartRepository`/`TransientCart`), přebitý modulem `checkout`
+- `App\Core\Orders\Contracts\OrderPlacement` (+ shape `PlacedOrder`) a `OrderBook` (+ shape `OrderView`) — psaní a čtení objednávek jsou dva různé kontrakty (jiné invarianty: odeslání je jeden atomický zápis s idempotencí, čtení je „moje objednávky" vs. „admin výpis")
+- Žádný z modulů nedeklaruje `requires` na druhý ani na `shipping` — `checkout` volá `app(OrderPlacement::class)` (null odmítne odeslání) a `ShippingOptions`/`PaymentOptions` (null → nouzovka „osobní odběr zdarma"). Runtime gate přes `ShopModules`, ne manifest, stejný precedent jako `CustomerIdentity` z etapy 2
+- `CatalogProduct` rozšířen o `catalogTaxRatePercent()` — sazba DPH ke snímku řádku objednávky se čte z katalogu, ne z ceníku samostatně
+
+### Modul `checkout` — košík a pokladna (Blade SSR, `noindex`)
+
+- `carts`/`cart_items`, košík vázaný na `carts.token` (kryptograficky náhodný cookie), volitelně na přihlášeného zákazníka
+- `/kosik`, `/pokladna/doprava`, `/pokladna/udaje`, `/dekujeme/{uuid}` — celý tok funguje bez JS; **veškerá cenová logika na serveru** (`CartPricer`), podvržená cena/doprava v POST se ignoruje
+- Změna ceny mezi vložením do košíku a odesláním zobrazí banner a přepočte (`PriceChanged`), nikdy nenaúčtuje starou cenu
+- SPAYD QR pro platbu převodem jako inline SVG (`endroid/qr-code ^6.0`, `SvgWriter`, bez GD) — účet se čte živě z platební metody, nikdy ze snímku objednávky (žádný credential ve snímku, spec §16.5)
+- Potvrzovací e-mail zákazníkovi i nájemci a stavové e-maily přes kernel `MailService`, vždy `MailKind::Transactional`
+- `/kosik`, `/pokladna/*`, `/dekujeme/*` vyřazeny z page cache hlavičkou `Cache-Control: private, no-store` (page cache jako taková ještě neexistuje — provizorní řešení, viz Odchylky)
+
+### Modul `orders` — perzistence a admin (Inertia, `resources/js/Pages/Modules/Orders/`)
+
+- `orders`/`order_items`/`order_events`, číslo objednávky přes gap-free `SequenceService::configure('orders')` (běží v `Lifecycle::onActivate()`, ne v `boot()` — tenant kontext v tu chvíli ještě neexistuje)
+- `OrderPlacer::place()` — jedna DB transakce: idempotence podle `(cart_id, checkout_token)` první, přepočet každého řádku z `ProductCatalog::price()` (nikdy z `cart_items.unit_price`, který je jen snímek), odpis skladu (`decrementStock`, atomický `UPDATE`) uvnitř téže transakce jako zápis objednávky — objednávka, která nevezme sklad, nesmí vzniknout, a naopak. Souběh na posledním kusu: prohraný požadavek dostane `UniqueConstraintViolationException`, dohledá už vzniklou objednávku a vrátí ji místo 500
+- `OrderWorkflow` vynucuje dvojitý stavový automat (`fulfillment_status` × `payment_status`, nezávislé grafy, nezávislé `order_events` záznamy) — kontrola nelegálního přechodu proběhne čistě v paměti před jakýmkoli dotazem, takže není co vracet
+- Admin: výpis s filtrem a hledáním, detail s položkami/adresami/historií, editace existujících řádků (sklad podle delty), ruční založení objednávky, storno s přesným vrácením skladu. Oprávnění `orders.view`/`orders.edit`/`orders.cancel`
+- `EloquentOrderBook::forCustomer`/`findForCustomer` — čtení pro účet zákazníka, tenant + vlastnictví scoped
+
+### Účet zákazníka — historie objednávek
+
+- `/ucet/objednavky` (seznam) a `/ucet/objednavky/{uuid}` (detail) v `Modules/Customers`, nahrazují placeholder z etapy 2. Blade SSR, `noindex`, za guardem `customer`
+- Detail čte přes `OrderBook::findForCustomer(customerId, uuid)` — vlastnictví, ne jen znalost UUID: cizí objednávka (jiný zákazník i jiný tenant) vrátí `null` → 404, stejně jako cizí `customer_address`
+
+### Testy
+
+Celá sada **770 passed** (bylo 656 na startu etapy 4/5, 762 po Task 8). Nově `AccountOrdersTest` (8), oprava `CustomerAccountTest` (placeholder → odkaz na historii objednávek).
+
+### Mimo rozsah etapy
+
+- Online platební brána, webhook, `/platba/navrat` — vlna 1.4, poběží na `payment_snapshot` a stavu `payment`
+- Faktury, PDF, číselné řady dokladů — vlna 1.5, poběží na hotových `orders`
+- Manuální Lighthouse a11y check na `/kosik` a pokladně — pre-deploy checklist, nebylo možné spustit v implementačním prostředí
+
 ## [0.11.0] – 2026-07-21
 
 **Fáze 1 / vlna 1.3 — etapa 3: modul `shipping`.** Nájemce si v adminu definuje, jak jeho e-shop doručuje a přijímá platby — způsoby dopravy (osobní odběr, paušální dopravce), způsoby platby (dobírka, převod s QR) a matici, která platba patří ke které dopravě. Modul je admin-only; volby renderuje až budoucí checkout. Online platební brány jsou vlna 1.4.

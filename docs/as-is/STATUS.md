@@ -1,6 +1,6 @@
 # As-is status — DroidShop.cz
 
-Poslední aktualizace: **2026-07-21** · Verze: **0.11.0**
+Poslední aktualizace: **2026-07-21** · Verze: **0.12.0**
 
 ## Oblasti
 
@@ -13,7 +13,7 @@ Poslední aktualizace: **2026-07-21** · Verze: **0.11.0**
 | Audit log | **hotovo** | §15.1 | e-mail o změně stavu chybí |
 | Kernel služby — Money, Settings, Limits, Sequences, FeatureFlags | **hotovo** | §15.1 | [detail](2026-07-19-kernel-sluzby.md) |
 | Kernel služba — FileStorage | **hotovo** | §15.1 | [detail](2026-07-19-filestorage.md); lokální disk, ne S3 |
-| Kernel služba — MailService | **hotovo** | §15.1 | [detail](../superpowers/plans/2026-07-20-faze-1-vlna-13-etapa-1-mailservice.md); šablony verifikace a reset hesla dodal modul `customers`, potvrzení objednávky čeká na `orders` |
+| Kernel služba — MailService | **hotovo** | §15.1 | [detail](../superpowers/plans/2026-07-20-faze-1-vlna-13-etapa-1-mailservice.md); šablony verifikace a reset hesla dodal modul `customers`, potvrzení objednávky a stavové e-maily dodal modul `orders` |
 | Kernel služba — EventBus | odloženo | §15.1 | čeká na prvního volajícího |
 | Module system | **hotovo** | kap. 5, §15.5 | [detail](2026-07-19-system-modulu.md) — bez odinstalace |
 | Referenční modul `Pages` | **hotovo** | — | statické stránky, Blade SSR |
@@ -23,12 +23,13 @@ Poslední aktualizace: **2026-07-21** · Verze: **0.11.0**
 | Kernel — sazby DPH, redirects, sanitizace HTML | **hotovo** | §6.2, §15.3, §16.1 | [detail](2026-07-20-katalog-jadro.md) |
 | Modul `categories` — strom, admin, 301 | **hotovo** | §6.3, §16.2 | max 4 úrovně; řazení tlačítky, ne drag&drop |
 | Modul `products` — katalog, ceny, sklad, obrázky, SEO | **hotovo** | §6.2, §16.1 | bez variant, CSV importu, řezů obrázků a hromadných operací |
-| Objednávky / pokladna (checkout) | není | §3.1, §16.3 | čeká na modul `checkout` (etapa 4), který spotřebuje kontrakty modulu `shipping` |
-| Modul `shipping` — způsoby dopravy a platby, matice | **hotovo** | §16.5 | admin-only, bez storefrontu (options renderuje checkout); kontrakty `ShippingOptions`/`PaymentOptions` s guest-safe null bindingy; účet pro QR šifrovaný (`encrypted:array`), adminovi jen maskovaný; prázdná řada matice = všechny platby povoleny; online brány = vlna 1.4 |
+| Modul `checkout` — košík, pokladna, odeslání objednávky | **hotovo** | §3.1, §16.3 | [detail](2026-07-21-checkout.md); Blade SSR + progressive enhancement, funguje bez JS; cenová autorita `ProductCatalog`, ne `cart_items.unit_price`; SPAYD QR pro bankovní převod; bez online brány (vlna 1.4) |
+| Modul `orders` — perzistence, admin, dvojitý stavový automat | **hotovo** | §16.4 | [detail](2026-07-21-checkout.md); idempotentní odeslání, odpis skladu v téže transakci, edice s deltou skladu, ruční založení, storno; historie objednávek v účtu zákazníka hotová |
+| Modul `shipping` — způsoby dopravy a platby, matice | **hotovo** | §16.5 | admin-only + storefront options renderuje checkout; kontrakty `ShippingOptions`/`PaymentOptions` s guest-safe null bindingy; účet pro QR šifrovaný (`encrypted:array`), adminovi jen maskovaný; prázdná řada matice = všechny platby povoleny; online brány = vlna 1.4 |
 | Modul `storefront` — layout, homepage, hledání, chybové stránky | **hotovo** | §4.1.1 | [detail](2026-07-20-storefront-katalog.md) |
 | Veřejný katalog — kategorie, produkt, řazení a filtr bez JS | **hotovo** | §16.1, §16.2 | bez košíku |
 | SEO výstupy — canonical, OG, JSON-LD, sitemap, robots, 301, 410 | **hotovo** | §3.1, §15.3 | page cache §15.6 chybí |
-| Modul `customers` — registrace, přihlášení, reset hesla, verifikace, účet, admin + GDPR výmaz | **hotovo** | §6.7, §15.1 | čtvrtý guard `customer` nad tenant-scoped tabulkou (unikátní `(tenant_id, email)`); vlastní tenant-scoped tokeny místo Laravelího password brokeru; verifikace e-mailu se nikde nevynucuje (čeká na rozhodnutí etapy `checkout`); historie objednávek v účtu je placeholder na modul `orders` |
+| Modul `customers` — registrace, přihlášení, reset hesla, verifikace, účet, admin + GDPR výmaz | **hotovo** | §6.7, §15.1 | čtvrtý guard `customer` nad tenant-scoped tabulkou (unikátní `(tenant_id, email)`); vlastní tenant-scoped tokeny místo Laravelího password brokeru; verifikace e-mailu se nikde nevynucuje (čeká na rozhodnutí etapy `checkout`); historie objednávek v účtu hotová, čte přes `OrderBook::forCustomer`/`findForCustomer` s kontrolou vlastnictví |
 | Tarify / trial / billing | částečně | §3.1 | tabulka `plans` stojí, přiřazení tenantovi jde z UI; fakturace a trial logika ne |
 | Playwright E2E | není | CLAUDE.md | blokováno omezením certifikátu, viz níže |
 | Design handoff | prázdné | `docs/design-droidshop/` | |
@@ -44,6 +45,7 @@ Nejdůležitější:
 3. `tenants.plan_id` je nullable — onboarding zakládá tenanta před výběrem tarifu.
 4. **Inertia stránky modulů leží v core stromu** (`resources/js/Pages/Modules/<Modul>/`), ne uvnitř modulu — Inertia view finder neumí namapovat krátký název na cestu uvnitř modulu. Detail: [`2026-07-20-katalog-jadro.md`](2026-07-20-katalog-jadro.md).
 5. **Řazení kategorií je tlačítky ↑/↓**, ne drag&drop podle §16.2 — tažení nejde ovládat klávesnicí (WCAG 2.1.1).
+6. **Vyloučení košíku a pokladny z page cache je explicitní hlavička `Cache-Control: private, no-store`**, ne pravidlo na úrovni routy — page cache jako mechanismus ještě neexistuje. Detail: [`2026-07-21-checkout.md`](2026-07-21-checkout.md).
 
 ## Známá omezení, na která se narazí dřív než na cokoliv jiného
 
