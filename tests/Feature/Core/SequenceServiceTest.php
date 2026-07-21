@@ -88,6 +88,42 @@ class SequenceServiceTest extends TestCase
         $this->assertSame('2026001', $number);
     }
 
+    public function test_reconfigure_does_not_rewind_an_advanced_series(): void
+    {
+        $tenant = Tenant::factory()->create();
+
+        $next = $this->context->runAs($tenant, function (): string {
+            // Series runs: 1, 2 issued.
+            $this->sequences->next('orders');
+            $this->sequences->next('orders');
+
+            // A module deactivate/reactivate cycle re-runs configure(); it must
+            // not reset the counter and reissue a number already in the books.
+            $this->sequences->configure('orders', prefix: '', startAt: 1);
+
+            return $this->sequences->next('orders');
+        });
+
+        $this->assertSame('3', $next);
+    }
+
+    public function test_reconfigure_refreshes_the_prefix(): void
+    {
+        $tenant = Tenant::factory()->create();
+
+        $number = $this->context->runAs($tenant, function (): string {
+            $this->sequences->configure('invoices', 'OLD-', 1);
+            $this->sequences->next('invoices');
+
+            // Renaming the prefix is safe — it does not collide with past numbers.
+            $this->sequences->configure('invoices', 'NEW-', 1);
+
+            return $this->sequences->next('invoices');
+        });
+
+        $this->assertSame('NEW-2', $number);
+    }
+
     public function test_without_a_tenant_throws(): void
     {
         $this->expectException(MissingTenantContext::class);

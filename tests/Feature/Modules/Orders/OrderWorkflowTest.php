@@ -27,6 +27,8 @@ class OrderWorkflowTest extends TestCase
 
     private Tenant $tenant;
 
+    private int $orderSeq = 2026001;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -43,7 +45,8 @@ class OrderWorkflowTest extends TestCase
     private function makeOrder(array $attributes = []): Order
     {
         return $this->context->runAs($this->tenant, fn () => Order::query()->create(array_merge([
-            'number' => '2026001',
+            // Unique per call — orders now carry a unique(tenant_id, number).
+            'number' => (string) $this->orderSeq++,
             'checkout_token' => Str::random(40),
             'email' => 'jana@example.cz',
             'billing' => [

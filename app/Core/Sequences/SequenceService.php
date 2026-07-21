@@ -73,15 +73,31 @@ class SequenceService
      *
      * Meant for configuration before a series is first used — e.g. a tenant
      * wanting invoices to start at 2026001.
+     *
+     * The starting number is only written when the series is created. Once a
+     * series exists its counter is left alone: re-running configure() (a module
+     * deactivate/reactivate cycle calls it again, see Modules\Orders\Lifecycle)
+     * must never rewind next_number and reissue a number already in the books —
+     * that would be an accounting-level duplicate. The prefix is still refreshed
+     * on every call, since renaming a prefix does not collide with past numbers.
      */
     public function configure(string $series, string $prefix = '', int $startAt = 1): void
     {
         $tenantId = $this->requireTenant();
 
-        DB::table('sequences')->updateOrInsert(
-            ['tenant_id' => $tenantId, 'series' => $series],
-            ['prefix' => $prefix, 'next_number' => $startAt],
-        );
+        $created = DB::table('sequences')->insertOrIgnore([
+            'tenant_id' => $tenantId,
+            'series' => $series,
+            'prefix' => $prefix,
+            'next_number' => $startAt,
+        ]);
+
+        if (! $created) {
+            DB::table('sequences')
+                ->where('tenant_id', $tenantId)
+                ->where('series', $series)
+                ->update(['prefix' => $prefix]);
+        }
     }
 
     private function requireTenant(): int

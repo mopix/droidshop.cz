@@ -57,6 +57,11 @@ return new class extends Migration
             $table->timestamps();
 
             $table->unique(['tenant_id', 'uuid']);
+            // Order numbers must be unique per tenant — a duplicate is a legal
+            // defect for accounting (spec §15.1). This is the hard backstop:
+            // even if a series were reset, the second insert fails rather than
+            // silently reissuing a number already in the books.
+            $table->unique(['tenant_id', 'number']);
             $table->unique(['tenant_id', 'cart_id', 'checkout_token'], 'order_idem_unique');
             $table->index(['tenant_id', 'fulfillment_status']);
             $table->index(['tenant_id', 'customer_id']);

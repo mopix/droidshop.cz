@@ -25,11 +25,10 @@ class Lifecycle implements ModuleLifecycle
      * one place a tenant is already guaranteed to be in context at the
      * moment a module is switched on.
      *
-     * configure() is an updateOrInsert, so calling it again on a
-     * deactivate/reactivate cycle is safe in the sense the interface
-     * promises (it does not throw or duplicate a row) — though note it does
-     * reset next_number back to startAt each time, which only matters if a
-     * tenant is reactivated after already having placed orders.
+     * Calling it again on a deactivate/reactivate cycle is safe: configure()
+     * only writes the starting number when the series is created, so a tenant
+     * reactivated after already placing orders keeps its counter and never
+     * reissues a number already in the books.
      */
     public function onActivate(Tenant $tenant): void
     {

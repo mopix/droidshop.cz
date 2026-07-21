@@ -17,7 +17,10 @@ use App\Core\Shipping\Contracts\ShippingOptions;
 use App\Core\Tax\TaxRates;
 use App\Core\Tenancy\TenantContext;
 use App\Models\Tenant;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Modules\Checkout\Models\Cart;
 use Modules\Orders\Models\Order;
 use Modules\Orders\Models\OrderEvent;
@@ -513,5 +516,33 @@ class OrderPlacerTest extends TestCase
         $this->assertNotNull($foundByOwner);
         $this->assertSame($placed->uuid(), $foundByOwner->orderUuid());
         $this->assertNull($foundByStranger);
+    }
+
+    /**
+     * Scenario 9 — the accounting backstop: two orders can never share a
+     * number within one tenant. Even if a series were somehow rewound (a
+     * module reactivation once did this), the DB rejects the second insert
+     * rather than silently reissuing a number already in the books.
+     */
+    public function test_order_number_is_unique_per_tenant(): void
+    {
+        $product = $this->makeProduct(['price' => 12300]);
+        $cart = $this->makeCart([$product->id => 1]);
+
+        $this->place($this->request($cart));
+
+        $this->context->runAs($this->tenant, function (): void {
+            $first = Order::query()->firstOrFail();
+
+            // Same tenant, same number, fresh uuid and idempotency key: only the
+            // (tenant_id, number) uniqueness stands in the way of the duplicate.
+            $row = $first->getAttributes();
+            unset($row['id']);
+            $row['uuid'] = (string) Str::uuid();
+            $row['checkout_token'] = 'dup-'.bin2hex(random_bytes(8));
+
+            $this->expectException(UniqueConstraintViolationException::class);
+            DB::table('orders')->insert($row);
+        });
     }
 }
