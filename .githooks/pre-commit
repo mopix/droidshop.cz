@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+#
+# Auto-bump the patch version on every commit (see .claude/skills/versioning).
+#
+# Semver lives in the root VERSION file: patch tracks every commit, minor tracks
+# every implementation plan, major is a human decision. This hook owns patch.
+#
+# It SKIPS itself when VERSION is already staged — that is the signal a manual
+# minor/major bump is happening in this same commit, and re-bumping the patch on
+# top would turn a deliberate 1.0.7 -> 1.1.0 into 1.1.1.
+#
+# Enable per clone with:  git config core.hooksPath .githooks
+set -euo pipefail
+
+repo_root="$(git rev-parse --show-toplevel)"
+version_file="$repo_root/VERSION"
+
+# No VERSION file, nothing to own.
+[ -f "$version_file" ] || exit 0
+
+# A staged VERSION means a manual minor/major bump — leave it alone.
+if git diff --cached --name-only | grep -qx 'VERSION'; then
+    exit 0
+fi
+
+current="$(tr -d '[:space:]' < "$version_file")"
+
+# Only touch a clean X.Y.Z; anything else is left for a human.
+if ! [[ "$current" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+    echo "pre-commit: VERSION '$current' is not X.Y.Z, skipping auto-bump." >&2
+    exit 0
+fi
+
+major="${BASH_REMATCH[1]}"
+minor="${BASH_REMATCH[2]}"
+patch="${BASH_REMATCH[3]}"
+
+next="$major.$minor.$((patch + 1))"
+printf '%s\n' "$next" > "$version_file"
+git add "$version_file"
+
+echo "pre-commit: VERSION $current -> $next" >&2
