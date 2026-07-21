@@ -11,6 +11,7 @@
     "require": {
         "php": "^8.3",
         "composer/semver": "^3.4",
+        "endroid/qr-code": "^6.0",
         "inertiajs/inertia-laravel": "^3.0",
         "laravel/framework": "^13.0",
         "laravel/sanctum": "^4.0",

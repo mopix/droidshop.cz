@@ -21,6 +21,7 @@ use App\Core\Tax\TaxRates;
 use App\Models\TaxRate;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
+use Modules\Orders\Events\OrderPlaced;
 use Modules\Orders\Models\Order;
 use Modules\Orders\Models\OrderEvent;
 use Modules\Storefront\Support\ShopModules;
@@ -89,7 +90,13 @@ class OrderPlacer implements OrderPlacement
 
     private function placeInTransaction(PlacementRequest $request): PlacedOrder
     {
-        return DB::transaction(function () use ($request) {
+        // Captured out of the transaction closure so the OrderPlaced event can
+        // fire AFTER commit and only for a genuinely new order: the idempotent
+        // branch and the concurrent-collision recovery both return without
+        // ever setting this, so neither sends a second confirmation (AK 2).
+        $newOrder = null;
+
+        $placed = DB::transaction(function () use ($request, &$newOrder) {
             $cartId = $request->cart->cartId();
 
             // 1. Idempotency: a retried submit on the same (cart, token) must
@@ -191,8 +198,19 @@ class OrderPlacer implements OrderPlacement
                     ->update(['converted_at' => now()]);
             }
 
+            $newOrder = $order;
+
             return $this->confirmation($order, $request);
         });
+
+        if ($newOrder !== null) {
+            // Post-commit: the transaction has returned, so the order is
+            // durable before any listener (order confirmation mail) runs, and
+            // nothing was queued from inside the transaction.
+            OrderPlaced::dispatch($newOrder);
+        }
+
+        return $placed;
     }
 
     /**

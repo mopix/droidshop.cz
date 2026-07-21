@@ -5,8 +5,11 @@ namespace Modules\Checkout\Services;
 use App\Core\Catalog\Contracts\ProductCatalog;
 use App\Core\Checkout\Contracts\CartShape;
 use App\Core\Money\Money;
+use App\Core\Shipping\Contracts\PaymentOption;
 use App\Core\Shipping\Contracts\ShippingOption;
 use App\Core\Shipping\Contracts\ShippingOptions;
+use App\Core\Tax\TaxRates;
+use App\Models\TaxRate;
 use Modules\Checkout\Support\PricedCart;
 use Modules\Checkout\Support\PricedCartLine;
 
@@ -27,6 +30,7 @@ final class CartPricer
     public function __construct(
         private readonly ProductCatalog $catalog,
         private readonly ShippingOptions $shippingOptions,
+        private readonly TaxRates $taxRates,
     ) {}
 
     public function price(CartShape $cart): PricedCart
@@ -143,6 +147,84 @@ final class CartPricer
         }
 
         return $option->price();
+    }
+
+    /**
+     * The VAT recapitulation for the checkout summary, grouped by rate percent
+     * — the same shape and algorithm OrderPlacer::vatSummary() writes onto the
+     * finished order, so the recap the shopper confirms matches what the order
+     * records: net/VAT computed once per rate on the summed gross, always
+     * through TaxRate, never through Money (spec §15.1).
+     *
+     * This deliberately re-derives the split for display rather than sharing
+     * OrderPlacer's private method across the module boundary; the two must
+     * stay in step (see the checkout as-is doc's technical-debt note).
+     *
+     * @return list<array{rate: float, base: int, vat: int}>
+     */
+    public function vatBreakdown(
+        PricedCart $cart,
+        ?ShippingOption $shipping,
+        Money $shippingCost,
+        ?PaymentOption $payment,
+        Money $paymentFee,
+    ): array {
+        $byPercent = $this->taxRates->all()->keyBy(fn (TaxRate $rate) => (string) $rate->percent());
+
+        /** @var array<int, array{rate: TaxRate, gross: Money}> $groups keyed by rate_permille */
+        $groups = [];
+
+        $add = function (?TaxRate $rate, Money $gross) use (&$groups): void {
+            if ($rate === null || $gross->isZero()) {
+                return;
+            }
+
+            $key = $rate->rate_permille;
+
+            if (! isset($groups[$key])) {
+                $groups[$key] = ['rate' => $rate, 'gross' => new Money(0, $gross->currency)];
+            }
+
+            $groups[$key]['gross'] = $groups[$key]['gross']->plus($gross);
+        };
+
+        foreach ($cart->lines as $line) {
+            if (! $line->available) {
+                continue;
+            }
+
+            $product = $this->catalog->findById($line->productId);
+
+            if ($product === null) {
+                continue;
+            }
+
+            $add($byPercent->get((string) $product->catalogTaxRatePercent()), $line->lineTotal);
+        }
+
+        if ($shipping !== null && $shipping->taxRateId() !== null) {
+            $add($this->taxRates->findById($shipping->taxRateId()), $shippingCost);
+        }
+
+        if ($payment !== null && $payment->taxRateId() !== null) {
+            $add($this->taxRates->findById($payment->taxRateId()), $paymentFee);
+        }
+
+        krsort($groups);
+
+        return array_values(array_map(function (array $group): array {
+            /** @var TaxRate $rate */
+            $rate = $group['rate'];
+            /** @var Money $gross */
+            $gross = $group['gross'];
+            $net = $rate->net($gross);
+
+            return [
+                'rate' => $rate->percent(),
+                'base' => $net->amount,
+                'vat' => $gross->minus($net)->amount,
+            ];
+        }, $groups));
     }
 
     /**

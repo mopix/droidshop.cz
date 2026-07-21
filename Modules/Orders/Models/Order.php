@@ -153,4 +153,9 @@ class Order extends Model implements OrderView
         // same rule).
         return $this->items()->get();
     }
+
+    public function orderPaymentSnapshot(): ?array
+    {
+        return $this->payment_snapshot;
+    }
 }

@@ -57,4 +57,16 @@ interface OrderView
      * @return Collection<int, mixed>
      */
     public function orderItems(): Collection;
+
+    /**
+     * The chosen payment method's snapshot as it was recorded at placement —
+     * id, name, fee, tax rate, currency. Never a credential: the account
+     * behind a bank-transfer QR is deliberately not stored here (spec §16.5),
+     * so a confirmation page reads the id from this snapshot and re-resolves
+     * the live payment method to build its payment instruction. Null when no
+     * payment method was chosen (the free personal-pickup fallback).
+     *
+     * @return array<string, mixed>|null
+     */
+    public function orderPaymentSnapshot(): ?array;
 }

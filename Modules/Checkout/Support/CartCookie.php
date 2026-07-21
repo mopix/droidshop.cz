@@ -65,4 +65,30 @@ final class CartCookie
 
         return $response;
     }
+
+    /**
+     * Expires the cart cookie — used once an order is placed, so the next
+     * visit to `/kosik` starts a fresh, empty cart rather than resolving to
+     * the just-converted one (which still holds its now-ordered lines).
+     *
+     * @template TResponse of Response
+     *
+     * @param  TResponse  $response
+     * @return TResponse
+     */
+    public static function forget(Response $response, Request $request): Response
+    {
+        $cookie = Cookie::create(self::NAME)
+            ->withValue('')
+            ->withExpires(1)
+            ->withPath('/')
+            ->withDomain(null)
+            ->withSecure($request->secure())
+            ->withHttpOnly(true)
+            ->withSameSite('lax');
+
+        $response->headers->setCookie($cookie);
+
+        return $response;
+    }
 }

@@ -76,6 +76,25 @@ class PaymentMethod extends Model implements PaymentOption
         return $this->tax_rate_id;
     }
 
+    public function provider(): string
+    {
+        return $this->provider;
+    }
+
+    /**
+     * The account the customer pays a bank transfer to — the destination
+     * printed on the payment instruction (the QR), never withheld. Only ever
+     * set for bank-transfer methods; every other provider has none.
+     */
+    public function spaydAccount(): ?string
+    {
+        if ($this->provider !== self::PROVIDER_BANK_TRANSFER) {
+            return null;
+        }
+
+        return $this->accountValue();
+    }
+
     /**
      * Whether an account for the QR payment is stored at all.
      *

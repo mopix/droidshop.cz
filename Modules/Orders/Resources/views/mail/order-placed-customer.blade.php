@@ -1,0 +1,39 @@
+<p>Dobrý den,</p>
+
+<p>děkujeme za vaši objednávku č. {{ $orderNumber }} v e-shopu {{ $shopName }}.</p>
+
+<h2>Souhrn objednávky</h2>
+
+<table cellpadding="4" cellspacing="0">
+    <thead>
+        <tr>
+            <th align="left">Položka</th>
+            <th align="right">Počet</th>
+            <th align="right">Cena</th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach ($lines as $line)
+            <tr>
+                <td align="left">{{ $line['name'] }}</td>
+                <td align="right">{{ $line['quantity'] }}</td>
+                <td align="right">{{ $line['lineTotal'] }}</td>
+            </tr>
+        @endforeach
+    </tbody>
+</table>
+
+<p><strong>Celkem k úhradě: {{ $total }}</strong></p>
+
+<p>Způsob platby: {{ $paymentLabel }}</p>
+
+@if ($paymentInstruction)
+    <p>{{ $paymentInstruction }}</p>
+@endif
+
+<p>
+    Podrobnosti a stav objednávky najdete zde:<br>
+    <a href="{{ $orderUrl }}">{{ $orderUrl }}</a>
+</p>
+
+<p>Děkujeme, že nakupujete u {{ $shopName }}.</p>

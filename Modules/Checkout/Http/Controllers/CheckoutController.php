@@ -2,17 +2,30 @@
 
 namespace Modules\Checkout\Http\Controllers;
 
+use App\Core\Catalog\Exceptions\InsufficientStock;
 use App\Core\Checkout\Contracts\CartRepository;
+use App\Core\Checkout\Contracts\CartShape;
+use App\Core\Money\Money;
+use App\Core\Orders\Contracts\OrderPlacement;
+use App\Core\Orders\Exceptions\OrderPlacementUnavailable;
+use App\Core\Orders\Exceptions\PriceChanged;
+use App\Core\Orders\PlacementRequest;
+use App\Core\Shipping\Contracts\PaymentOption;
 use App\Core\Shipping\Contracts\PaymentOptions;
+use App\Core\Shipping\Contracts\ShippingOption;
 use App\Core\Shipping\Contracts\ShippingOptions;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Str;
 use Modules\Checkout\Http\Requests\ChooseShippingRequest;
+use Modules\Checkout\Http\Requests\PlaceOrderRequest;
 use Modules\Checkout\Services\CartPricer;
 use Modules\Checkout\Support\CartCookie;
+use Modules\Checkout\Support\PricedCart;
 use Modules\Storefront\Support\Seo;
 
 /**
@@ -35,6 +48,7 @@ class CheckoutController
         private readonly CartPricer $pricer,
         private readonly ShippingOptions $shippingOptions,
         private readonly PaymentOptions $paymentOptions,
+        private readonly OrderPlacement $orders,
     ) {}
 
     public function shipping(Request $request): Response|RedirectResponse
@@ -123,6 +137,206 @@ class CheckoutController
             $cart,
             $request,
         );
+    }
+
+    /**
+     * `/pokladna/udaje` — the contact/address form plus a server-rendered
+     * recap (line items, delivery, payment, VAT breakdown, total) and the
+     * "Objednat s povinností platby" button.
+     *
+     * The recap is built entirely from the priced cart and the chosen options,
+     * read fresh — never from anything a client posted (AK 5). The hidden
+     * checkout_token minted here is the idempotency key the form posts back
+     * (AK 2).
+     */
+    public function details(Request $request): Response|RedirectResponse
+    {
+        $cart = $this->carts->forToken(CartCookie::read($request));
+        $priced = $this->pricer->price($cart);
+
+        if ($priced->isEmpty()) {
+            return CartCookie::attach(
+                redirect()->route('storefront.checkout.show')->with('status', 'Košík je prázdný.'),
+                $cart,
+                $request,
+            );
+        }
+
+        $selection = $this->resolveSelection($cart, $priced);
+
+        // Shipping options exist but none is chosen yet: send the shopper to
+        // the step that picks one, so the recap they confirm is complete. The
+        // free-pickup fallback (shipping module off) has no such step and is
+        // left to place straight through (Task 5 open question).
+        if (! $selection['usingFallback'] && $selection['shipping'] === null) {
+            return CartCookie::attach(
+                redirect()->route('storefront.checkout.shipping'),
+                $cart,
+                $request,
+            );
+        }
+
+        $view = view('checkout::checkout.details', [
+            'cart' => $priced,
+            'usingFallback' => $selection['usingFallback'],
+            'shipping' => $selection['shipping'],
+            'shippingCost' => $selection['shippingCost'],
+            'payment' => $selection['payment'],
+            'paymentFee' => $selection['paymentFee'],
+            'total' => $selection['total'],
+            'vatBreakdown' => $this->pricer->vatBreakdown(
+                $priced,
+                $selection['shipping'],
+                $selection['shippingCost'],
+                $selection['payment'],
+                $selection['paymentFee'],
+            ),
+            'checkoutToken' => Str::random(40),
+            'seo' => new Seo(title: 'Údaje a rekapitulace', noindex: true),
+        ]);
+
+        return CartCookie::attach($this->uncached($view), $cart, $request);
+    }
+
+    /**
+     * POST `/pokladna/udaje` — validate, then hand the cart and the shopper's
+     * choices to OrderPlacement::place(). No price is recomputed here:
+     * OrderPlacer is the single pricing authority (AK 5), and the chosen
+     * shipping/payment ids come from the cart's stored selection, never the
+     * POST body.
+     *
+     * The checkout_token from the hidden field is the idempotency key, so a
+     * double submit of the same form returns the one order already placed
+     * (AK 2). Mail is not sent from here: OrderPlacer fires OrderPlaced after
+     * its commit and the orders module's listener sends the confirmations —
+     * so a resubmit sends nothing extra and nothing is queued inside the
+     * placement transaction.
+     */
+    public function place(PlaceOrderRequest $request): RedirectResponse
+    {
+        $cart = $this->carts->forToken(CartCookie::read($request));
+        $priced = $this->pricer->price($cart);
+
+        if ($priced->isEmpty()) {
+            return CartCookie::attach(
+                redirect()->route('storefront.checkout.show')->with('status', 'Košík je prázdný.'),
+                $cart,
+                $request,
+            );
+        }
+
+        $placement = new PlacementRequest(
+            cart: $cart,
+            // The cart's own stored selection — validated when it was chosen on
+            // the shipping step. Null (fallback / step skipped) is fine:
+            // OrderPlacer treats it as free personal pickup.
+            shippingMethodId: $cart->cartShippingMethodId(),
+            paymentMethodId: $cart->cartPaymentMethodId(),
+            email: (string) $request->string('email'),
+            phone: (string) $request->string('phone'),
+            billing: $request->billingAddress(),
+            shipping: $request->deliveryAddress(),
+            checkoutToken: (string) $request->string('checkout_token'),
+            customerId: Auth::guard('customer')->id(),
+            source: 'storefront',
+            note: $request->filled('note') ? (string) $request->string('note') : null,
+        );
+
+        try {
+            $placed = $this->orders->place($placement);
+        } catch (PriceChanged $e) {
+            // Old = the figure the shopper agreed to in the cart, new = what
+            // the catalogue charges now (AK 4). Sent back to the cart, where
+            // the per-line banner already explains the change too.
+            return CartCookie::attach(
+                redirect()->route('storefront.checkout.show')->with(
+                    'status',
+                    'Cena se u některé položky změnila z '.$e->oldPrice->format().' na '.$e->newPrice->format().'. Zkontrolujte prosím košík a objednávku dokončete znovu.',
+                ),
+                $cart,
+                $request,
+            );
+        } catch (InsufficientStock $e) {
+            // The last unit went between adding it and submitting (AK 3).
+            return CartCookie::attach(
+                redirect()->route('storefront.checkout.show')->with(
+                    'status',
+                    'Litujeme, poslední kus některé položky byl právě vyprodán. Upravte prosím košík.',
+                ),
+                $cart,
+                $request,
+            );
+        } catch (OrderPlacementUnavailable $e) {
+            // The orders module is off for this shop: it cannot take orders
+            // right now. Nothing was written.
+            return CartCookie::attach(
+                back()->with('status', 'E-shop momentálně nepřijímá objednávky. Zkuste to prosím později.'),
+                $cart,
+                $request,
+            );
+        }
+
+        // Placed: drop the cart cookie so the next visit starts fresh rather
+        // than resolving to the just-converted cart, and send the shopper to
+        // the thank-you page. Confirmation mail is already on its way, sent by
+        // the orders module's OrderPlaced listener.
+        return CartCookie::forget(
+            redirect()->route('storefront.checkout.thankYou', ['uuid' => $placed->uuid()]),
+            $request,
+        );
+    }
+
+    /**
+     * Resolves the cart's chosen shipping/payment into display shapes and
+     * server-computed costs, or the free personal-pickup fallback when the
+     * shipping module is off (plan decision 1). Mirrors shipping()'s own
+     * resolution, kept separate so the details recap never re-derives a price
+     * from anything but the options themselves (AK 5, AK 10).
+     *
+     * @return array{usingFallback: bool, shipping: ?ShippingOption, shippingCost: Money, payment: ?PaymentOption, paymentFee: Money, total: Money}
+     */
+    private function resolveSelection(CartShape $cart, PricedCart $priced): array
+    {
+        $weightGrams = $this->pricer->weightGrams($cart);
+        $available = $this->shippingOptions->available($weightGrams);
+        $usingFallback = $available->isEmpty();
+
+        $currency = $priced->itemsTotal->currency;
+
+        $shipping = null;
+        $payment = null;
+
+        if (! $usingFallback) {
+            $selectedShippingId = $cart->cartShippingMethodId();
+            $shipping = $selectedShippingId === null
+                ? null
+                : $available->first(fn (ShippingOption $option) => $option->id() === $selectedShippingId);
+
+            if ($shipping !== null) {
+                $payments = $this->paymentOptions->forShipping($shipping->id());
+                $selectedPaymentId = $cart->cartPaymentMethodId();
+                $payment = $selectedPaymentId === null
+                    ? null
+                    : $payments->first(fn (PaymentOption $option) => $option->id() === $selectedPaymentId);
+            }
+        }
+
+        $shippingCost = $shipping !== null
+            ? $this->pricer->shippingCost($priced->itemsTotal, $shipping)
+            : new Money(0, $currency);
+
+        $paymentFee = $payment?->fee() ?? new Money(0, $currency);
+
+        $total = $priced->itemsTotal->plus($shippingCost)->plus($paymentFee);
+
+        return [
+            'usingFallback' => $usingFallback,
+            'shipping' => $shipping,
+            'shippingCost' => $shippingCost,
+            'payment' => $payment,
+            'paymentFee' => $paymentFee,
+            'total' => $total,
+        ];
     }
 
     /**
