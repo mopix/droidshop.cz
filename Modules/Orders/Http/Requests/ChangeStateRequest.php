@@ -32,7 +32,14 @@ class ChangeStateRequest extends FormRequest
                 Order::FULFILLMENT_PROCESSING,
                 Order::FULFILLMENT_SHIPPED,
                 Order::FULFILLMENT_DELIVERED,
-                Order::FULFILLMENT_CANCELLED,
+                // FULFILLMENT_CANCELLED is deliberately absent: cancellation
+                // is a separate, more consequential action (reason, optional
+                // stock return, optional customer e-mail) gated on
+                // orders.cancel, not orders.edit — see
+                // OrderEditController::cancel / CancelOrderRequest. This
+                // endpoint checks orders.edit only, so allowing "cancelled"
+                // here too would let an orders.edit-only admin cancel
+                // through the back door (Task 7 review, must-close #1).
             ];
 
         return [
@@ -43,6 +50,10 @@ class ChangeStateRequest extends FormRequest
             // round number, so a longer note fails here with a readable
             // message instead of truncating silently at the database.
             'note' => ['nullable', 'string', 'max:255'],
+            // Opt-in only: this is not the automatic order-confirmation
+            // mail, it is an admin choosing, per change, whether the
+            // customer should be told (see OrderStateController).
+            'send_email' => ['nullable', 'boolean'],
         ];
     }
 }

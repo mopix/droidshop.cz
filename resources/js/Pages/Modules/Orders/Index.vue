@@ -44,11 +44,16 @@ const PAYMENT_LABELS: Record<string, string> = {
 // Modules\Orders\Services\OrderWorkflow) — a convenience for the UI so a
 // click cannot even offer an illegal move. The server enforces the same
 // graph again regardless (never trust the client alone).
+//
+// "cancelled" is deliberately absent: this quick-select no longer offers
+// cancellation at all (server-side, ChangeStateRequest no longer accepts it
+// either) — storno has its own permission (orders.cancel) and confirm
+// dialog on the order detail page.
 const FULFILLMENT_NEXT: Record<string, string[]> = {
-  new: ['accepted', 'cancelled'],
-  accepted: ['processing', 'cancelled'],
-  processing: ['shipped', 'cancelled'],
-  shipped: ['delivered', 'cancelled'],
+  new: ['accepted'],
+  accepted: ['processing'],
+  processing: ['shipped'],
+  shipped: ['delivered'],
   delivered: [],
   cancelled: [],
 }
@@ -141,7 +146,15 @@ const quickChangeFulfillment = (row: OrderRow, event: Event) => {
 <template>
   <AdminLayout title="Objednávky">
     <template #header>
-      <h1 class="text-xl font-semibold text-gray-900">Objednávky</h1>
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <h1 class="text-xl font-semibold text-gray-900">Objednávky</h1>
+        <Link
+          :href="route('admin.orders.create')"
+          class="rounded-md bg-gray-900 px-4 py-2 text-sm font-semibold text-white hover:bg-gray-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-900 focus-visible:ring-offset-2"
+        >
+          Nová objednávka
+        </Link>
+      </div>
     </template>
 
     <form

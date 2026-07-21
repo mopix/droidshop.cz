@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { Link, useForm } from '@inertiajs/vue3'
 import AdminLayout from '@/Layouts/AdminLayout.vue'
+import ConfirmDialog from '@/Components/Ui/ConfirmDialog.vue'
 
 type Address = {
   name?: string
@@ -57,7 +58,7 @@ type OrderDetail = {
 
 const props = defineProps<{
   order: OrderDetail
-  can: { edit: boolean }
+  can: { edit: boolean; cancel: boolean }
 }>()
 
 const FULFILLMENT_LABELS: Record<string, string> = {
@@ -84,11 +85,16 @@ const ACTOR_LABELS: Record<string, string> = {
 // Client-side convenience only — mirrors Modules\Orders\Services\OrderWorkflow
 // so the select never offers a move the server would reject anyway. The
 // server re-checks the same graph regardless; this is not the enforcement.
+//
+// "cancelled" is deliberately absent from every list here: cancellation is
+// not offered through this generic state select at all (server-side,
+// ChangeStateRequest no longer accepts it either) — it has its own button,
+// permission (orders.cancel) and confirm dialog below.
 const FULFILLMENT_NEXT: Record<string, string[]> = {
-  new: ['accepted', 'cancelled'],
-  accepted: ['processing', 'cancelled'],
-  processing: ['shipped', 'cancelled'],
-  shipped: ['delivered', 'cancelled'],
+  new: ['accepted'],
+  accepted: ['processing'],
+  processing: ['shipped'],
+  shipped: ['delivered'],
   delivered: [],
   cancelled: [],
 }
@@ -105,8 +111,16 @@ const money = (haler: number) =>
 const fulfillmentOptions = computed(() => FULFILLMENT_NEXT[props.order.fulfillment_status] ?? [])
 const paymentOptions = computed(() => PAYMENT_NEXT[props.order.payment_status] ?? [])
 
-const fulfillmentForm = useForm({ machine: 'fulfillment', to: '', note: '' })
-const paymentForm = useForm({ machine: 'payment', to: '', note: '' })
+// A cancel is offered whenever the fulfillment machine still allows it —
+// every state except the two terminal ones (delivered, cancelled). Mirrors
+// Modules\Orders\Services\OrderWorkflow's graph; the server is what actually
+// enforces it (OrderEditor::cancel → OrderWorkflow::transitionFulfillment).
+const canCancelNow = computed(
+  () => !['delivered', 'cancelled'].includes(props.order.fulfillment_status),
+)
+
+const fulfillmentForm = useForm({ machine: 'fulfillment', to: '', note: '', send_email: false })
+const paymentForm = useForm({ machine: 'payment', to: '', note: '', send_email: false })
 
 const submitFulfillment = () => {
   if (!fulfillmentForm.to) return
@@ -114,7 +128,7 @@ const submitFulfillment = () => {
   fulfillmentForm.patch(route('admin.orders.state.update', props.order.uuid), {
     preserveScroll: true,
     onSuccess: () => {
-      fulfillmentForm.reset('to', 'note')
+      fulfillmentForm.reset('to', 'note', 'send_email')
     },
   })
 }
@@ -125,9 +139,31 @@ const submitPayment = () => {
   paymentForm.patch(route('admin.orders.state.update', props.order.uuid), {
     preserveScroll: true,
     onSuccess: () => {
-      paymentForm.reset('to', 'note')
+      paymentForm.reset('to', 'note', 'send_email')
     },
   })
+}
+
+// --- Cancellation (storno) -------------------------------------------------
+
+const cancelling = ref(false)
+const returnStock = ref(true)
+const sendCancelEmail = ref(true)
+const cancelForm = useForm({ reason: '', return_stock: true, send_email: true })
+
+const submitCancel = (reason: string) => {
+  cancelForm
+    .transform((data) => ({ ...data, reason, return_stock: returnStock.value, send_email: sendCancelEmail.value }))
+    .post(route('admin.orders.cancel', props.order.uuid), {
+      preserveScroll: true,
+      onSuccess: () => {
+        cancelling.value = false
+      },
+      onError: () => {
+        // Keep the dialog open so the admin sees the validation error
+        // (e.g. a missing reason) instead of losing what they typed.
+      },
+    })
 }
 
 const formatAddress = (address: Address) => {
@@ -286,6 +322,15 @@ const formatAddress = (address: Address) => {
               />
             </div>
 
+            <label class="flex items-center gap-2 text-sm text-gray-800">
+              <input
+                v-model="fulfillmentForm.send_email"
+                type="checkbox"
+                class="rounded border-gray-300 text-gray-900 focus:ring-gray-900"
+              />
+              Poslat e-mail zákazníkovi o změně stavu
+            </label>
+
             <p v-if="fulfillmentForm.errors.to" class="text-sm text-red-700">{{ fulfillmentForm.errors.to }}</p>
 
             <button
@@ -332,6 +377,15 @@ const formatAddress = (address: Address) => {
               />
             </div>
 
+            <label class="flex items-center gap-2 text-sm text-gray-800">
+              <input
+                v-model="paymentForm.send_email"
+                type="checkbox"
+                class="rounded border-gray-300 text-gray-900 focus:ring-gray-900"
+              />
+              Poslat e-mail zákazníkovi o změně stavu
+            </label>
+
             <p v-if="paymentForm.errors.to" class="text-sm text-red-700">{{ paymentForm.errors.to }}</p>
 
             <button
@@ -345,7 +399,57 @@ const formatAddress = (address: Address) => {
 
           <p v-else-if="can.edit" class="mt-3 text-sm text-gray-600">Konečný stav, dál se již neposouvá.</p>
         </section>
+
+        <!-- ===================== Cancellation (storno) ===================== -->
+        <section v-if="can.cancel && canCancelNow" aria-labelledby="cancel-heading" class="rounded-lg border border-red-200 bg-red-50 p-4 shadow-sm">
+          <h2 id="cancel-heading" class="text-sm font-semibold text-red-900">Storno objednávky</h2>
+          <p class="mt-1 text-sm text-red-800">
+            Objednávku zruší a nastaví stav vyřízení na „Zrušená“. Tuto akci nelze vrátit zpět.
+          </p>
+
+          <button
+            type="button"
+            class="mt-3 rounded-md border border-red-300 bg-white px-4 py-2 text-sm font-semibold text-red-800 hover:bg-red-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-800"
+            @click="cancelling = true"
+          >
+            Stornovat objednávku
+          </button>
+        </section>
       </div>
     </div>
+
+    <ConfirmDialog
+      :show="cancelling"
+      title="Stornovat objednávku"
+      :message="`Opravdu stornovat objednávku ${order.number}? Stav vyřízení se změní na „Zrušená“ a akci nelze vrátit zpět.`"
+      confirm-label="Stornovat"
+      danger
+      require-reason
+      reason-label="Důvod storna"
+      :reason-error="cancelForm.errors.reason"
+      :processing="cancelForm.processing"
+      @cancel="cancelling = false"
+      @confirm="submitCancel"
+    >
+      <div class="space-y-3">
+        <label class="flex items-center gap-2 text-sm text-gray-800">
+          <input
+            v-model="returnStock"
+            type="checkbox"
+            class="rounded border-gray-300 text-gray-900 focus:ring-gray-900"
+          />
+          Vrátit odečtené kusy zpět na sklad
+        </label>
+
+        <label class="flex items-center gap-2 text-sm text-gray-800">
+          <input
+            v-model="sendCancelEmail"
+            type="checkbox"
+            class="rounded border-gray-300 text-gray-900 focus:ring-gray-900"
+          />
+          Poslat zákazníkovi e-mail o zrušení objednávky
+        </label>
+      </div>
+    </ConfirmDialog>
   </AdminLayout>
 </template>

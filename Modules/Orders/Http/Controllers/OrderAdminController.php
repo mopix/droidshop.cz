@@ -115,6 +115,7 @@ class OrderAdminController
             ],
             'can' => [
                 'edit' => $request->user('web')->can('orders.edit'),
+                'cancel' => $request->user('web')->can('orders.cancel'),
             ],
         ]);
     }

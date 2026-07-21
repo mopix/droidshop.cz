@@ -166,6 +166,26 @@ class EloquentProductCatalog implements ProductCatalog
     }
 
     /**
+     * The exact counterpart of decrementStock, for returning stock (an
+     * admin edit that lowers a quantity, a cancelled order — AK 9).
+     *
+     * A single UPDATE, same as the decrement, so the pair reads consistently
+     * even though there is no contention to protect against on the way up.
+     */
+    public function incrementStock(int $productId, int $quantity): void
+    {
+        $product = Product::query()->whereKey($productId)->firstOrFail();
+
+        if (! $product->stock_tracked) {
+            return;
+        }
+
+        Product::query()->whereKey($productId)->update([
+            'stock_qty' => DB::raw('stock_qty + '.(int) $quantity),
+        ]);
+    }
+
+    /**
      * @param  array<string, mixed>  $context
      */
     public function price(int $productId, array $context = []): Money

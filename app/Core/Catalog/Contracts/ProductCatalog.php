@@ -66,6 +66,16 @@ interface ProductCatalog
     public function decrementStock(int $productId, int $quantity): void;
 
     /**
+     * Gives stock back — the exact counterpart of decrementStock, used when
+     * an admin edit lowers a line's quantity or a cancelled order's stock is
+     * returned (spec AK 9).
+     *
+     * Untracked stock is a no-op, mirroring decrementStock's own guard: a
+     * product that never had stock taken from it has nothing to give back.
+     */
+    public function incrementStock(int $productId, int $quantity): void;
+
+    /**
      * The price a given context pays, after the PriceModifier chain.
      *
      * @param  array<string, mixed>  $context
