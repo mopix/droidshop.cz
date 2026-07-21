@@ -23,6 +23,7 @@ class StorePaymentMethodRequest extends FormRequest
             'provider' => ['required', Rule::in([
                 PaymentMethod::PROVIDER_COD,
                 PaymentMethod::PROVIDER_BANK_TRANSFER,
+                PaymentMethod::PROVIDER_COMGATE,
             ])],
             'name' => ['required', 'string', 'max:191'],
             'description' => ['nullable', 'string', 'max:500'],
@@ -38,7 +39,29 @@ class StorePaymentMethodRequest extends FormRequest
             // re-entered to change. Here, on create, a bank transfer without an
             // account makes no sense, so it is required for that provider.
             'account' => $this->accountRule(),
+
+            // Comgate credentials. merchant and the test flag are not secret;
+            // secret is (encrypted, masked, re-entered to change). On create a
+            // gateway with no secret cannot take a payment, so both are required.
+            'merchant' => [Rule::requiredIf($this->isComgate()), 'nullable', 'string', 'max:64'],
+            'secret' => $this->secretRule(),
+            'test' => ['boolean'],
         ];
+    }
+
+    protected function isComgate(): bool
+    {
+        return $this->input('provider') === PaymentMethod::PROVIDER_COMGATE;
+    }
+
+    /**
+     * @return array<int, mixed>
+     */
+    protected function secretRule(): array
+    {
+        // On create a gateway needs its secret; Update relaxes this to nullable
+        // (blank = keep the stored one).
+        return [Rule::requiredIf($this->isComgate()), 'nullable', 'string', 'max:128'];
     }
 
     /**

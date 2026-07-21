@@ -122,6 +122,38 @@ class PaymentMethod extends Model implements PaymentOption
         return $account === null ? null : '…'.substr($account, -4);
     }
 
+    /**
+     * The Comgate merchant id — not a secret, shown in the admin so the shop
+     * can see which account is wired. Null for any other provider.
+     */
+    public function comgateMerchant(): ?string
+    {
+        if ($this->provider !== self::PROVIDER_COMGATE) {
+            return null;
+        }
+
+        $merchant = $this->settings['merchant'] ?? null;
+
+        return is_string($merchant) && $merchant !== '' ? $merchant : null;
+    }
+
+    /**
+     * Whether the gateway runs in Comgate's test mode.
+     */
+    public function comgateTest(): bool
+    {
+        return $this->provider === self::PROVIDER_COMGATE && (bool) ($this->settings['test'] ?? false);
+    }
+
+    /**
+     * Whether a Comgate secret is stored — so the admin can show "secret set"
+     * and a "change" affordance without ever receiving the secret itself.
+     */
+    public function secretSet(): bool
+    {
+        return $this->provider === self::PROVIDER_COMGATE && ! empty($this->settings['secret']);
+    }
+
     private function accountValue(): ?string
     {
         $settings = $this->settings ?? [];
