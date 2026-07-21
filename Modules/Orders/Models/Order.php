@@ -18,6 +18,8 @@ class Order extends Model implements OrderView
 
     public const FULFILLMENT_NEW = 'new';
 
+    public const FULFILLMENT_ACCEPTED = 'accepted';
+
     public const FULFILLMENT_PROCESSING = 'processing';
 
     public const FULFILLMENT_SHIPPED = 'shipped';
