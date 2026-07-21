@@ -51,6 +51,16 @@ php artisan migrate
 php artisan migrate --seed   # pokud existuje DatabaseSeeder
 ```
 
+### Git hooks (verzování)
+
+Po naklonování jednou zapni projektové hooky — jinak se `VERSION` nezvedá:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+`.githooks/pre-commit` automaticky zvedne patch ve `VERSION` při každém commitu. Když je `VERSION` už ve stage (ruční minor/major bump), hook se přeskočí. Detail: `.claude/skills/versioning`.
+
 ## 2. Frontend (npm)
 
 ```bash
