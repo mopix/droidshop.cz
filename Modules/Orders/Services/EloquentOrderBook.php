@@ -5,8 +5,9 @@ namespace Modules\Orders\Services;
 use App\Core\Orders\Contracts\OrderBook;
 use App\Core\Orders\Contracts\OrderView;
 use App\Core\Orders\OrderFilter;
-use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator as LengthAwarePaginatorContract;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
 use Modules\Orders\Models\Order;
 use Modules\Storefront\Support\ShopModules;
@@ -51,12 +52,14 @@ class EloquentOrderBook implements OrderBook
     }
 
     /**
-     * @return LengthAwarePaginator<int, OrderView>
+     * @return LengthAwarePaginatorContract<int, OrderView>
      */
-    public function paginateForAdmin(OrderFilter $filter): LengthAwarePaginator
+    public function paginateForAdmin(OrderFilter $filter): LengthAwarePaginatorContract
     {
         if (! $this->modules->has('orders')) {
-            return Order::query()->whereRaw('1 = 0')->paginate($filter->perPage);
+            // No query needed: an inactive module has nothing to page
+            // through, the same empty answer NullOrderBook gives.
+            return new LengthAwarePaginator([], 0, $filter->perPage);
         }
 
         $builder = Order::query();
