@@ -12,6 +12,7 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
+use Inertia\Testing\AssertableInertia;
 use Modules\Orders\Mail\OrderCancelled;
 use Modules\Orders\Mail\OrderStateChanged;
 use Modules\Orders\Models\Order;
@@ -271,6 +272,62 @@ class OrderEditTest extends TestCase
                 'billing' => $this->billing(),
             ])
             ->assertForbidden();
+    }
+
+    // --- Show page: the edit form is wired to real data --------------------
+    //
+    // The update behaviour itself (recompute, delta stock, permission,
+    // beyond-shipped refusal) is already proven above over HTTP — these two
+    // just prove the admin detail page hands the Vue edit form real,
+    // server-derived data to work with: item rows carrying product_id (the
+    // field UpdateOrderRequest needs per line, which OrderView deliberately
+    // does not expose) and an `editable` flag equal to
+    // OrderEditor::isEditable(), not a value the frontend re-derives.
+
+    public function test_the_detail_page_exposes_item_product_ids_and_marks_a_fresh_order_editable(): void
+    {
+        $product = $this->makeProduct();
+        $order = $this->makeOrderWithLine($product, 2);
+
+        $this->actingAs($this->owner)
+            ->get($this->url('/'.$order->uuid))
+            ->assertOk()
+            ->assertInertia(fn (AssertableInertia $page) => $page
+                ->component('Modules/Orders/Show')
+                ->where('order.editable', true)
+                ->has('order.items', 1)
+                ->where('order.items.0.product_id', $product->id)
+                ->where('order.items.0.quantity', 2)
+            );
+    }
+
+    /**
+     * Uses `delivered`, not `shipped`: OrderEditor::EDITABLE_FULFILLMENT_STATUSES
+     * includes `shipped` (editing is allowed "up to and including shipped"
+     * — see OrderEditor's own docblock and test_editing_beyond_shipped_is_refused
+     * above, which edits an order still in an editable state and only turns
+     * non-editable at `delivered`). The Show page's `editable` flag must
+     * match that real rule, not a stricter one, or the admin would lose a
+     * capability the backend actually grants.
+     */
+    public function test_the_detail_page_reports_not_editable_once_past_the_editable_window(): void
+    {
+        $product = $this->makeProduct();
+        $order = $this->makeOrderWithLine($product, 1, ['fulfillment_status' => Order::FULFILLMENT_DELIVERED]);
+
+        $this->actingAs($this->owner)
+            ->get($this->url('/'.$order->uuid))
+            ->assertInertia(fn (AssertableInertia $page) => $page->where('order.editable', false));
+    }
+
+    public function test_the_detail_page_still_reports_editable_true_for_a_shipped_order(): void
+    {
+        $product = $this->makeProduct();
+        $order = $this->makeOrderWithLine($product, 1, ['fulfillment_status' => Order::FULFILLMENT_SHIPPED]);
+
+        $this->actingAs($this->owner)
+            ->get($this->url('/'.$order->uuid))
+            ->assertInertia(fn (AssertableInertia $page) => $page->where('order.editable', true));
     }
 
     // --- manual order -----------------------------------------------------

@@ -11,6 +11,7 @@ use Inertia\Response;
 use Modules\Orders\Models\Order;
 use Modules\Orders\Models\OrderEvent;
 use Modules\Orders\Models\OrderItem;
+use Modules\Orders\Services\OrderEditor;
 
 /**
  * The nájemce's view of their own shop's orders: a filtered listing and a
@@ -93,8 +94,18 @@ class OrderAdminController
                 'payment_fee' => $order->payment_fee->amount,
                 'vat_summary' => $order->vat_summary,
                 'note' => $order->note,
+                // Whether OrderEditor::edit() would still accept a PATCH on
+                // this order right now — the same status list, not a
+                // re-derived copy, so the edit form the admin sees can never
+                // drift from what the server actually enforces.
+                'editable' => OrderEditor::isEditable($order->fulfillment_status),
                 'items' => $order->orderItems()->map(fn (OrderItem $item) => [
                     'id' => $item->id,
+                    // Needed so an edit submission can tell OrderEditor which
+                    // catalogue product a line refers to — the read-only
+                    // OrderView contract has no reason to carry this, but the
+                    // write side (UpdateOrderRequest) requires it per line.
+                    'product_id' => $item->product_id,
                     'name' => $item->name,
                     'sku' => $item->sku,
                     'unit_price' => $item->unit_price->amount,

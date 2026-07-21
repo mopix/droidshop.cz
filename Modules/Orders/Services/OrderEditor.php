@@ -46,8 +46,12 @@ class OrderEditor
      * including "shipped" (plan decision). Once an order is delivered or
      * cancelled, rewriting its lines make no sense; both are simply absent
      * from this list rather than special-cased.
+     *
+     * Public (not just isEditable() below) so a caller who already has the
+     * status list in scope — none does today, but this is the single source
+     * of truth either way — can check without an extra method call.
      */
-    private const EDITABLE_FULFILLMENT_STATUSES = [
+    public const EDITABLE_FULFILLMENT_STATUSES = [
         Order::FULFILLMENT_NEW,
         Order::FULFILLMENT_ACCEPTED,
         Order::FULFILLMENT_PROCESSING,
@@ -64,6 +68,20 @@ class OrderEditor
         private readonly MailService $mail,
         private readonly TenantContext $context,
     ) {}
+
+    /**
+     * Whether an order in this fulfillment status may still be edited.
+     *
+     * The one place OrderAdminController's `show()` asks before offering an
+     * edit form at all — a UI showing the form on a `delivered`/`cancelled`
+     * order would only earn the admin a 422 on submit. Reusing this rather
+     * than re-deriving the status list on the read side is what keeps the
+     * two from ever disagreeing.
+     */
+    public static function isEditable(string $fulfillmentStatus): bool
+    {
+        return in_array($fulfillmentStatus, self::EDITABLE_FULFILLMENT_STATUSES, true);
+    }
 
     /**
      * Rewrites an order's lines, addresses and contact details, adjusting
@@ -89,7 +107,7 @@ class OrderEditor
         string $actorType,
         ?int $actorId,
     ): Order {
-        if (! in_array($order->fulfillment_status, self::EDITABLE_FULFILLMENT_STATUSES, true)) {
+        if (! self::isEditable($order->fulfillment_status)) {
             throw OrderEditingClosed::forOrder($order->fulfillment_status);
         }
 
