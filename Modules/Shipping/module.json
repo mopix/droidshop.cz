@@ -1,0 +1,32 @@
+{
+    "name": "shipping",
+    "version": "1.0.0",
+    "title": {
+        "cs": "Doprava a platby"
+    },
+    "description": {
+        "cs": "Způsoby dopravy a platby e-shopu a matice, které platby patří ke které dopravě."
+    },
+    "core": false,
+    "billable": false,
+    "level": "base",
+    "requires": {},
+    "provides": [
+        "shipping-options",
+        "payment-options"
+    ],
+    "listens": [],
+    "permissions": [
+        "shipping.manage"
+    ],
+    "settings_schema": null,
+    "nav": [
+        {
+            "area": "admin",
+            "label": "Doprava a platby",
+            "route": "admin.shipping.index",
+            "icon": "truck",
+            "order": 40
+        }
+    ]
+}
