@@ -25,42 +25,47 @@ class CartMerger
 
     public function mergeOnLogin(Request $request, int $customerId): void
     {
-        $token = CartCookie::read($request);
-
-        if ($token === null) {
-            // No anonymous cart cookie at all — nothing to merge, and
-            // nothing to queue: the customer's own cart (if any) already
-            // has whatever cookie a prior visit set for it.
-            return;
-        }
-
-        $anonCart = $this->carts->forToken($token);
-
-        if ($anonCart->cartId() === null) {
-            // Either the checkout module is not active for this tenant, or
-            // the token simply did not resolve to a real cart (foreign
-            // tenant, pruned, never existed) — forToken() minted a brand
-            // new, empty, unsaved-until-touched cart in that case. Nothing
-            // real to merge either way.
-            return;
-        }
-
-        $anonItems = $anonCart->cartItems();
-
-        if ($anonItems->isEmpty()) {
-            // Also covers the "phantom" cart forToken() creates for a
-            // cookie token that belongs to another tenant or never resolved
-            // at all: that cart is always empty, so tenant isolation falls
-            // out of this same guard rather than needing its own check.
-            return;
-        }
-
+        // Resolved before any early return: a customer's own cart matters
+        // to the cookie decision below even on the paths that have nothing
+        // to merge or attach.
         $existing = $this->carts->findForCustomer($customerId);
+
+        $token = CartCookie::read($request);
+        $anonCart = $token !== null ? $this->carts->forToken($token) : null;
+        $anonItems = $anonCart !== null && $anonCart->cartId() !== null
+            ? $anonCart->cartItems()
+            : null;
+
+        if ($anonItems === null || $anonItems->isEmpty()) {
+            // Nothing to merge or attach: no anonymous cookie at all, the
+            // checkout module inactive for this tenant, an unresolvable or
+            // foreign-tenant token (forToken() mints an always-empty
+            // phantom cart in that case — tenant isolation falls out of
+            // this same "empty" check rather than needing its own), or a
+            // real but item-less anonymous cart.
+            //
+            // The customer's own cart, if they have one, still needs the
+            // browser re-pointed at it here: every cart-resolving
+            // controller (CartController, CheckoutController,
+            // CartSummaryController) reads the active cart solely from
+            // this cookie, with no customer_id fallback — a fresh browser,
+            // a second device, or cookies cleared since the cart was
+            // built would otherwise make that cart unreachable even though
+            // it is sitting in the database, customer_id and all.
+            if ($existing !== null) {
+                CartCookie::queueRefresh($existing, $request);
+            }
+
+            return;
+        }
 
         if ($existing !== null && $existing->cartId() === $anonCart->cartId()) {
             // The cookie already names the customer's own cart — e.g. they
             // logged in again without the cookie ever changing. Nothing to
-            // merge into itself.
+            // merge into itself, but the cookie is re-affirmed here too,
+            // for the same reason every other branch ends by queuing it.
+            CartCookie::queueRefresh($existing, $request);
+
             return;
         }
 
@@ -83,11 +88,11 @@ class CartMerger
         // never resurrect it as a second live cart for this customer.
         $this->carts->retire($anonCart);
 
-        // The browser's cookie still names the now-retired anonymous cart's
-        // token. Without this, the very next /kosik request would resolve
-        // straight back to it — forToken() has no reason to know it is
-        // retired — and the customer would never see the cart their items
-        // just merged into.
+        // The browser's cookie still names the now-retired anonymous
+        // cart's token. Without this, the very next /kosik request would
+        // resolve straight back to it — forToken() has no reason to know
+        // it is retired — and the customer would never see the cart their
+        // items just merged into.
         CartCookie::queueRefresh($existing, $request);
     }
 }

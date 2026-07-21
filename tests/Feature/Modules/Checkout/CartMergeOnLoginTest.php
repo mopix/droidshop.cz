@@ -210,6 +210,14 @@ class CartMergeOnLoginTest extends TestCase
         $this->assertSame($existingCart->id, $carts->first()->id);
         $this->assertSame([$product->id => 1], $this->itemsOf($this->tenant, $carts->first()));
         $this->assertNull($carts->first()->converted_at);
+
+        // No anonymous cookie means nothing to merge, but the browser must
+        // still be re-pointed at the customer's real, already-saved cart —
+        // a fresh browser, a second device, or cookies cleared since that
+        // cart was built must not make it unreachable. Every cart-resolving
+        // controller reads the active cart solely from this cookie, with
+        // no customer_id fallback.
+        $response->assertCookie('cart_token', $existingCart->token);
     }
 
     public function test_an_empty_anonymous_cart_leaves_the_customers_existing_cart_untouched(): void
@@ -244,6 +252,11 @@ class CartMergeOnLoginTest extends TestCase
         $emptyAnon = $carts->firstWhere('token', $emptyAnonToken);
         $this->assertNotNull($emptyAnon);
         $this->assertNull($emptyAnon->converted_at, 'an untouched empty cart is never retired');
+
+        // An empty anonymous cart is nothing to merge — but the browser
+        // must still end up tracking the customer's real cart, not the
+        // empty one it happened to arrive with.
+        $response->assertCookie('cart_token', $existingCart->token);
     }
 
     public function test_a_cart_cookie_token_from_another_tenant_merges_nothing_at_login(): void
