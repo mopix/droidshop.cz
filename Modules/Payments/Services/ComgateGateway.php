@@ -10,6 +10,7 @@ use App\Core\Payments\Exceptions\GatewayError;
 use App\Core\Payments\PaymentResult;
 use App\Core\Payments\PaymentStatus;
 use Illuminate\Support\Facades\Http;
+use Modules\Payments\Jobs\ExpireUnpaidOrder;
 use Modules\Payments\Support\ComgateSignature;
 use Modules\Payments\Support\GatewayInitiation;
 use Modules\Shipping\Models\PaymentMethod;
@@ -84,6 +85,10 @@ final class ComgateGateway implements PaymentGateway
             throw GatewayError::malformedResponse('create', $response);
         }
 
+        // Starting a payment starts a clock: if it is never paid, an expiry job
+        // fails the order and returns its stock.
+        $this->scheduleExpiry($orderUuid);
+
         return new GatewayInitiation($redirect, $transId);
     }
 
@@ -108,6 +113,20 @@ final class ComgateGateway implements PaymentGateway
         );
 
         return new PaymentResult($status, $reference, $amount);
+    }
+
+    private function scheduleExpiry(string $orderUuid): void
+    {
+        // A delayed job needs a real queue. On the sync driver a delayed
+        // dispatch runs immediately, which would fail the order the instant it
+        // was placed — so there, expiry is left to a manual cancel (which
+        // returns stock too). Documented as a known limitation.
+        if (config('queue.default') === 'sync') {
+            return;
+        }
+
+        ExpireUnpaidOrder::dispatch($orderUuid)
+            ->delay(now()->addMinutes((int) config('payments.reservation_ttl_minutes')));
     }
 
     public function verifyNotification(array $payload): bool
