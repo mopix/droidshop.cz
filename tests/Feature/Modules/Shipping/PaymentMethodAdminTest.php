@@ -154,6 +154,80 @@ class PaymentMethodAdminTest extends TestCase
             ->assertDontSee(self::IBAN);
     }
 
+    public function test_comgate_credentials_are_stored_encrypted_and_the_secret_never_reaches_the_page(): void
+    {
+        $this->actingAs($this->owner)
+            ->post($this->url('/zpusoby-platby'), $this->payload([
+                'provider' => PaymentMethod::PROVIDER_COMGATE,
+                'name' => 'Platební karta',
+                'merchant' => 'M-98765',
+                'secret' => 'super-secret-key',
+                'test' => true,
+            ]))
+            ->assertRedirect();
+
+        $method = $this->context->runAs($this->tenant, fn () => PaymentMethod::query()->where('name', 'Platební karta')->firstOrFail());
+
+        $raw = DB::table('payment_methods')->where('id', $method->id)->value('settings');
+        $this->assertStringNotContainsString('super-secret-key', (string) $raw);
+
+        $this->context->runAs($this->tenant, function () use ($method) {
+            $fresh = $method->fresh();
+            $this->assertSame('M-98765', $fresh->settings['merchant']);
+            $this->assertSame('super-secret-key', $fresh->settings['secret']);
+            $this->assertTrue($fresh->settings['test']);
+        });
+
+        $this->actingAs($this->owner)
+            ->get($this->url())
+            ->assertInertia(fn (AssertableInertia $page) => $page
+                ->where('paymentMethods.0.comgate_merchant', 'M-98765')
+                ->where('paymentMethods.0.secret_set', true)
+                ->where('paymentMethods.0.comgate_test', true)
+                ->missing('paymentMethods.0.settings')
+            )
+            ->assertDontSee('super-secret-key');
+    }
+
+    public function test_saving_comgate_without_a_new_secret_keeps_the_stored_one(): void
+    {
+        $method = $this->make($this->tenant, [
+            'provider' => PaymentMethod::PROVIDER_COMGATE,
+            'name' => 'Platební karta',
+            'merchant' => 'M-1',
+            'secret' => 'keep-me',
+            'test' => false,
+        ]);
+
+        // The admin changes the merchant, leaves the secret blank.
+        $this->actingAs($this->owner)
+            ->put($this->url('/zpusoby-platby/'.$method->id), $this->payload([
+                'provider' => PaymentMethod::PROVIDER_COMGATE,
+                'name' => 'Platební karta',
+                'merchant' => 'M-2',
+                'secret' => '',
+                'test' => true,
+            ]))
+            ->assertRedirect();
+
+        $this->context->runAs($this->tenant, function () use ($method) {
+            $fresh = $method->fresh();
+            $this->assertSame('M-2', $fresh->settings['merchant']);
+            $this->assertSame('keep-me', $fresh->settings['secret']);
+            $this->assertTrue($fresh->settings['test']);
+        });
+    }
+
+    public function test_comgate_requires_a_merchant_and_secret_on_create(): void
+    {
+        $this->actingAs($this->owner)
+            ->post($this->url('/zpusoby-platby'), $this->payload([
+                'provider' => PaymentMethod::PROVIDER_COMGATE,
+                'name' => 'Platební karta',
+            ]))
+            ->assertSessionHasErrors(['merchant', 'secret']);
+    }
+
     public function test_saving_without_a_new_account_preserves_the_stored_one(): void
     {
         $method = $this->make($this->tenant, [

@@ -291,6 +291,58 @@ class OrderWorkflowTest extends TestCase
         $this->assertNull($event->note);
     }
 
+    public function test_an_unpaid_order_can_fail_and_be_retried_back_to_unpaid(): void
+    {
+        $order = $this->makeOrder(['payment_status' => Order::PAYMENT_UNPAID]);
+
+        $movedToFailed = $this->context->runAs($this->tenant, fn () => $this->workflow()->transitionPayment(
+            $order,
+            Order::PAYMENT_FAILED,
+            OrderEvent::ACTOR_SYSTEM,
+        ));
+
+        $this->assertTrue($movedToFailed);
+        $this->assertSame(Order::PAYMENT_FAILED, $this->context->runAs($this->tenant, fn () => $order->fresh())->payment_status);
+
+        // Retry: the shopper starts a fresh payment attempt.
+        $movedBack = $this->context->runAs($this->tenant, fn () => $this->workflow()->transitionPayment(
+            $order,
+            Order::PAYMENT_UNPAID,
+            OrderEvent::ACTOR_SYSTEM,
+        ));
+
+        $this->assertTrue($movedBack);
+        $this->assertSame(Order::PAYMENT_UNPAID, $this->context->runAs($this->tenant, fn () => $order->fresh())->payment_status);
+    }
+
+    // --- payment: idempotence (AK 4) ----------------------------------------
+
+    /**
+     * A gateway settling the same outcome twice — a webhook and the browser
+     * return racing — must leave the order paid and write exactly one event,
+     * not throw IllegalTransition on the second copy.
+     */
+    public function test_settling_an_already_paid_order_to_paid_is_a_silent_no_op(): void
+    {
+        $order = $this->makeOrder(['payment_status' => Order::PAYMENT_UNPAID]);
+
+        $first = $this->context->runAs($this->tenant, fn () => $this->workflow()->transitionPayment(
+            $order,
+            Order::PAYMENT_PAID,
+            OrderEvent::ACTOR_SYSTEM,
+        ));
+        $second = $this->context->runAs($this->tenant, fn () => $this->workflow()->transitionPayment(
+            $order->fresh(),
+            Order::PAYMENT_PAID,
+            OrderEvent::ACTOR_SYSTEM,
+        ));
+
+        $this->assertTrue($first);
+        $this->assertFalse($second);
+        $this->assertSame(Order::PAYMENT_PAID, $this->context->runAs($this->tenant, fn () => $order->fresh())->payment_status);
+        $this->assertSame(1, $this->eventCount($order));
+    }
+
     // --- payment: illegal moves (AK 8) --------------------------------------
 
     public function test_skipping_to_refunded_from_unpaid_is_refused_and_writes_nothing(): void

@@ -23,4 +23,15 @@ class UpdatePaymentMethodRequest extends StorePaymentMethodRequest
             $this->accountFormat(),
         ];
     }
+
+    /**
+     * The Comgate secret is optional on update: blank means "keep the stored
+     * one", the same rule as the account. merchant (not secret) stays required.
+     *
+     * @return array<int, mixed>
+     */
+    protected function secretRule(): array
+    {
+        return ['nullable', 'string', 'max:128'];
+    }
 }

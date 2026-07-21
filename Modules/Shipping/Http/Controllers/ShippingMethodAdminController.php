@@ -126,6 +126,11 @@ class ShippingMethodAdminController
             // masked tail and whether one is set at all.
             'account_masked' => $method->maskedAccount(),
             'account_set' => $method->accountSet(),
+            // Comgate: merchant and test flag are shown; the secret never
+            // leaves the server, only whether one is stored.
+            'comgate_merchant' => $method->comgateMerchant(),
+            'comgate_test' => $method->comgateTest(),
+            'secret_set' => $method->secretSet(),
         ];
     }
 }

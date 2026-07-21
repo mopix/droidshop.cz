@@ -41,4 +41,9 @@ final class NullOrderBook implements OrderBook
     {
         return null;
     }
+
+    public function findByReference(string $reference): ?OrderView
+    {
+        return null;
+    }
 }

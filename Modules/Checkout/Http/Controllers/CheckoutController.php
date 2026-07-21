@@ -7,9 +7,12 @@ use App\Core\Checkout\Contracts\CartRepository;
 use App\Core\Checkout\Contracts\CartShape;
 use App\Core\Money\Money;
 use App\Core\Orders\Contracts\OrderPlacement;
+use App\Core\Orders\Contracts\OrderSettlement;
 use App\Core\Orders\Exceptions\OrderPlacementUnavailable;
 use App\Core\Orders\Exceptions\PriceChanged;
 use App\Core\Orders\PlacementRequest;
+use App\Core\Payments\Contracts\PaymentGatewayRegistry;
+use App\Core\Payments\Exceptions\GatewayError;
 use App\Core\Shipping\Contracts\PaymentOption;
 use App\Core\Shipping\Contracts\PaymentOptions;
 use App\Core\Shipping\Contracts\ShippingOption;
@@ -49,6 +52,8 @@ class CheckoutController
         private readonly ShippingOptions $shippingOptions,
         private readonly PaymentOptions $paymentOptions,
         private readonly OrderPlacement $orders,
+        private readonly PaymentGatewayRegistry $gateways,
+        private readonly OrderSettlement $settlement,
     ) {}
 
     public function shipping(Request $request): Response|RedirectResponse
@@ -276,10 +281,41 @@ class CheckoutController
             );
         }
 
-        // Placed: drop the cart cookie so the next visit starts fresh rather
-        // than resolving to the just-converted cart, and send the shopper to
-        // the thank-you page. Confirmation mail is already on its way, sent by
-        // the orders module's OrderPlaced listener.
+        // Placed. If the chosen method is an online gateway this shop actually
+        // runs, start the payment and send the shopper to the gateway; the
+        // order stays unpaid until a verified callback settles it. Otherwise
+        // (offline method, or no gateway configured) go straight to the
+        // thank-you page. The registry, not the order, decides which providers
+        // are online: for('cod') and for('bank_transfer') resolve to null, so
+        // those fall through here. Confirmation mail is already on its way,
+        // sent by the orders module's OrderPlaced listener.
+        $provider = $placed->paymentProvider();
+        $gateway = $provider !== null ? $this->gateways->for($provider) : null;
+
+        if ($gateway !== null) {
+            try {
+                $initiation = $gateway->initiate($placed->uuid());
+            } catch (GatewayError $e) {
+                // The order exists and is unpaid; we simply could not start the
+                // payment. Keep the order and route the shopper to its
+                // confirmation so they can retry, rather than losing the sale.
+                // A delayed expiry job (where a queue runs) returns the stock
+                // if it is never paid.
+                return CartCookie::forget(
+                    redirect()->route('storefront.checkout.thankYou', ['uuid' => $placed->uuid()])
+                        ->with('status', 'Objednávku jsme přijali, ale platbu se nepodařilo zahájit. Zkuste ji prosím dokončit znovu.'),
+                    $request,
+                );
+            }
+
+            // Bind the gateway transaction to the order server-side, so the
+            // return and webhook re-verify THIS reference and never one handed
+            // to them in a request (spec §16.6).
+            $this->settlement->attachReference($placed->uuid(), $initiation->reference());
+
+            return CartCookie::forget(redirect()->away($initiation->redirectUrl()), $request);
+        }
+
         return CartCookie::forget(
             redirect()->route('storefront.checkout.thankYou', ['uuid' => $placed->uuid()]),
             $request,

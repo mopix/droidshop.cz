@@ -45,6 +45,8 @@ type OrderDetail = {
   customer_id: number | null
   fulfillment_status: string
   payment_status: string
+  // Gateway transaction reference (Comgate transId), null for offline payments.
+  payment_reference: string | null
   items_total: number
   shipping_total: number
   payment_fee: number
@@ -80,6 +82,7 @@ const FULFILLMENT_LABELS: Record<string, string> = {
 const PAYMENT_LABELS: Record<string, string> = {
   unpaid: 'Nezaplaceno',
   paid: 'Zaplaceno',
+  failed: 'Platba selhala',
   refunded: 'Vráceno',
 }
 
@@ -740,6 +743,9 @@ const formatAddress = (address: Address) => {
           <h2 id="payment-heading" class="text-sm font-semibold text-gray-900">Stav platby</h2>
           <p class="mt-1 text-sm text-gray-700">
             Aktuálně: <strong>{{ PAYMENT_LABELS[order.payment_status] ?? order.payment_status }}</strong>
+          </p>
+          <p v-if="order.payment_reference" class="mt-1 text-sm text-gray-700">
+            Reference platby: <span class="font-mono">{{ order.payment_reference }}</span>
           </p>
 
           <form v-if="can.edit && paymentOptions.length" class="mt-3 space-y-2" @submit.prevent="submitPayment">

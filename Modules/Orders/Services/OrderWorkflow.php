@@ -50,7 +50,11 @@ class OrderWorkflow
      * @var array<string, list<string>>
      */
     private const PAYMENT_TRANSITIONS = [
-        Order::PAYMENT_UNPAID => [Order::PAYMENT_PAID],
+        // unpaid can settle either way: a gateway either takes the money or
+        // fails/expires. failed is not terminal — the shopper may retry, which
+        // moves it back to unpaid before the next attempt.
+        Order::PAYMENT_UNPAID => [Order::PAYMENT_PAID, Order::PAYMENT_FAILED],
+        Order::PAYMENT_FAILED => [Order::PAYMENT_UNPAID],
         Order::PAYMENT_PAID => [Order::PAYMENT_REFUNDED],
         Order::PAYMENT_REFUNDED => [],
     ];
@@ -65,14 +69,33 @@ class OrderWorkflow
         $this->transition($order, 'fulfillment_status', 'fulfillment', self::FULFILLMENT_TRANSITIONS, $to, $actorType, $actorId, $note);
     }
 
+    /**
+     * A payment transition that is safe to receive more than once.
+     *
+     * A gateway may report the same outcome twice — a webhook and the browser
+     * return racing, or the gateway retrying a notification. Settling an order
+     * that is already in the target state must be a silent no-op, not an
+     * IllegalTransition: paid → paid is not a real move, it is the second copy
+     * of one. Only the payment machine gets this idempotence; a repeated
+     * fulfillment move is a genuine caller mistake and still throws.
+     *
+     * @return bool true when this call actually moved the order, false when it
+     *              was already settled to $to and nothing was written
+     */
     public function transitionPayment(
         Order $order,
         string $to,
         string $actorType,
         ?int $actorId = null,
         ?string $note = null,
-    ): void {
+    ): bool {
+        if ($order->getAttribute('payment_status') === $to) {
+            return false;
+        }
+
         $this->transition($order, 'payment_status', 'payment', self::PAYMENT_TRANSITIONS, $to, $actorType, $actorId, $note);
+
+        return true;
     }
 
     /**

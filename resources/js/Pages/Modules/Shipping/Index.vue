@@ -22,6 +22,7 @@ const SHIPPING_PROVIDERS: Record<string, string> = {
 const PAYMENT_PROVIDERS: Record<string, string> = {
   cod: 'Dobírka',
   bank_transfer: 'Bankovní převod',
+  comgate: 'Platební karta (Comgate)',
 }
 
 const money = (haler: number | null) =>
@@ -265,6 +266,9 @@ const confirmDeletePayment = () => {
                 {{ money(method.fee) }}
                 <span v-if="method.provider === 'bank_transfer' && method.account_set">
                   · účet {{ method.account_masked }}
+                </span>
+                <span v-if="method.provider === 'comgate' && method.comgate_test">
+                  · testovací režim
                 </span>
               </p>
             </div>

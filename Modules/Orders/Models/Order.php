@@ -122,6 +122,11 @@ class Order extends Model implements OrderView
         return $this->payment_status;
     }
 
+    public function orderPaymentReference(): ?string
+    {
+        return $this->payment_reference;
+    }
+
     public function orderItemsTotal(): Money
     {
         return $this->items_total;
