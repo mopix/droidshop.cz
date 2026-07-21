@@ -46,4 +46,16 @@ interface CartRepository
      * Links an anonymous cart to a signed-in customer, e.g. after login.
      */
     public function attachToCustomer(CartShape $cart, int $customerId): void;
+
+    /**
+     * Persists the shipping method chosen on `/pokladna/doprava`, and the
+     * payment method chosen alongside it.
+     *
+     * Both ids are the caller's responsibility to have already validated
+     * against `ShippingOptions::available()` / `PaymentOptions::forShipping()`
+     * for this cart — this method only ever writes what it is given, never
+     * a price (AK 5): the cost of either choice is always re-derived from
+     * the option itself, read fresh, wherever a total is shown.
+     */
+    public function chooseShipping(CartShape $cart, ?int $shippingMethodId, ?int $paymentMethodId): void;
 }

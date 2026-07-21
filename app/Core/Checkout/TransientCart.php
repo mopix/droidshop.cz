@@ -48,4 +48,14 @@ final class TransientCart implements CartShape
     {
         return new Collection;
     }
+
+    public function cartShippingMethodId(): ?int
+    {
+        return null;
+    }
+
+    public function cartPaymentMethodId(): ?int
+    {
+        return null;
+    }
 }

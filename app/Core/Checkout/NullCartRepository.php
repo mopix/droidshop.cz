@@ -49,4 +49,9 @@ final class NullCartRepository implements CartRepository
     {
         // No-op.
     }
+
+    public function chooseShipping(CartShape $cart, ?int $shippingMethodId, ?int $paymentMethodId): void
+    {
+        // No-op: nowhere to persist a choice without the module.
+    }
 }

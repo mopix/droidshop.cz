@@ -5,6 +5,7 @@ namespace Modules\Checkout\Services;
 use App\Core\Catalog\Contracts\ProductCatalog;
 use App\Core\Checkout\Contracts\CartShape;
 use App\Core\Money\Money;
+use App\Core\Shipping\Contracts\ShippingOption;
 use App\Core\Shipping\Contracts\ShippingOptions;
 use Modules\Checkout\Support\PricedCart;
 use Modules\Checkout\Support\PricedCartLine;
@@ -99,6 +100,49 @@ final class CartPricer
             freeShippingThreshold: $threshold,
             freeShippingRemaining: $remaining,
         );
+    }
+
+    /**
+     * Total weight of everything currently in the cart, in grams — the input
+     * `ShippingOptions::available()` filters candidate methods on.
+     *
+     * A separate pass over the cart rather than a by-product of price():
+     * the checkout shipping step needs this before it knows which shipping
+     * method (if any) is even selected, so it cannot wait for a fully priced
+     * cart. Products that have left the catalogue are skipped, the same as
+     * price() treats them — they no longer count toward anything real.
+     */
+    public function weightGrams(CartShape $cart): int
+    {
+        $weightGrams = 0;
+
+        foreach ($cart->cartItems() as $item) {
+            $product = $this->catalog->findById((int) $item->product_id);
+
+            if ($product === null) {
+                continue;
+            }
+
+            $weightGrams += $product->catalogWeightGrams() * (int) $item->quantity;
+        }
+
+        return $weightGrams;
+    }
+
+    /**
+     * A shipping option's real cost against this cart's itemsTotal — never
+     * the option's own price() blindly, and never anything a POST body
+     * claims (AK 5, AK 10): free once itemsTotal already meets free_from.
+     */
+    public function shippingCost(Money $itemsTotal, ShippingOption $option): Money
+    {
+        $freeFrom = $option->freeFrom();
+
+        if ($freeFrom !== null && ! $itemsTotal->lessThan($freeFrom)) {
+            return new Money(0, $itemsTotal->currency);
+        }
+
+        return $option->price();
     }
 
     /**

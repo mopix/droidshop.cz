@@ -151,6 +151,20 @@ class EloquentCartRepository implements CartRepository
         $cart->update(['customer_id' => $customerId]);
     }
 
+    public function chooseShipping(CartShape $cart, ?int $shippingMethodId, ?int $paymentMethodId): void
+    {
+        if (! $this->modules->has('checkout')) {
+            return;
+        }
+
+        $cart = $this->persisted($cart);
+
+        $cart->update([
+            'shipping_method_id' => $shippingMethodId,
+            'payment_method_id' => $paymentMethodId,
+        ]);
+    }
+
     private function transientCart(): Cart
     {
         return new Cart([

@@ -92,4 +92,14 @@ class Cart extends Model implements CartShape
         // change reflected here.
         return $this->items()->get();
     }
+
+    public function cartShippingMethodId(): ?int
+    {
+        return $this->shipping_method_id !== null ? (int) $this->shipping_method_id : null;
+    }
+
+    public function cartPaymentMethodId(): ?int
+    {
+        return $this->payment_method_id !== null ? (int) $this->payment_method_id : null;
+    }
 }

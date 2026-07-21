@@ -43,4 +43,14 @@ interface CartShape
      * @return Collection<int, mixed>
      */
     public function cartItems(): Collection;
+
+    /**
+     * The shipping method chosen on `/pokladna/doprava`, or null before a
+     * choice has been made (or on a transient cart, which has nowhere to
+     * persist one).
+     */
+    public function cartShippingMethodId(): ?int;
+
+    /** The payment method chosen alongside the shipping method, or null. */
+    public function cartPaymentMethodId(): ?int;
 }

@@ -90,5 +90,11 @@
         <p class="mt-6 text-right text-xl font-semibold">
             Celkem: {{ $cart->itemsTotal->format() }}
         </p>
+
+        <p class="mt-4 text-right">
+            <a href="{{ route('storefront.checkout.shipping') }}" class="rounded bg-slate-900 px-4 py-2 text-white">
+                Pokračovat k pokladně
+            </a>
+        </p>
     @endif
 @endsection
