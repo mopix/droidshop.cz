@@ -2,6 +2,7 @@
 
 use Illuminate\Support\Facades\Route;
 use Modules\Customers\Http\Controllers\AccountController;
+use Modules\Customers\Http\Controllers\AccountOrdersController;
 use Modules\Customers\Http\Controllers\EmailVerificationController;
 use Modules\Customers\Http\Controllers\PasswordResetController;
 use Modules\Customers\Http\Controllers\RegistrationController;
@@ -64,4 +65,11 @@ Route::middleware(['auth:customer', 'customer.session'])->group(function () {
     // whole flow works with JavaScript switched off.
     Route::get('/ucet/adresy/{address}/smazat', [AccountController::class, 'confirmDeleteAddress'])->name('account.addresses.delete')->whereNumber('address');
     Route::delete('/ucet/adresy/{address}', [AccountController::class, 'destroyAddress'])->name('account.addresses.destroy')->whereNumber('address');
+
+    // Order history — read through OrderBook, never the Orders module's
+    // Eloquent model directly (AccountOrdersController's own docblock). The
+    // detail is scoped to the authenticated customer's own id, so a foreign
+    // uuid 404s here the same way a foreign address id does above.
+    Route::get('/ucet/objednavky', [AccountOrdersController::class, 'index'])->name('account.orders');
+    Route::get('/ucet/objednavky/{uuid}', [AccountOrdersController::class, 'show'])->name('account.orders.show');
 });

@@ -16,9 +16,9 @@ use Modules\Storefront\Support\Seo;
 /**
  * The customer's own account area: overview, profile, addresses.
  *
- * Order history is deliberately absent — the `orders` module does not exist
- * yet (wave 1.3, later etapa). See the placeholder section in
- * storefront.account.index instead of a guessed table here.
+ * Order history lives in AccountOrdersController, not here — the overview
+ * page only links to it. See that controller for how the list and detail
+ * are read (both scoped to the authenticated customer through OrderBook).
  */
 class AccountController
 {

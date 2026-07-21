@@ -97,20 +97,18 @@ class CustomerAccountTest extends TestCase
         $response->assertSee('<meta name="robots" content="noindex', false);
     }
 
-    public function test_the_overview_shows_a_placeholder_for_a_customer_with_no_order_history_yet(): void
+    public function test_the_overview_links_to_the_order_history_page(): void
     {
-        // Order history is deliberately absent (AccountController's own
-        // docblock: the orders module does not exist yet). This is what
-        // test_the_overview_renders_for_a_customer_with_no_addresses_and_no_orders
-        // used to stand in for with a bare assertOk() — subsumed by the test
-        // above for "does the page render", and given a real assertion here
-        // instead of being deleted outright.
+        // Order history moved to its own page (AccountOrdersController,
+        // Task 9) once the orders module existed — this used to assert a
+        // placeholder message here instead of a real link.
         $customer = $this->makeCustomer($this->tenant);
 
         $response = $this->actingAsCustomer($customer)->get($this->url('/ucet'));
 
         $response->assertOk();
-        $response->assertSee('Historie objednávek se zobrazí po dokončení modulu objednávek.');
+        $response->assertSee('href="'.$this->url('/ucet/objednavky').'"', false);
+        $response->assertSee('Moje objednávky');
     }
 
     public function test_the_overview_shows_only_the_signed_in_customers_own_name(): void
