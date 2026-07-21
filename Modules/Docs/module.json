@@ -1,0 +1,17 @@
+{
+    "name": "docs",
+    "version": "1.0.0",
+    "title": { "cs": "Doklady" },
+    "description": { "cs": "Faktury a prodejní doklady k objednávkám (PDF, číselná řada, QR). Vystavení ručně i automaticky při zaplacení." },
+    "core": false,
+    "billable": false,
+    "level": "base",
+    "requires": {},
+    "provides": ["document-issuer"],
+    "listens": ["order.paid", "order.shipped"],
+    "permissions": ["docs.manage"],
+    "settings_schema": "settings.json",
+    "nav": [
+        { "area": "admin", "label": "Doklady", "route": "admin.docs.index", "icon": "file-text", "order": 55 }
+    ]
+}

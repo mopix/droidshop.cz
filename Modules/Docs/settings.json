@@ -1,0 +1,7 @@
+{
+    "auto_issue_on": "in:paid,shipped,manual",
+    "email_invoice": "boolean",
+    "invoice_footer": "nullable|string|max:2000",
+    "due_days": "integer|min:0|max:90",
+    "number_prefix": "nullable|string|max:20"
+}
