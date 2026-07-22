@@ -2,10 +2,12 @@
 
 namespace Tests\Feature\Billing;
 
+use App\Core\Billing\Mail\ShopSuspendedMail;
+use App\Core\Billing\Mail\TrialExpiredMail;
 use App\Core\Enums\TenantStatus;
 use App\Models\Tenant;
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Mail;
 use Tests\TestCase;
 
@@ -65,5 +67,40 @@ class SweepTenantLifecycleTest extends TestCase
         $this->artisan('billing:sweep-lifecycle');
         $this->artisan('billing:sweep-lifecycle'); // no crash, stays past_due
         $this->assertSame(TenantStatus::PastDue, $tenant->fresh()->status);
+    }
+
+    public function test_expired_trial_emails_owner(): void
+    {
+        Mail::fake();
+        $tenant = Tenant::factory()->create([
+            'status' => TenantStatus::Trial,
+            'trial_ends_at' => now()->subDay(),
+        ]);
+        $owner = User::factory()->create();
+        $tenant->users()->attach($owner, ['role' => 'owner', 'joined_at' => now()]);
+
+        $this->artisan('billing:sweep-lifecycle')->assertSuccessful();
+
+        Mail::assertSent(TrialExpiredMail::class, function (TrialExpiredMail $mail) use ($owner): bool {
+            return $mail->hasTo($owner->email);
+        });
+    }
+
+    public function test_suspended_shop_emails_owner(): void
+    {
+        Mail::fake();
+        config()->set('billing.grace_days', 7);
+        $tenant = Tenant::factory()->create([
+            'status' => TenantStatus::PastDue,
+            'trial_ends_at' => now()->subDays(8), // grace exceeded
+        ]);
+        $owner = User::factory()->create();
+        $tenant->users()->attach($owner, ['role' => 'owner', 'joined_at' => now()]);
+
+        $this->artisan('billing:sweep-lifecycle')->assertSuccessful();
+
+        Mail::assertSent(ShopSuspendedMail::class, function (ShopSuspendedMail $mail) use ($owner): bool {
+            return $mail->hasTo($owner->email);
+        });
     }
 }

@@ -13,8 +13,11 @@ use Illuminate\Console\Command;
 use Spatie\Multitenancy\Jobs\NotTenantAware;
 
 /**
- * Daily lifecycle sweep (spec §9). NotTenantAware: this is a platform job that
- * iterates ALL tenants; a tenant-aware queue would silently scope it to one.
+ * Daily lifecycle sweep (spec §9). Runs as a scheduler command with no ambient
+ * tenant, and passes $tenant explicitly to MailService, so it is not subject to
+ * tenant scoping. `NotTenantAware` is kept as a marker in case this logic is
+ * ever moved into a queued job, where the tenant-aware queue WOULD otherwise
+ * scope it to a single tenant.
  */
 class SweepTenantLifecycle extends Command implements NotTenantAware
 {
