@@ -40,6 +40,17 @@ class SubscriptionCheckoutTest extends TestCase
             ->assertRedirect(route('admin.billing.edit'));
     }
 
+    public function test_blocks_checkout_without_a_plan(): void
+    {
+        config()->set('billing.subscription.driver', 'null');
+        [, $owner] = $this->ownerOnHost(['billing_name' => 'Acme s.r.o.', 'plan_id' => null]);
+
+        $this->actingAs($owner)
+            ->post($this->host().'/admin/predplatne/checkout')
+            ->assertRedirect(route('admin.subscription'))
+            ->assertSessionHasErrors('subscription');
+    }
+
     public function test_redirects_to_the_gateway_checkout_url_with_a_complete_profile(): void
     {
         config()->set('billing.subscription.driver', 'null');
@@ -108,5 +119,19 @@ class SubscriptionCheckoutTest extends TestCase
 
         $tenant->refresh();
         $this->assertSame(TenantStatus::PendingDeletion, $tenant->status);
+    }
+
+    public function test_suspended_tenant_can_still_checkout_to_reactivate(): void
+    {
+        config()->set('billing.subscription.driver', 'null');
+        [, $owner] = $this->ownerOnHost(['billing_name' => 'Acme s.r.o.', 'status' => TenantStatus::Suspended]);
+
+        $response = $this->actingAs($owner)
+            ->post($this->host().'/admin/predplatne/checkout');
+
+        // The write-freeze middleware carves out this route, so the request
+        // reaches the controller instead of being turned back with a 503.
+        $this->assertNotSame(503, $response->getStatusCode());
+        $response->assertRedirect(route('admin.subscription.dev-complete', absolute: false));
     }
 }

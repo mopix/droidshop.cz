@@ -31,11 +31,25 @@ class CheckTenantStatus
         // neither storefront nor admin (§2.1).
         $isAdminRoute = str_starts_with(ltrim($request->path(), '/'), 'admin');
 
-        if ($isAdminRoute && ! $tenant->status->allowsAdminRead()) {
-            return response()->view('tenancy.unavailable', ['tenant' => $tenant], 503);
+        if ($isAdminRoute) {
+            if (! $tenant->status->allowsAdminRead()) {
+                return response()->view('tenancy.unavailable', ['tenant' => $tenant], 503);
+            }
+
+            // Frozen tenants (suspended/pending-deletion) keep read access to
+            // export data (§6.0) but cannot mutate — except the subscription
+            // checkout/portal, which is exactly how they pay to un-suspend
+            // themselves.
+            if (! $tenant->status->allowsAdminWrite()
+                && ! $request->isMethodSafe()
+                && ! $request->routeIs('admin.subscription.checkout', 'admin.subscription.portal')) {
+                return response()->view('tenancy.unavailable', ['tenant' => $tenant], 503);
+            }
+
+            return $next($request);
         }
 
-        if (! $isAdminRoute && ! $tenant->status->allowsStorefront()) {
+        if (! $tenant->status->allowsStorefront()) {
             return response()->view('tenancy.unavailable', ['tenant' => $tenant], 503);
         }
 

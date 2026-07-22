@@ -49,8 +49,15 @@ class StripeWebhookHandler
                     default => null,
                 };
             });
-        } catch (UniqueConstraintViolationException) {
-            return;
+        } catch (UniqueConstraintViolationException $e) {
+            // Genuine duplicate delivery (event id already claimed) → no-op.
+            // Any OTHER unique violation is a real error; don't mask it as
+            // "processed".
+            if (StripeEvent::where('event_id', $event->id)->exists()) {
+                return;
+            }
+
+            throw $e;
         }
     }
 

@@ -44,6 +44,11 @@ class SubscriptionController extends Controller
                 ->withErrors(['subscription' => 'Nejdřív vyplňte fakturační údaje.']);
         }
 
+        if (blank($tenant->plan)) {
+            return redirect()->route('admin.subscription')
+                ->withErrors(['subscription' => 'Váš e-shop nemá přiřazený tarif.']);
+        }
+
         // External redirect. Inertia::location breaks out of the SPA visit.
         return Inertia::location($gateway->startCheckout($tenant, $tenant->plan));
     }
