@@ -21,6 +21,25 @@
             <dd>{{ \Modules\Customers\Support\OrderStatusLabels::payment($order->orderPaymentStatus()) }}</dd>
         </dl>
 
+        @if ($documents->isNotEmpty())
+            <section class="mt-6" aria-label="Doklady">
+                <h2 class="text-lg font-medium">Doklady</h2>
+
+                <ul class="mt-2 space-y-1 text-sm">
+                    @foreach ($documents as $document)
+                        <li>
+                            <a
+                                href="{{ route('storefront.docs.download', ['number' => $document->documentNumber()]) }}"
+                                class="text-slate-700 underline hover:text-slate-900"
+                            >
+                                Stáhnout fakturu č. {{ $document->documentNumber() }}
+                            </a>
+                        </li>
+                    @endforeach
+                </ul>
+            </section>
+        @endif
+
         <section class="mt-8" aria-label="Položky objednávky">
             <h2 class="text-lg font-medium">Položky</h2>
 
