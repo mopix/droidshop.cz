@@ -1,6 +1,7 @@
 <?php
 
 use App\Core\Storage\FileStorage;
+use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ImpersonationController;
 use App\Http\Controllers\Onboarding\OnboardingController;
 use App\Http\Controllers\Onboarding\ShopEntryController;
@@ -9,7 +10,6 @@ use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\Storage\PrivateFileController;
 use App\Http\Controllers\StorefrontEntryController;
 use Illuminate\Support\Facades\Route;
-use Inertia\Inertia;
 
 // Private tenant files. `signed` proves the URL is ours and unexpired; the
 // controller then checks the file belongs to the current tenant. The tenant
@@ -22,9 +22,8 @@ Route::get('/soubory/{tenant}/{path}', PrivateFileController::class)
 // Platform marketing page or the shop homepage, depending on the host.
 Route::get('/', StorefrontEntryController::class)->name('home');
 
-Route::get('/dashboard', function () {
-    return Inertia::render('Dashboard');
-})->middleware(['auth', 'verified'])->name('dashboard');
+Route::get('/dashboard', DashboardController::class)
+    ->middleware(['auth', 'verified'])->name('dashboard');
 
 // Impersonation lands here on the tenant's own host, via a signed URL minted
 // by a superadmin. `signed` proves the URL is ours and unexpired.
