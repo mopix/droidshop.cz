@@ -1,6 +1,6 @@
 # As-is status — DroidShop.cz
 
-Poslední aktualizace: **2026-07-22** · Verze: **0.15.0**
+Poslední aktualizace: **2026-07-22** · Verze: **0.16.0**
 
 ## Oblasti
 
@@ -33,7 +33,12 @@ Poslední aktualizace: **2026-07-22** · Verze: **0.15.0**
 | Veřejný katalog — kategorie, produkt, řazení a filtr bez JS | **hotovo** | §16.1, §16.2 | bez košíku |
 | SEO výstupy — canonical, OG, JSON-LD, sitemap, robots, 301, 410 | **hotovo** | §3.1, §15.3 | page cache §15.6 chybí |
 | Modul `customers` — registrace, přihlášení, reset hesla, verifikace, účet, admin + GDPR výmaz | **hotovo** | §6.7, §15.1 | čtvrtý guard `customer` nad tenant-scoped tabulkou (unikátní `(tenant_id, email)`); vlastní tenant-scoped tokeny místo Laravelího password brokeru; verifikace e-mailu se nikde nevynucuje (čeká na rozhodnutí etapy `checkout`); historie objednávek v účtu hotová, čte přes `OrderBook::forCustomer`/`findForCustomer` s kontrolou vlastnictví |
-| Tarify / trial / billing | částečně | §3.1 | tabulka `plans` stojí, přiřazení tenantovi jde z UI; fakturace a trial logika ne |
+| Onboarding — registrace → wizard → e-shop | **hotovo** | §3.1, §6.0 | [detail](2026-07-22-onboarding-billing.md); `TenantProvisioner`, subdoména s live checkem, cross-host signed auto-login, „Moje e-shopy" |
+| Trial lifecycle — scheduler | **hotovo** | §9 | `billing:sweep-lifecycle` (`NotTenantAware`), config `trial_days`/`grace_days`, trial→past_due→suspended + e-mail |
+| Platformní billing — fakturační ledger nájemci | **hotovo** | §9 | [detail](2026-07-22-onboarding-billing.md); netenantový `platform_invoices`, `PlatformInvoiceWriter` (idempotence per období, VAT split, PDF), stažení superadmin/nájemce |
+| Platformní billing — reálné inkaso (Stripe) | design-for | §9 | `SubscriptionGateway` seam + null driver; Stripe driver = vlna 1.8 |
+| Fakturační profil nájemce | **hotovo** | §16.6 | jádrová obrazovka `/admin/nastaveni/fakturace`, banner, dodavatel pro docs + odběratel pro platformní fakturu |
+| Tarify / trial / billing | částečně | §3.1 | tabulka `plans` + přiřazení z UI, trial + lifecycle + platformní faktura hotové; reálná platba za předplatné (Stripe) = vlna 1.8 |
 | Playwright E2E | není | CLAUDE.md | blokováno omezením certifikátu, viz níže |
 | Design handoff | prázdné | `docs/design-droidshop/` | |
 
