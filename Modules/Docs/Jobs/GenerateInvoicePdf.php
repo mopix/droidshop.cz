@@ -2,6 +2,8 @@
 
 namespace Modules\Docs\Jobs;
 
+use App\Core\Mail\Contracts\MailService;
+use App\Core\Mail\MailKind;
 use App\Core\Orders\Contracts\OrderBook;
 use App\Core\Orders\Contracts\OrderView;
 use App\Core\Settings\SettingsService;
@@ -15,6 +17,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Modules\Docs\Mail\InvoiceIssued;
 use Modules\Docs\Models\Document;
 use Modules\Docs\Support\InvoiceQr;
 use Throwable;
@@ -48,6 +51,7 @@ class GenerateInvoicePdf implements ShouldQueue
         OrderBook $orders,
         PaymentOptions $payments,
         SettingsService $settings,
+        MailService $mail,
     ): void {
         if ($this->tenantId !== null) {
             $tenant = Tenant::find($this->tenantId);
@@ -71,6 +75,56 @@ class GenerateInvoicePdf implements ShouldQueue
 
         // The only mutation an issued document still allows (Document::booted).
         $document->update(['pdf_path' => $path]);
+
+        if ($settings->get('docs', 'email_invoice', true)) {
+            $this->safeEmailInvoice($document, $storage, $context, $mail, $path);
+        }
+    }
+
+    /**
+     * E-mails the just-rendered invoice to the customer, guarded end to end:
+     * a mail hiccup (SMTP down, unresolved tenant) must never fail the PDF
+     * job — the document and its pdf_path are already committed by the time
+     * this runs, so the worst case is a missing e-mail, logged, not a failed
+     * job retried into duplicate invoices.
+     */
+    private function safeEmailInvoice(Document $document, FileStorage $storage, TenantContext $context, MailService $mail, string $path): void
+    {
+        try {
+            $tenant = $context->current();
+
+            if ($tenant === null) {
+                return;
+            }
+
+            $customer = $document->customer ?? [];
+            $toEmail = $customer['email'] ?? null;
+
+            if (! is_string($toEmail) || $toEmail === '') {
+                return;
+            }
+
+            // Base64-encoded: see InvoiceIssued's docblock — the raw PDF bytes
+            // are not valid UTF-8 and break JSON-encoding the queued job payload.
+            $pdfBytes = base64_encode($storage->get($path));
+
+            $mail->send(
+                new InvoiceIssued(
+                    shopName: $tenant->name,
+                    invoiceNumber: $document->number,
+                    orderNumber: (string) ($customer['order_number'] ?? ''),
+                    total: $document->total->format(),
+                    pdfBytes: $pdfBytes,
+                ),
+                $toEmail,
+                MailKind::Transactional,
+                $tenant,
+            );
+
+            $document->update(['sent_at' => now()]);
+        } catch (Throwable $e) {
+            report($e);
+        }
     }
 
     /**
