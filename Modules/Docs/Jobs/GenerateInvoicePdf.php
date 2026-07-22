@@ -17,7 +17,7 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Modules\Docs\Models\Document;
 use Modules\Docs\Support\InvoiceQr;
-use Modules\Shipping\Models\PaymentMethod;
+use Throwable;
 
 /**
  * Renders the PDF for an issued document and writes its pdf_path (spec §16.6).
@@ -61,7 +61,7 @@ class GenerateInvoicePdf implements ShouldQueue
 
         $pdf = Pdf::loadView('docs::pdf.invoice', [
             'document' => $document,
-            'qr' => $this->qrDataUri($document, $orders, $payments),
+            'qr' => $this->safeQrDataUri($document, $orders, $payments),
             'footer' => (string) $settings->get('docs', 'invoice_footer', ''),
         ])->setPaper('a4');
 
@@ -71,6 +71,25 @@ class GenerateInvoicePdf implements ShouldQueue
 
         // The only mutation an issued document still allows (Document::booted).
         $document->update(['pdf_path' => $path]);
+    }
+
+    /**
+     * qrDataUri(), guarded end to end. Resolving the live payment method reads
+     * an `encrypted:array` cast (PaymentMethod::settings) — a rotated APP_KEY
+     * or a corrupt row throws a DecryptException there, well before
+     * InvoiceQr::dataUri()'s own try/catch ever runs. A QR is a convenience on
+     * an invoice, never the reason a legal document fails to generate, so any
+     * throwable anywhere in resolution+render degrades to no QR.
+     */
+    private function safeQrDataUri(Document $document, OrderBook $orders, PaymentOptions $payments): ?string
+    {
+        try {
+            return $this->qrDataUri($document, $orders, $payments);
+        } catch (Throwable $e) {
+            report($e);
+
+            return null;
+        }
     }
 
     /**
@@ -122,7 +141,12 @@ class GenerateInvoicePdf implements ShouldQueue
 
         $method = $payments->find((int) $paymentId);
 
-        if ($method === null || $method->provider() !== PaymentMethod::PROVIDER_BANK_TRANSFER) {
+        // Literal, not Modules\Shipping\Models\PaymentMethod::PROVIDER_BANK_TRANSFER:
+        // a module never imports another module's concrete Eloquent model
+        // (CLAUDE.md modular architecture rule) — the same reason payment
+        // status above is compared against the literal 'unpaid' rather than
+        // Modules\Orders\Models\Order::PAYMENT_UNPAID.
+        if ($method === null || $method->provider() !== 'bank_transfer') {
             return null;
         }
 

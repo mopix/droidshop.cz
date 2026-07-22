@@ -13,6 +13,7 @@ use App\Core\Tenancy\TenantContext;
 use App\Models\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Bus;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Modules\Checkout\Models\Cart;
 use Modules\Docs\Jobs\GenerateInvoicePdf;
@@ -260,5 +261,37 @@ class GenerateInvoicePdfTest extends TestCase
         // (qr = null path) — the PDF still comes out.
         $path = $this->context->runAs($this->tenant, fn () => $issued->fresh()->pdf_path);
         $this->assertNotNull($path);
+    }
+
+    /**
+     * Task 5 review fix: a QR resolution failure (here, a payment method row
+     * whose `settings` cannot be decrypted — e.g. a rotated APP_KEY) must
+     * degrade to no QR, never abort the PDF. The failure has to happen inside
+     * bankAccount()/spaydAccount(), before InvoiceQr::dataUri()'s own
+     * try/catch is even reached, so this specifically exercises the guard
+     * wrapped around the whole qrDataUri() call in GenerateInvoicePdf::handle().
+     */
+    public function test_a_qr_resolution_failure_still_produces_a_pdf(): void
+    {
+        Storage::fake(FileStorage::PRIVATE_DISK);
+
+        $order = $this->placeUnpaidBankTransferOrder();
+
+        // Corrupt the payment method's encrypted settings column directly in
+        // the DB (bypassing Eloquent's encrypted:array cast on write), so
+        // reading ->settings on the model throws a DecryptException the
+        // moment InvoiceQr's caller touches spaydAccount().
+        $this->context->runAs($this->tenant, function () use ($order): void {
+            $paymentId = $order->payment_snapshot['id'] ?? null;
+            DB::table('payment_methods')->where('id', $paymentId)->update(['settings' => 'not-a-valid-encrypted-payload']);
+        });
+
+        $issued = $this->issue($order->uuid);
+
+        $path = $this->context->runAs($this->tenant, fn () => $issued->fresh()->pdf_path);
+        $this->assertNotNull($path);
+
+        $contents = $this->context->runAs($this->tenant, fn () => app(FileStorage::class)->get($path));
+        $this->assertStringStartsWith('%PDF-', $contents);
     }
 }
