@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Billing;
 
+use App\Core\Billing\Exceptions\MissingBillingProfile;
 use App\Core\Billing\Models\PlatformInvoice;
 use App\Core\Billing\Models\StripeEvent;
 use App\Core\Billing\StripeWebhookHandler;
@@ -104,5 +105,49 @@ class StripeWebhookHandlerTest extends TestCase
         app(StripeWebhookHandler::class)->handle($this->stripeEvent('invoice.payment_failed', ['customer' => 'cus_missing']));
 
         $this->assertTrue(true);
+    }
+
+    public function test_idempotency_claim_is_atomic_with_processing_and_a_dropped_retry_still_succeeds(): void
+    {
+        $plan = Plan::factory()->create(['price_month' => 49900]);
+        $tenant = Tenant::factory()->create([
+            'plan_id' => $plan->id,
+            'billing_name' => '',
+            'status' => TenantStatus::Trial,
+            'stripe_customer_id' => 'cus_x',
+            'stripe_subscription_id' => 'sub_x',
+        ]);
+        $object = [
+            'customer' => 'cus_x', 'subscription' => 'sub_x',
+            'lines' => ['data' => [['period' => ['start' => 1751328000, 'end' => 1753920000]]]],
+        ];
+
+        try {
+            app(StripeWebhookHandler::class)->handle($this->stripeEvent('invoice.paid', $object, 'evt_retry'));
+            $this->fail('Expected MissingBillingProfile to be thrown.');
+        } catch (MissingBillingProfile) {
+            // Expected: no billing profile yet.
+        }
+
+        // The claim insert rolled back with the failed processing — nothing left behind.
+        $this->assertSame(0, StripeEvent::where('event_id', 'evt_retry')->count());
+        $this->assertSame(0, PlatformInvoice::where('billed_tenant_id', $tenant->id)->count());
+
+        // Fix the profile and let Stripe redeliver the same event id.
+        $tenant->forceFill(['billing_name' => 'Acme'])->save();
+
+        app(StripeWebhookHandler::class)->handle($this->stripeEvent('invoice.paid', $object, 'evt_retry'));
+
+        $tenant->refresh();
+        $this->assertSame(TenantStatus::Active, $tenant->status);
+        $this->assertSame(1, PlatformInvoice::where('billed_tenant_id', $tenant->id)->count());
+        $this->assertSame(1, StripeEvent::where('event_id', 'evt_retry')->count());
+    }
+
+    public function test_unknown_event_type_processes_without_throwing_and_records_one_row(): void
+    {
+        app(StripeWebhookHandler::class)->handle($this->stripeEvent('customer.updated', ['id' => 'cus_x'], 'evt_unknown'));
+
+        $this->assertSame(1, StripeEvent::where('event_id', 'evt_unknown')->count());
     }
 }

@@ -9,6 +9,7 @@ use App\Core\Tenancy\TenantContext;
 use App\Models\Tenant;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Stripe\Event;
 
 /**
@@ -26,27 +27,31 @@ class StripeWebhookHandler
 
     public function handle(Event $event): void
     {
-        // At-least-once delivery: claim the event id first. A duplicate loses
-        // the unique insert and returns without repeating side effects.
+        // At-least-once delivery: claim the event id and process it in the
+        // same transaction. A duplicate loses the unique insert and rolls
+        // back (no repeated side effects). A mid-processing failure rolls
+        // back the claim too, so the retry isn't permanently dropped.
         try {
-            StripeEvent::create([
-                'event_id' => $event->id,
-                'type' => $event->type,
-                'processed_at' => now(),
-            ]);
+            DB::transaction(function () use ($event): void {
+                StripeEvent::create([
+                    'event_id' => $event->id,
+                    'type' => $event->type,
+                    'processed_at' => now(),
+                ]);
+
+                $object = $event->data->object;
+
+                match ($event->type) {
+                    'checkout.session.completed' => $this->onCheckoutCompleted($object),
+                    'invoice.paid' => $this->onInvoicePaid($object),
+                    'invoice.payment_failed' => $this->onPaymentFailed($object),
+                    'customer.subscription.deleted' => $this->onSubscriptionDeleted($object),
+                    default => null,
+                };
+            });
         } catch (UniqueConstraintViolationException) {
             return;
         }
-
-        $object = $event->data->object;
-
-        match ($event->type) {
-            'checkout.session.completed' => $this->onCheckoutCompleted($object),
-            'invoice.paid' => $this->onInvoicePaid($object),
-            'invoice.payment_failed' => $this->onPaymentFailed($object),
-            'customer.subscription.deleted' => $this->onSubscriptionDeleted($object),
-            default => null,
-        };
     }
 
     private function onCheckoutCompleted(object $session): void
