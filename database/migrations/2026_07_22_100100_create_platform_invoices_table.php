@@ -38,6 +38,11 @@ return new class extends Migration
             $table->timestamps();
 
             $table->index('billed_tenant_id');
+
+            // Idempotency backstop: a subscription invoice is unique per
+            // tenant per billing period. Concurrency safety net alongside
+            // the pre-write existence check in PlatformInvoiceWriter.
+            $table->unique(['billed_tenant_id', 'period_from', 'period_to'], 'platform_invoice_period_unique');
         });
     }
 

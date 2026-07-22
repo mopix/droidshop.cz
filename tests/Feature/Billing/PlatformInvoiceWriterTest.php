@@ -69,4 +69,37 @@ class PlatformInvoiceWriterTest extends TestCase
         $this->expectException(MissingBillingProfile::class);
         app(PlatformInvoiceWriter::class)->issue($charge);
     }
+
+    public function test_vat_payer_platform_splits_vat_out_of_gross(): void
+    {
+        Storage::fake('platform_private');
+        config()->set('billing.company.vat_payer', true);
+        config()->set('billing.vat_rate', 21);
+        // plan price_month = 49900 haléře gross
+        $charge = new SubscriptionCharge($this->tenantWithBilling(), $this->plan(), now()->startOfMonth(), now()->endOfMonth());
+        $invoice = app(PlatformInvoiceWriter::class)->issue($charge);
+
+        $this->assertSame(41240, $invoice->subtotal); // round(49900/1.21)
+        $this->assertSame(8660, $invoice->vat_amount); // 49900-41240
+        $this->assertSame(49900, $invoice->total);
+        $this->assertSame(41240 + 8660, $invoice->total); // base+vat==total exactly
+        $this->assertSame(21, $invoice->vat_rate);
+        $this->assertNotEmpty($invoice->vat_summary);
+    }
+
+    public function test_issuing_twice_for_same_tenant_and_period_is_idempotent(): void
+    {
+        Storage::fake('platform_private');
+        $tenant = $this->tenantWithBilling();
+        $plan = $this->plan();
+        $from = now()->startOfMonth();
+        $to = now()->endOfMonth();
+        $w = app(PlatformInvoiceWriter::class);
+
+        $a = $w->issue(new SubscriptionCharge($tenant, $plan, $from, $to));
+        $b = $w->issue(new SubscriptionCharge($tenant, $plan, $from, $to));
+
+        $this->assertSame($a->id, $b->id);
+        $this->assertSame(1, PlatformInvoice::count());
+    }
 }

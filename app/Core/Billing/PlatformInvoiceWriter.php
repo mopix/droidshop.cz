@@ -8,6 +8,8 @@ use App\Core\Billing\Support\SubscriptionCharge;
 use App\Core\Documents\DocumentNumber;
 use App\Models\Tenant;
 use Barryvdh\DomPDF\Facade\Pdf;
+use Illuminate\Database\UniqueConstraintViolationException;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 
 /**
@@ -16,6 +18,12 @@ use Illuminate\Support\Facades\Storage;
  * change never rewrites history, compute VAT, render an immutable row, then a
  * PDF onto the platform-private disk. Mirrors Modules\Docs\Services\DocumentWriter,
  * but non-tenant.
+ *
+ * Idempotency has two levels, same as DocumentWriter: a pre-allocation
+ * (billed_tenant_id, period_from, period_to) lookup so a repeat never consumes
+ * a series slot, and the matching unique index as the concurrency backstop.
+ * The number is allocated inside the same DB::transaction as the insert, so a
+ * unique-violation rollback also reverts the counter increment — no gap.
  */
 class PlatformInvoiceWriter
 {
@@ -29,11 +37,15 @@ class PlatformInvoiceWriter
             throw MissingBillingProfile::forTenant($tenant->id);
         }
 
+        $existing = $this->existingInvoice($tenant->id, $charge);
+
+        if ($existing !== null) {
+            return $existing;
+        }
+
         $year = (int) $charge->periodTo->year;
         $prefix = (string) config('billing.invoice_prefix', 'PF');
         $seriesKey = DocumentNumber::seriesKey('platform_invoices', $year);
-        $seq = $this->sequences->nextNumber($seriesKey);
-        $number = DocumentNumber::format($prefix, $year, $seq, 4);
 
         $total = (int) $charge->plan->price_month; // gross, haléře
         $rate = (int) config('billing.vat_rate', 21);
@@ -54,29 +66,56 @@ class PlatformInvoiceWriter
             $vatSummary = [];
         }
 
-        $invoice = PlatformInvoice::create([
-            'number' => $number,
-            'billed_tenant_id' => $tenant->id,
-            'supplier' => $this->supplierSnapshot(),
-            'customer' => $this->customerSnapshot($tenant),
-            'plan_key' => $charge->plan->key,
-            'period_from' => $charge->periodFrom,
-            'period_to' => $charge->periodTo,
-            'subtotal' => $base,
-            'vat_rate' => $rate,
-            'vat_amount' => $vat,
-            'total' => $total,
-            'vat_summary' => $vatSummary,
-            'issued_at' => now(),
-            'taxable_at' => now(),
-        ]);
+        try {
+            $invoice = DB::transaction(function () use ($seriesKey, $prefix, $year, $tenant, $charge, $base, $rate, $vat, $total, $vatSummary): PlatformInvoice {
+                $seq = $this->sequences->nextNumber($seriesKey);
+                $number = DocumentNumber::format($prefix, $year, $seq, 4);
 
-        $pdfPath = 'billing/'.$invoice->number.'.pdf';
-        $pdf = Pdf::loadView('billing.pdf.invoice', ['invoice' => $invoice]);
-        Storage::disk('platform_private')->put($pdfPath, $pdf->output());
-        $invoice->update(['pdf_path' => $pdfPath]);
+                return PlatformInvoice::create([
+                    'number' => $number,
+                    'billed_tenant_id' => $tenant->id,
+                    'supplier' => $this->supplierSnapshot(),
+                    'customer' => $this->customerSnapshot($tenant),
+                    'plan_key' => $charge->plan->key,
+                    'period_from' => $charge->periodFrom,
+                    'period_to' => $charge->periodTo,
+                    'subtotal' => $base,
+                    'vat_rate' => $rate,
+                    'vat_amount' => $vat,
+                    'total' => $total,
+                    'vat_summary' => $vatSummary,
+                    'issued_at' => now(),
+                    'taxable_at' => now(),
+                ]);
+            });
+        } catch (UniqueConstraintViolationException) {
+            return $this->existingInvoice($tenant->id, $charge)
+                ?? throw new \RuntimeException("Concurrent issue for tenant [{$tenant->id}] left no winning invoice.");
+        }
+
+        // PDF is best-effort and synchronous for wave 1.7 — the numbered,
+        // committed ledger row must survive a transient render failure.
+        // A queued regeneration job is a follow-up; a re-issue call finds
+        // this row via idempotency and won't re-render it.
+        try {
+            $pdfPath = 'billing/'.$invoice->number.'.pdf';
+            $pdf = Pdf::loadView('billing.pdf.invoice', ['invoice' => $invoice]);
+            Storage::disk('platform_private')->put($pdfPath, $pdf->output());
+            $invoice->update(['pdf_path' => $pdfPath]);
+        } catch (\Throwable $e) {
+            report($e);
+        }
 
         return $invoice;
+    }
+
+    private function existingInvoice(int $tenantId, SubscriptionCharge $charge): ?PlatformInvoice
+    {
+        return PlatformInvoice::query()
+            ->where('billed_tenant_id', $tenantId)
+            ->where('period_from', $charge->periodFrom)
+            ->where('period_to', $charge->periodTo)
+            ->first();
     }
 
     /** @return array<string, mixed> */
