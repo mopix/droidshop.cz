@@ -212,6 +212,125 @@ class CustomerInvoiceDownloadTest extends TestCase
         });
     }
 
+    /**
+     * Places two orders for the given customer and issues documents across
+     * them in a sequence engineered so that the resulting invoice/credit-note
+     * pair sharing a printed number does NOT also share an order_id.
+     *
+     * Why this matters (Task 7 review, round 2): the documents table has no
+     * index on `number` alone; the tenant-scoped, type-less lookup that a
+     * regressed controller would run resolves via the
+     * `documents_tenant_id_order_id_type_unique` index (confirmed via
+     * EXPLAIN), which orders rows by (order_id, type). When an invoice and
+     * its own credit note share an order_id (as in
+     * issueInvoiceAndCreditNoteFor()), that index always yields the invoice
+     * first regardless of insertion order — `type` is an
+     * ENUM('invoice','proforma','credit_note'), and MySQL sorts enums by
+     * declaration position, so 'invoice' (1) sorts before 'credit_note' (3)
+     * on any order_id tie. A test built on same-order documents is therefore
+     * vacuous no matter which row was inserted first: the type-less query
+     * would "coincidentally" return the invoice via the index either way.
+     *
+     * Giving the two documents different order_ids breaks the tie on
+     * order_id itself, which the index consults before type — so the
+     * document with the lower order_id wins regardless of type. Sequencing
+     * below deliberately gives the credit note the lower order_id:
+     *
+     *  1. "early" is placed first (lower order_id) but its invoice is
+     *     deferred — issued only after "late"'s, so it does not claim
+     *     invoice_seq=1.
+     *  2. "late" is placed second (higher order_id); its invoice is issued
+     *     FIRST, claiming invoice_seq=1 — this is the number under test.
+     *  3. "early"'s own invoice is issued next, purely because
+     *     CreditNoteIssuer::build() requires an existing invoice for the
+     *     same order before a credit note can be issued — its printed
+     *     number is never asserted on.
+     *  4. "early" is cancelled and credited — the first credit note ever in
+     *     this tenant, so credit_note_seq=1, printing the identical string
+     *     "late"'s invoice got in step 2 — but attached to "early", the
+     *     order with the lower order_id.
+     *
+     * @return array{invoice: string, credit_note: string}
+     */
+    private function issueInvoiceAndCreditNoteFromDifferentOrdersSharingANumber(Tenant $tenant, ?int $customerId): array
+    {
+        return $this->context->runAs($tenant, function () use ($customerId): array {
+            $placeOrder = function () use ($customerId): Order {
+                $product = app(ProductWriter::class)->create([
+                    'name' => 'Klávesnice Acme',
+                    'sku' => 'KB-'.bin2hex(random_bytes(4)),
+                    'price' => 99900,
+                    'tax_rate_id' => app(TaxRates::class)->default()->id,
+                    'status' => Product::STATUS_ACTIVE,
+                ]);
+
+                $shipping = ShippingMethod::query()->create([
+                    'provider' => ShippingMethod::PROVIDER_FLAT,
+                    'name' => 'Kurýr',
+                    'price' => 9900,
+                    'currency' => 'CZK',
+                    'tax_rate_id' => app(TaxRates::class)->default()->id,
+                    'is_active' => true,
+                ]);
+
+                $payment = PaymentMethod::query()->create([
+                    'provider' => PaymentMethod::PROVIDER_COD,
+                    'name' => 'Dobírka',
+                    'fee' => 0,
+                    'currency' => 'CZK',
+                    'tax_rate_id' => app(TaxRates::class)->default()->id,
+                    'is_active' => true,
+                ]);
+
+                /** @var Cart $cart */
+                $cart = app(CartRepository::class)->forToken(null);
+                app(CartRepository::class)->addItem($cart, $product->id, 1);
+
+                $placed = app(OrderPlacement::class)->place(new PlacementRequest(
+                    cart: $cart,
+                    shippingMethodId: $shipping->id,
+                    paymentMethodId: $payment->id,
+                    email: 'jana@example.cz',
+                    phone: '+420777123456',
+                    billing: [
+                        'name' => 'Jana Nováková',
+                        'street' => 'Hlavní 1',
+                        'city' => 'Praha',
+                        'zip' => '110 00',
+                        'country' => 'CZ',
+                    ],
+                    shipping: null,
+                    checkoutToken: 'tok-'.bin2hex(random_bytes(8)),
+                    customerId: $customerId,
+                    source: 'storefront',
+                    note: null,
+                ));
+
+                $order = Order::query()->where('uuid', $placed->uuid())->firstOrFail();
+                $order->forceFill(['payment_status' => Order::PAYMENT_PAID])->save();
+
+                return $order;
+            };
+
+            // Placed in this order so "early" gets the lower order_id.
+            $early = $placeOrder();
+            $late = $placeOrder();
+
+            // "late"'s invoice is issued first, claiming invoice_seq=1 — the
+            // number this test targets.
+            $lateInvoiceNumber = app(DocumentIssuer::class)->issue($late->uuid, Document::TYPE_INVOICE)->documentNumber();
+
+            // "early"'s own invoice — purely the CreditNoteIssuer::build()
+            // prerequisite. Its printed number is never asserted on.
+            app(DocumentIssuer::class)->issue($early->uuid, Document::TYPE_INVOICE);
+
+            $early->forceFill(['fulfillment_status' => Order::FULFILLMENT_CANCELLED])->save();
+            $earlyCreditNoteNumber = app(DocumentIssuer::class)->issue($early->uuid, Document::TYPE_CREDIT_NOTE)->documentNumber();
+
+            return ['invoice' => $lateInvoiceNumber, 'credit_note' => $earlyCreditNoteNumber];
+        });
+    }
+
     public function test_the_owning_customer_can_download_their_invoice(): void
     {
         Storage::fake(FileStorage::PRIVATE_DISK);
@@ -357,7 +476,20 @@ class CustomerInvoiceDownloadTest extends TestCase
         Storage::fake(FileStorage::PRIVATE_DISK);
 
         $customer = $this->makeCustomer($this->tenant);
-        $numbers = $this->issueInvoiceAndCreditNoteFor($this->tenant, $customer->id);
+        // Deliberately NOT issueInvoiceAndCreditNoteFor(): when an invoice
+        // and its own credit note share an order_id, the type-less lookup a
+        // regressed controller would run resolves via the
+        // documents_tenant_id_order_id_type_unique index (confirmed via
+        // EXPLAIN) — ordered by (order_id, type) — and since `type` is an
+        // ENUM('invoice','proforma','credit_note'), 'invoice' always sorts
+        // before 'credit_note' on an order_id tie, regardless of which row
+        // was inserted first. A same-order pair is therefore vacuous no
+        // matter how it's asserted (Task 7 review finding: the reviewer's
+        // insertion-order framing happened to coincide with this, but
+        // primary-key order turned out not to be the actual cause — see the
+        // helper's docblock). Using two different orders breaks the tie on
+        // order_id itself, which the index consults before type.
+        $numbers = $this->issueInvoiceAndCreditNoteFromDifferentOrdersSharingANumber($this->tenant, $customer->id);
         $this->assertSame($numbers['invoice'], $numbers['credit_note']);
 
         $response = $this->actingAsCustomer($customer)->get($this->url('/faktura/'.$numbers['invoice'].'/pdf'));
@@ -407,10 +539,28 @@ class CustomerInvoiceDownloadTest extends TestCase
         // isolate the read path under test. Document::create() is the model's
         // one allowed write (only updating()/deleting() are guarded), so this
         // does not fight the immutability rule.
+        //
+        // Made a fully-valid, downloadable-looking document owned by the SAME
+        // customer as the invoice (Task 7 review, round 2): a populated
+        // `customer` JSON carrying the real order's uuid, so
+        // OrderBook::findForCustomer() succeeds, plus a real pdf_path backed
+        // by an actual stored file, so the pdf_path gate also passes. Without
+        // both, the request would 404 at the ownership or pdf_path gate
+        // before the type filter is ever consulted, and this test would not
+        // prove the filter does anything (Task 7 review finding). With both
+        // gates passing, the only remaining reason left for a 404 is the
+        // controller's `->where('type', Document::TYPE_INVOICE)` clause —
+        // if that were removed, this row (the only one with this number)
+        // would be served instead of 404ing.
         $creditNoteOnlyNumber = 'CN-ONLY-'.$invoiceNumber;
 
         $this->context->runAs($this->tenant, function () use ($invoiceNumber, $creditNoteOnlyNumber) {
-            $orderId = Document::query()->where('number', $invoiceNumber)->firstOrFail()->order_id;
+            $invoiceDocument = Document::query()->where('number', $invoiceNumber)->firstOrFail();
+            $orderId = $invoiceDocument->order_id;
+            $orderUuid = Order::query()->findOrFail($orderId)->uuid;
+
+            $path = 'documents/credit_note-'.$creditNoteOnlyNumber.'.pdf';
+            app(FileStorage::class)->putPrivate($path, '%PDF-fake-credit-note-only');
 
             Document::query()->create([
                 'order_id' => $orderId,
@@ -421,11 +571,12 @@ class CustomerInvoiceDownloadTest extends TestCase
                 'taxable_at' => now()->toDateString(),
                 'due_at' => now()->toDateString(),
                 'supplier' => [],
-                'customer' => [],
+                'customer' => ['order_uuid' => $orderUuid],
                 'items' => [],
                 'vat_summary' => [],
                 'total' => -100,
                 'currency' => 'CZK',
+                'pdf_path' => $path,
             ]);
         });
 

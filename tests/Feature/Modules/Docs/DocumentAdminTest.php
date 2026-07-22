@@ -403,6 +403,55 @@ class DocumentAdminTest extends TestCase
         });
     }
 
+    /**
+     * Same collision as issueInvoiceAndCreditNoteSharingANumber(), but the
+     * invoice and credit note belong to two DIFFERENT orders (Task 7 review,
+     * round 2).
+     *
+     * Why: the documents table has no index on `number` alone. The
+     * type-less lookup a regressed download()/resend() would run resolves
+     * via the documents_tenant_id_order_id_type_unique index (confirmed via
+     * EXPLAIN), ordered by (order_id, type) — and since `type` is an
+     * ENUM('invoice','proforma','credit_note'), 'invoice' (1) always sorts
+     * before 'credit_note' (3) on an order_id tie. When both documents share
+     * an order_id (as in issueInvoiceAndCreditNoteSharingANumber()), that
+     * index always yields the invoice first regardless of insertion order —
+     * so a test asserting "type=invoice resolves to the invoice" using a
+     * same-order pair is vacuous no matter how it's built: dropping the
+     * controller's type filter would "coincidentally" still return the
+     * invoice via the index. Giving the two documents different order_ids
+     * breaks the tie on order_id itself, which the index consults before
+     * type.
+     *
+     * Sequencing mirrors CustomerInvoiceDownloadTest's twin helper:
+     *  1. "early" is placed first (lower order_id); its invoice is deferred.
+     *  2. "late" is placed second (higher order_id); its invoice is issued
+     *     FIRST, claiming invoice_seq=1 — the number under test.
+     *  3. "early"'s own invoice is issued next, purely the
+     *     CreditNoteIssuer::build() prerequisite.
+     *  4. "early" is cancelled and credited — the first credit note ever,
+     *     printing the identical number "late"'s invoice got — but attached
+     *     to "early", the order with the lower order_id.
+     *
+     * @return array{0: Document, 1: Document} [invoice, credit note]
+     */
+    private function issueInvoiceAndCreditNoteFromDifferentOrdersSharingANumber(): array
+    {
+        $early = $this->placePaidOrder($this->tenant);
+        $late = $this->placePaidOrder($this->tenant);
+
+        return $this->context->runAs($this->tenant, function () use ($early, $late): array {
+            $invoice = app(DocumentIssuer::class)->issue($late->uuid, Document::TYPE_INVOICE);
+
+            app(DocumentIssuer::class)->issue($early->uuid, Document::TYPE_INVOICE);
+
+            $early->forceFill(['fulfillment_status' => Order::FULFILLMENT_CANCELLED])->save();
+            $creditNote = app(DocumentIssuer::class)->issue($early->uuid, Document::TYPE_CREDIT_NOTE);
+
+            return [$invoice, $creditNote];
+        });
+    }
+
     public function test_the_invoice_and_credit_note_actually_share_a_printed_number(): void
     {
         Storage::fake(FileStorage::PRIVATE_DISK);
@@ -421,7 +470,7 @@ class DocumentAdminTest extends TestCase
     {
         Storage::fake(FileStorage::PRIVATE_DISK);
 
-        [$invoice, $creditNote] = $this->issueInvoiceAndCreditNoteSharingANumber();
+        [$invoice, $creditNote] = $this->issueInvoiceAndCreditNoteFromDifferentOrdersSharingANumber();
         $this->assertSame($invoice->number, $creditNote->number);
         $number = $invoice->number;
 
