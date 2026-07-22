@@ -25,12 +25,12 @@ class StripeSubscriptionGatewayTest extends TestCase
 
         $sessions = Mockery::mock();
         $sessions->shouldReceive('create')->once()
-            ->with(Mockery::on(function (array $args) {
+            ->with(Mockery::on(function (array $args) use ($tenant) {
                 return $args['mode'] === 'subscription'
                     && $args['customer'] === 'cus_abc'
                     && $args['line_items'][0]['price'] === 'price_123'
-                    && $args['metadata']['tenant_id'] !== null
-                    && $args['subscription_data']['metadata']['tenant_id'] === $args['metadata']['tenant_id'];
+                    && $args['metadata']['tenant_id'] === (string) $tenant->id
+                    && $args['subscription_data']['metadata']['tenant_id'] === (string) $tenant->id;
             }))
             ->andReturn((object) ['url' => 'https://checkout.stripe.test/s']);
 
