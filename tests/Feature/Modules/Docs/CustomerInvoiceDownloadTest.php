@@ -136,6 +136,82 @@ class CustomerInvoiceDownloadTest extends TestCase
         });
     }
 
+    /**
+     * Places and pays an order for the given customer, issues its invoice,
+     * then cancels the order and issues a credit note against that same
+     * invoice. With empty default prefixes, the invoice series and the
+     * credit note series both format their first document of the year as
+     * "{YYYY}0001" (wave 1.6: `documents` unique per (tenant, type, number),
+     * not (tenant, number) alone) — so the two numbers are expected to
+     * collide here.
+     *
+     * @return array{invoice: string, credit_note: string}
+     */
+    private function issueInvoiceAndCreditNoteFor(Tenant $tenant, ?int $customerId): array
+    {
+        return $this->context->runAs($tenant, function () use ($customerId): array {
+            $product = app(ProductWriter::class)->create([
+                'name' => 'Klávesnice Acme',
+                'sku' => 'KB-1',
+                'price' => 99900,
+                'tax_rate_id' => app(TaxRates::class)->default()->id,
+                'status' => Product::STATUS_ACTIVE,
+            ]);
+
+            $shipping = ShippingMethod::query()->create([
+                'provider' => ShippingMethod::PROVIDER_FLAT,
+                'name' => 'Kurýr',
+                'price' => 9900,
+                'currency' => 'CZK',
+                'tax_rate_id' => app(TaxRates::class)->default()->id,
+                'is_active' => true,
+            ]);
+
+            $payment = PaymentMethod::query()->create([
+                'provider' => PaymentMethod::PROVIDER_COD,
+                'name' => 'Dobírka',
+                'fee' => 0,
+                'currency' => 'CZK',
+                'tax_rate_id' => app(TaxRates::class)->default()->id,
+                'is_active' => true,
+            ]);
+
+            /** @var Cart $cart */
+            $cart = app(CartRepository::class)->forToken(null);
+            app(CartRepository::class)->addItem($cart, $product->id, 1);
+
+            $placed = app(OrderPlacement::class)->place(new PlacementRequest(
+                cart: $cart,
+                shippingMethodId: $shipping->id,
+                paymentMethodId: $payment->id,
+                email: 'jana@example.cz',
+                phone: '+420777123456',
+                billing: [
+                    'name' => 'Jana Nováková',
+                    'street' => 'Hlavní 1',
+                    'city' => 'Praha',
+                    'zip' => '110 00',
+                    'country' => 'CZ',
+                ],
+                shipping: null,
+                checkoutToken: 'tok-'.bin2hex(random_bytes(8)),
+                customerId: $customerId,
+                source: 'storefront',
+                note: null,
+            ));
+
+            $order = Order::query()->where('uuid', $placed->uuid())->firstOrFail();
+            $order->forceFill(['payment_status' => Order::PAYMENT_PAID])->save();
+
+            $invoiceNumber = app(DocumentIssuer::class)->issue($order->uuid, Document::TYPE_INVOICE)->documentNumber();
+
+            $order->forceFill(['fulfillment_status' => Order::FULFILLMENT_CANCELLED])->save();
+            $creditNoteNumber = app(DocumentIssuer::class)->issue($order->uuid, Document::TYPE_CREDIT_NOTE)->documentNumber();
+
+            return ['invoice' => $invoiceNumber, 'credit_note' => $creditNoteNumber];
+        });
+    }
+
     public function test_the_owning_customer_can_download_their_invoice(): void
     {
         Storage::fake(FileStorage::PRIVATE_DISK);
@@ -258,5 +334,103 @@ class CustomerInvoiceDownloadTest extends TestCase
 
         $response->assertOk();
         $response->assertDontSee('Stáhnout fakturu');
+    }
+
+    // --- type disambiguation (Task 7 review fix) ----------------------------
+
+    public function test_an_invoice_and_a_credit_note_actually_share_a_printed_number(): void
+    {
+        Storage::fake(FileStorage::PRIVATE_DISK);
+
+        $customer = $this->makeCustomer($this->tenant);
+        $numbers = $this->issueInvoiceAndCreditNoteFor($this->tenant, $customer->id);
+
+        // The premise the test below relies on: two different series (own
+        // sequence per document type), same printed number. If this ever
+        // stops holding (e.g. a distinguishing prefix is added later), the
+        // test below stops proving anything and must be revisited.
+        $this->assertSame($numbers['invoice'], $numbers['credit_note']);
+    }
+
+    public function test_the_faktura_route_serves_the_invoice_even_when_a_credit_note_shares_its_number(): void
+    {
+        Storage::fake(FileStorage::PRIVATE_DISK);
+
+        $customer = $this->makeCustomer($this->tenant);
+        $numbers = $this->issueInvoiceAndCreditNoteFor($this->tenant, $customer->id);
+        $this->assertSame($numbers['invoice'], $numbers['credit_note']);
+
+        $response = $this->actingAsCustomer($customer)->get($this->url('/faktura/'.$numbers['invoice'].'/pdf'));
+
+        $response->assertOk();
+        $response->assertHeader('Content-Type', 'application/pdf');
+        $streamed = $response->streamedContent();
+        $this->assertStringStartsWith('%PDF-', $streamed);
+
+        // Not just "some PDF" — the *invoice's own* stored bytes, not the
+        // credit note's. Both documents render distinct templates
+        // (docs::pdf.invoice vs docs::pdf.credit-note) to distinct storage
+        // keys (Modules\Docs\Jobs\GenerateDocumentPdf keys by type+number
+        // since both can share a printed number); this pins the response to
+        // the invoice's file specifically, so a regression that made the two
+        // documents' PDFs collide on disk (or the controller resolve the
+        // wrong row) would fail this assertion even though "some PDF came
+        // back" would not have caught it.
+        $this->context->runAs($this->tenant, function () use ($numbers, $streamed) {
+            $invoice = Document::query()
+                ->where('number', $numbers['invoice'])
+                ->where('type', Document::TYPE_INVOICE)
+                ->firstOrFail();
+            $creditNote = Document::query()
+                ->where('number', $numbers['credit_note'])
+                ->where('type', Document::TYPE_CREDIT_NOTE)
+                ->firstOrFail();
+
+            $this->assertNotSame($invoice->pdf_path, $creditNote->pdf_path);
+
+            $storage = app(FileStorage::class);
+            $this->assertSame($storage->get($invoice->pdf_path), $streamed);
+            $this->assertNotSame($storage->get($creditNote->pdf_path), $streamed);
+        });
+    }
+
+    public function test_the_faktura_route_404s_when_only_a_credit_note_has_that_number(): void
+    {
+        Storage::fake(FileStorage::PRIVATE_DISK);
+
+        $customer = $this->makeCustomer($this->tenant);
+        $invoiceNumber = $this->issueInvoiceFor($this->tenant, $customer->id);
+
+        // A number that exists only as a credit_note row — not reachable via
+        // the normal issuer flow here (a credit note always implies a sibling
+        // invoice for the same order), so the row is inserted directly to
+        // isolate the read path under test. Document::create() is the model's
+        // one allowed write (only updating()/deleting() are guarded), so this
+        // does not fight the immutability rule.
+        $creditNoteOnlyNumber = 'CN-ONLY-'.$invoiceNumber;
+
+        $this->context->runAs($this->tenant, function () use ($invoiceNumber, $creditNoteOnlyNumber) {
+            $orderId = Document::query()->where('number', $invoiceNumber)->firstOrFail()->order_id;
+
+            Document::query()->create([
+                'order_id' => $orderId,
+                'type' => Document::TYPE_CREDIT_NOTE,
+                'number' => $creditNoteOnlyNumber,
+                'series' => 'credit_notes:test',
+                'issued_at' => now(),
+                'taxable_at' => now()->toDateString(),
+                'due_at' => now()->toDateString(),
+                'supplier' => [],
+                'customer' => [],
+                'items' => [],
+                'vat_summary' => [],
+                'total' => -100,
+                'currency' => 'CZK',
+            ]);
+        });
+
+        $response = $this->actingAsCustomer($customer)->get($this->url('/faktura/'.$creditNoteOnlyNumber.'/pdf'));
+
+        $response->assertNotFound();
     }
 }

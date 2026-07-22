@@ -55,6 +55,10 @@ return new class extends Migration
             $table->unique(['tenant_id', 'number']);
         });
 
+        // Caveat: this fails if any credit note with a negative total exists
+        // (UNSIGNED cannot hold it) — rolling back this migration on a
+        // database that has already issued a credit note requires deleting
+        // or re-signing those rows first.
         DB::statement('ALTER TABLE documents MODIFY total BIGINT UNSIGNED NOT NULL');
 
         Schema::table('documents', function (Blueprint $table) {

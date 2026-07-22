@@ -78,7 +78,12 @@ class GenerateDocumentPdf implements ShouldQueue
             'footer' => (string) $settings->get('docs', 'invoice_footer', ''),
         ])->setPaper('a4');
 
-        $path = 'documents/'.$document->number.'.pdf';
+        // Keyed by type as well as number: since wave 1.6 a printed number is
+        // only unique per (tenant, type) — an invoice and a credit note can
+        // share one (see DocumentAdminController's class doc) — so number
+        // alone would let the second type's render silently overwrite the
+        // first type's already-issued, immutable PDF file on disk.
+        $path = 'documents/'.$document->type.'-'.$document->number.'.pdf';
 
         $storage->putPrivate($path, $pdf->output());
 

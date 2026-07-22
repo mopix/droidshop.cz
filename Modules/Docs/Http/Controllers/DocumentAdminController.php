@@ -7,6 +7,7 @@ use App\Core\Storage\FileStorage;
 use App\Core\Tenancy\TenantContext;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Inertia\Response;
 use Modules\Docs\Http\Requests\StoreDocumentRequest;
 use Modules\Docs\Jobs\GenerateDocumentPdf;
@@ -23,6 +24,14 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  * DocumentIssuer contract, never the Eloquent model directly, so this
  * controller and the auto-issue listeners (order.paid/order.shipped) share
  * exactly one idempotent write path.
+ *
+ * download() and resend() take a required `type` query parameter alongside
+ * the `{number}` path segment. Since wave 1.6 a printed number is only unique
+ * per (tenant, type) — an invoice and a credit note can print the identical
+ * number when both series start their year at 1 with an empty prefix (spec
+ * §16.6) — so `number` alone can no longer resolve to one row. The admin
+ * listing already knows each row's type, so it carries it through as a query
+ * param rather than turning `{number}` into a compound path segment.
  */
 class DocumentAdminController
 {
@@ -58,7 +67,7 @@ class DocumentAdminController
     {
         abort_unless($request->user('web')->can('docs.manage'), 403);
 
-        $document = $this->findByNumber($number);
+        $document = $this->findByNumber($number, $this->validatedType($request));
 
         if ($document->pdf_path === null || ! $this->storage->exists($document->pdf_path)) {
             abort(404);
@@ -85,16 +94,44 @@ class DocumentAdminController
     {
         abort_unless($request->user('web')->can('docs.manage'), 403);
 
-        $document = $this->findByNumber($number);
+        $document = $this->findByNumber($number, $this->validatedType($request));
 
         GenerateDocumentPdf::dispatch($this->context->id(), $document->id);
 
         return back()->with('success', "Doklad {$document->number} byl znovu odeslán.");
     }
 
-    private function findByNumber(string $number): Document
+    /**
+     * Validates the required `type` query param against the allowed set
+     * before it ever reaches a query — an unvalidated value would just make
+     * findByNumber() 404 (no row matches an unknown type), which is correct
+     * but gives a worse error than a 422 on a typo'd/tampered param.
+     */
+    private function validatedType(Request $request): string
     {
-        $document = Document::query()->where('number', $number)->first();
+        $validated = $request->validate([
+            'type' => ['required', 'string', Rule::in([
+                Document::TYPE_INVOICE,
+                Document::TYPE_CREDIT_NOTE,
+                Document::TYPE_PROFORMA,
+            ])],
+        ]);
+
+        return (string) $validated['type'];
+    }
+
+    /**
+     * Since wave 1.6 `number` alone is only unique per (tenant, type) — an
+     * invoice and a credit note can share a printed number (see class doc) —
+     * so both must be given together or this could resolve the wrong
+     * document type.
+     */
+    private function findByNumber(string $number, string $type): Document
+    {
+        $document = Document::query()
+            ->where('number', $number)
+            ->where('type', $type)
+            ->first();
 
         if (! $document instanceof Document) {
             abort(404);

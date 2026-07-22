@@ -277,7 +277,7 @@ class DocumentAdminTest extends TestCase
             fn () => app(DocumentIssuer::class)->issue($order->uuid)->documentNumber(),
         );
 
-        $response = $this->actingAs($this->owner)->get($this->url('/'.$number.'/pdf'));
+        $response = $this->actingAs($this->owner)->get($this->url('/'.$number.'/pdf?type=invoice'));
 
         $response->assertOk();
         $response->assertHeader('Content-Type', 'application/pdf');
@@ -305,7 +305,7 @@ class DocumentAdminTest extends TestCase
         // Requested against shop1's host, where a document with this number
         // (foreign tenant_id) is invisible to the BelongsToTenant scope.
         $this->actingAs($this->owner)
-            ->get($this->url('/'.$number.'/pdf'))
+            ->get($this->url('/'.$number.'/pdf?type=invoice'))
             ->assertNotFound();
     }
 
@@ -321,7 +321,7 @@ class DocumentAdminTest extends TestCase
         );
 
         $this->actingAs($staff)
-            ->get($this->url('/'.$number.'/pdf'))
+            ->get($this->url('/'.$number.'/pdf?type=invoice'))
             ->assertForbidden();
     }
 
@@ -340,7 +340,7 @@ class DocumentAdminTest extends TestCase
         );
 
         $this->actingAs($stranger)
-            ->get($this->url('/'.$number.'/pdf'))
+            ->get($this->url('/'.$number.'/pdf?type=invoice'))
             ->assertForbidden();
     }
 
@@ -357,7 +357,7 @@ class DocumentAdminTest extends TestCase
         );
 
         $this->actingAs($this->owner)
-            ->post($this->url('/'.$number.'/odeslat'))
+            ->post($this->url('/'.$number.'/odeslat?type=invoice'))
             ->assertRedirect();
     }
 
@@ -373,7 +373,151 @@ class DocumentAdminTest extends TestCase
         );
 
         $this->actingAs($staff)
-            ->post($this->url('/'.$number.'/odeslat'))
+            ->post($this->url('/'.$number.'/odeslat?type=invoice'))
             ->assertForbidden();
+    }
+
+    // --- type disambiguation (Task 7 review fix) ----------------------------
+
+    /**
+     * With empty default prefixes, the invoice series and the credit note
+     * series both format their first document of the year as the identical
+     * "{YYYY}0001" string (wave 1.6: `documents` is now unique per
+     * (tenant, type, number), not (tenant, number) alone — see the
+     * 2026_07_22_090000 migration). download()/resend() must therefore
+     * require `type` alongside `number`, or a foreign type could be served.
+     *
+     * @return array{0: Document, 1: Document} [invoice, credit note]
+     */
+    private function issueInvoiceAndCreditNoteSharingANumber(): array
+    {
+        $order = $this->placePaidOrder($this->tenant);
+
+        return $this->context->runAs($this->tenant, function () use ($order): array {
+            $invoice = app(DocumentIssuer::class)->issue($order->uuid, Document::TYPE_INVOICE);
+
+            $order->forceFill(['fulfillment_status' => Order::FULFILLMENT_CANCELLED])->save();
+            $creditNote = app(DocumentIssuer::class)->issue($order->uuid, Document::TYPE_CREDIT_NOTE);
+
+            return [$invoice, $creditNote];
+        });
+    }
+
+    public function test_the_invoice_and_credit_note_actually_share_a_printed_number(): void
+    {
+        Storage::fake(FileStorage::PRIVATE_DISK);
+
+        [$invoice, $creditNote] = $this->issueInvoiceAndCreditNoteSharingANumber();
+
+        // The premise the rest of this section relies on: two different
+        // series, same printed number. If this assertion ever fails (e.g. a
+        // future change adds a distinguishing prefix), the disambiguation
+        // tests below stop proving anything and must be revisited.
+        $this->assertSame($invoice->number, $creditNote->number);
+        $this->assertNotSame($invoice->type, $creditNote->type);
+    }
+
+    public function test_download_with_type_invoice_returns_the_invoice_not_the_credit_note(): void
+    {
+        Storage::fake(FileStorage::PRIVATE_DISK);
+
+        [$invoice, $creditNote] = $this->issueInvoiceAndCreditNoteSharingANumber();
+        $this->assertSame($invoice->number, $creditNote->number);
+        $number = $invoice->number;
+
+        $response = $this->actingAs($this->owner)
+            ->get($this->url('/'.$number.'/pdf?type=invoice'));
+
+        $response->assertOk();
+        $response->assertHeader('Content-Type', 'application/pdf');
+        $streamed = $response->streamedContent();
+        $this->assertStringStartsWith('%PDF-', $streamed);
+
+        // Pinned to the invoice's own stored bytes, not merely "some PDF" —
+        // see the equivalent note on the credit_note-typed test below.
+        $this->context->runAs($this->tenant, function () use ($invoice, $creditNote, $streamed) {
+            $storage = app(FileStorage::class);
+
+            $this->assertNotSame($invoice->fresh()->pdf_path, $creditNote->fresh()->pdf_path);
+            $this->assertSame($storage->get($invoice->fresh()->pdf_path), $streamed);
+            $this->assertNotSame($storage->get($creditNote->fresh()->pdf_path), $streamed);
+        });
+    }
+
+    public function test_download_with_type_credit_note_returns_the_credit_note_not_the_invoice(): void
+    {
+        Storage::fake(FileStorage::PRIVATE_DISK);
+
+        [$invoice, $creditNote] = $this->issueInvoiceAndCreditNoteSharingANumber();
+        $this->assertSame($invoice->number, $creditNote->number);
+        $number = $creditNote->number;
+
+        $response = $this->actingAs($this->owner)
+            ->get($this->url('/'.$number.'/pdf?type=credit_note'));
+
+        $response->assertOk();
+        $response->assertHeader('Content-Type', 'application/pdf');
+        $streamed = $response->streamedContent();
+        $this->assertStringStartsWith('%PDF-', $streamed);
+
+        // Confirm it is the credit note's own file, not the invoice's: the
+        // two documents have distinct pdf_path values on disk (Fix D:
+        // GenerateDocumentPdf keys the storage path by type+number, not
+        // number alone, precisely because this pair shares a number), and
+        // the streamed bytes match the credit note's own stored file, not
+        // the invoice's.
+        $this->context->runAs($this->tenant, function () use ($invoice, $creditNote, $streamed) {
+            $storage = app(FileStorage::class);
+
+            $this->assertNotSame($invoice->fresh()->pdf_path, $creditNote->fresh()->pdf_path);
+            $this->assertSame($storage->get($creditNote->fresh()->pdf_path), $streamed);
+            $this->assertNotSame($storage->get($invoice->fresh()->pdf_path), $streamed);
+        });
+    }
+
+    public function test_download_without_a_type_query_param_fails_validation(): void
+    {
+        Storage::fake(FileStorage::PRIVATE_DISK);
+
+        [$invoice] = $this->issueInvoiceAndCreditNoteSharingANumber();
+
+        $this->actingAs($this->owner)
+            ->get($this->url('/'.$invoice->number.'/pdf'))
+            ->assertSessionHasErrors('type');
+    }
+
+    public function test_download_with_a_mismatched_number_and_type_pair_is_not_found(): void
+    {
+        Storage::fake(FileStorage::PRIVATE_DISK);
+
+        [$invoice, $creditNote] = $this->issueInvoiceAndCreditNoteSharingANumber();
+        $this->assertSame($invoice->number, $creditNote->number);
+
+        // The number exists, but only under type=invoice/credit_note — asking
+        // for it as a proforma (a type that was never issued for this
+        // number) must 404, not fall through to either real document.
+        $this->actingAs($this->owner)
+            ->get($this->url('/'.$invoice->number.'/pdf?type=proforma'))
+            ->assertNotFound();
+    }
+
+    public function test_resend_with_type_credit_note_dispatches_for_the_credit_note_not_the_invoice(): void
+    {
+        Storage::fake(FileStorage::PRIVATE_DISK);
+
+        [$invoice, $creditNote] = $this->issueInvoiceAndCreditNoteSharingANumber();
+        $this->assertSame($invoice->number, $creditNote->number);
+
+        $invoiceSentAt = $invoice->fresh()->sent_at;
+
+        $this->actingAs($this->owner)
+            ->post($this->url('/'.$creditNote->number.'/odeslat?type=credit_note'))
+            ->assertRedirect();
+
+        $this->context->runAs($this->tenant, function () use ($invoice, $invoiceSentAt) {
+            // Resending the credit note must not touch the invoice's own
+            // sent_at — proof the two never cross.
+            $this->assertEquals($invoiceSentAt, $invoice->fresh()->sent_at);
+        });
     }
 }

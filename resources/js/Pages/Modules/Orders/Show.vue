@@ -450,7 +450,7 @@ const formatAddress = (address: Address) => {
                 <span class="text-gray-900">{{ money(document.total, document.currency) }}</span>
                 <a
                   v-if="document.downloadable"
-                  :href="route('admin.docs.download', document.number)"
+                  :href="route('admin.docs.download', { number: document.number, type: document.type })"
                   class="underline hover:no-underline focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-900"
                 >
                   Stáhnout PDF

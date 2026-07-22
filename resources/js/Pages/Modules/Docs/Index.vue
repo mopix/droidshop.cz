@@ -80,7 +80,7 @@ const money = (haler: number, currency: string) =>
       <template #cell-download="{ row }">
         <a
           v-if="(row as DocumentRow).downloadable"
-          :href="route('admin.docs.download', (row as DocumentRow).number)"
+          :href="route('admin.docs.download', { number: (row as DocumentRow).number, type: (row as DocumentRow).type })"
           class="underline hover:no-underline focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-900"
         >
           Stáhnout PDF
