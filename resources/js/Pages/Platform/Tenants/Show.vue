@@ -195,6 +195,26 @@ const submitPlan = (url: string) => {
   })
 }
 
+/* --------------------------------------------------------- subscription activation */
+
+// Statuses the server rejects up front (pending_deletion, deleted): offering
+// the button there would only earn a 422, so it stays hidden instead.
+const canActivateSubscription = computed(
+  () => !['pending_deletion', 'deleted'].includes(props.tenant.status),
+)
+
+const subscriptionForm = useForm({})
+const subscriptionDialog = ref(false)
+
+const submitSubscriptionActivation = (url: string) => {
+  subscriptionForm.post(url, {
+    preserveScroll: true,
+    onSuccess: () => {
+      subscriptionDialog.value = false
+    },
+  })
+}
+
 /* ------------------------------------------------------------------- modules */
 
 const moduleForm = useForm<{ module: string }>({ module: '' })
@@ -420,6 +440,18 @@ const limitStateLabel = (limit: LimitUsage): string =>
           >
             Z tohoto stavu už nevede žádný ruční přechod.
           </p>
+        </div>
+
+        <InputError class="mt-4" :message="subscriptionForm.errors.subscription" />
+
+        <div v-if="canActivateSubscription" class="mt-3 flex flex-wrap gap-3">
+          <button
+            type="button"
+            class="inline-flex items-center rounded-md border border-transparent bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-2"
+            @click="subscriptionForm.clearErrors(); subscriptionDialog = true"
+          >
+            Aktivovat předplatné
+          </button>
         </div>
       </section>
 
@@ -659,6 +691,18 @@ const limitStateLabel = (limit: LimitUsage): string =>
 
       <InputError class="mt-1" :message="statusForm.errors.status" />
     </ConfirmDialog>
+
+    <!-- Subscription activation -->
+    <ConfirmDialog
+      :show="subscriptionDialog"
+      title="Aktivovat předplatné"
+      message="Provede se naúčtování a vystaví se faktura tomuto nájemci. Akci nelze vzít zpět."
+      confirm-label="Aktivovat předplatné"
+      danger
+      :processing="subscriptionForm.processing"
+      @cancel="subscriptionDialog = false"
+      @confirm="submitSubscriptionActivation(route('platform.tenants.subscription.activate', tenant.uuid))"
+    />
 
     <!-- Plan change -->
     <ConfirmDialog
