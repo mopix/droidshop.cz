@@ -9,8 +9,9 @@ use Throwable;
 
 /**
  * Builds a SPAYD string (Short Payment Descriptor, the Czech QR-payment
- * standard) for an unpaid invoice, and renders it to a PNG data URI dompdf
- * can embed via a plain `<img>` tag.
+ * standard) for a document awaiting bank payment (an unpaid invoice or a
+ * proforma), and renders it to a PNG data URI dompdf can embed via a plain
+ * `<img>` tag.
  *
  * Deliberately its own SPAYD builder, not a reuse of
  * `Modules\Checkout\Support\Spayd`: a module never imports another module's
@@ -18,13 +19,13 @@ use Throwable;
  * anyway — a document's variable symbol is the order number recorded on its
  * own immutable snapshot, not something checkout still has a live cart for.
  */
-final class InvoiceQr
+final class DocumentQr
 {
     /**
      * @param  string  $account  The pay-to account/IBAN, read live from the
      *                           payment method (never stored on the document
      *                           snapshot — spec §16.5).
-     * @param  Money  $amount  The invoice total, in minor units.
+     * @param  Money  $amount  The document total, in minor units.
      * @param  string  $variableSymbol  The order number (digits only).
      */
     public static function spayd(string $account, Money $amount, string $variableSymbol): string

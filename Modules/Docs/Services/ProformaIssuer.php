@@ -9,21 +9,21 @@ use Modules\Docs\Models\Document;
 use Modules\Docs\Services\Contracts\TypedDocumentIssuer;
 
 /**
- * The invoice type's rule (spec §16.6). The shared write mechanics moved to
- * DocumentWriter in wave 1.6; this class now only describes what an invoice
- * snapshot is and which series/prefix it draws from.
+ * The proforma type's rule (spec §16.6). No gate beyond the module being on:
+ * issuing a payment request for any order is legitimate — unlike a credit
+ * note, a proforma corrects nothing and requires no prior invoice.
  */
-class InvoiceIssuer implements TypedDocumentIssuer
+class ProformaIssuer implements TypedDocumentIssuer
 {
     public function __construct(
         private readonly SettingsService $settings,
         private readonly TenantContext $context,
-        private readonly InvoiceSnapshot $snapshot,
+        private readonly ProformaSnapshot $snapshot,
     ) {}
 
     public function type(): string
     {
-        return Document::TYPE_INVOICE;
+        return Document::TYPE_PROFORMA;
     }
 
     public function build(OrderView $order): array
@@ -36,11 +36,11 @@ class InvoiceIssuer implements TypedDocumentIssuer
 
     public function seriesBase(): string
     {
-        return config('documents.invoice_series');
+        return config('documents.proforma_series');
     }
 
     public function prefix(): string
     {
-        return (string) $this->settings->get('docs', 'number_prefix', '');
+        return (string) $this->settings->get('docs', 'proforma_prefix', '');
     }
 }

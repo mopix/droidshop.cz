@@ -8,8 +8,10 @@ use App\Core\Customers\Contracts\CustomerIdentity;
 use App\Core\Customers\NullCustomerIdentity;
 use App\Core\Documents\Contracts\DocumentBook;
 use App\Core\Documents\Contracts\DocumentIssuer;
+use App\Core\Documents\Contracts\DocumentLedger;
 use App\Core\Documents\NullDocumentBook;
 use App\Core\Documents\NullDocumentIssuer;
+use App\Core\Documents\NullDocumentLedger;
 use App\Core\Limits\LimitsService;
 use App\Core\Mail\Contracts\MailService;
 use App\Core\Mail\MailLimitCounter;
@@ -101,6 +103,12 @@ class AppServiceProvider extends ServiceProvider
         // Collection, never a throw. Modules\Docs\Providers\ModuleProvider
         // overwrites it.
         $this->app->bind(DocumentBook::class, NullDocumentBook::class);
+
+        // The accounting export's read side (DocumentLedger — a period query
+        // across all orders, not per-order like DocumentBook). Guest/deploy-safe
+        // like DocumentBook: an empty Collection, never a throw.
+        // Modules\Docs\Providers\ModuleProvider overwrites it.
+        $this->app->bind(DocumentLedger::class, NullDocumentLedger::class);
     }
 
     /**

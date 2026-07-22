@@ -11,6 +11,44 @@ Pravidla: [`.claude/skills/versioning/SKILL.md`](.claude/skills/versioning/SKILL
 
 > CHANGELOG vede milníky (minor/major). Detail patchů je v `git log`.
 
+## [0.15.0] – 2026-07-22
+
+**Fáze 1 / vlna 1.6 — modul `docs`: dobropis, proforma, CSV VAT export, číslování.** Doplňuje zbývající dva typy dokladu z enumu (`credit_note`, `proforma`), účetní CSV export podle DUZP a roční reset číslování odložený z vlny 1.5. Uzavírá spec §16.6 pro `docs` v rozsahu MVP (905 testů, +47 oproti 858 na začátku vlny).
+
+### Architektura — registry + sdílený writer
+
+- `DocumentIssuerRegistry` (kernel binding `DocumentIssuer`) deleguje per typ na `InvoiceIssuer`/`CreditNoteIssuer`/`ProformaIssuer` implementující nové modulové rozhraní `TypedDocumentIssuer` — precedent `PaymentGatewayRegistry`.
+- `DocumentWriter` — vytažená sdílená mechanika z 1.5 (číslo, immutable insert, idempotence `(order_id, type)`, PDF dispatch, unique-violation fallback), typ-agnostická.
+- Přejmenování beze změny chování: `GenerateInvoicePdf`→`GenerateDocumentPdf`, `InvoiceIssued`→`DocumentIssued`, `InvoiceQr`→`DocumentQr`.
+
+### Číslování — roční reset
+
+- Core `App\Core\Documents\DocumentNumber` skládá `{PREFIX}{YYYY}{NNNN}` se zero-padem; `SequenceService::nextNumber()` — nový syrový gap-free čítač, `next()` beze změny pro `orders`.
+- Rok je součástí series klíče (`invoices:2026`) — čítač se resetuje s kalendářním rokem, žádná migrace (`series` je string).
+
+### Dobropis (`credit_note`)
+
+- Plný storno-dobropis, ruční tlačítko v detailu objednávky, gated: faktura existuje **a** objednávka `cancelled` nebo `refunded`, jinak `CreditNoteNotAllowed` (422).
+- `CreditNoteSnapshot` — negace peněz z faktury (položky, `vat_summary`, `total`; sazba DPH `rate` beze změny), odkaz na originál (`corrects_document_id`/`corrects_number`).
+- Vlastní číselná řada `credit_notes`, PDF bez QR (dobropis nežádá platbu).
+
+### Proforma (`proforma`)
+
+- Nedaňová výzva k platbě, ruční tlačítko, bez gate. `taxable_at` = null (bez DUZP), patička „Toto není daňový doklad", QR pro převod zachováno.
+- Vlastní řada `proformas`; koexistuje s fakturou na jedné objednávce (unique je nově per typ).
+
+### CSV VAT export
+
+- Nový kontrakt `App\Core\Documents\Contracts\DocumentLedger` (`taxableBetween()`) + `NullDocumentLedger` (kernel, guest-safe).
+- `VatCsvWriter` — streamovaný CSV, UTF-8 BOM, oddělovač `;` (české Excel locale); typy `invoice`+`credit_note` (proforma vyloučena), dobropis záporně, rozsah podle DUZP.
+- **CSV formula injection (CWE-1236) neutralizována** — volné textové sloupce (jméno, IČO, DIČ) escapovány vedoucí uvozovkou při hodnotě začínající `=`/`+`/`-`/`@`; peněžní sloupce vědomě vyjmuty, aby záporná částka dobropisu nezůstala uřezaná jako text.
+
+### Schéma `documents`
+
+- `total` `UNSIGNED BIGINT`→`BIGINT` (dobropis je záporný); unique `(tenant_id, number)`→`(tenant_id, type, number)` (číselné řady jsou per typ); `taxable_at` NOT NULL→nullable (proforma bez DUZP). Alter migrace na již nasazenou tabulku z 1.5.
+
+- **As-is:** [`docs/as-is/2026-07-22-docs-1-6.md`](docs/as-is/2026-07-22-docs-1-6.md)
+
 ## [0.14.0] – 2026-07-22
 
 **Fáze 1 / vlna 1.5 — modul `docs`: faktury k objednávkám.** Objednávka konečně dostane fakturu. Nájemce ji vystaví tlačítkem v detailu objednávky, nebo se vystaví sama při zaplacení či expedici (dle nastavení `auto_issue_on`). PDF (A4, QR u nezaplacených, patička) se vygeneruje na pozadí a uloží na privátní disk; zákazník dostane fakturu e-mailem a stáhne si ji ve svém účtu. Doklad je jednou vystavený neměnný. Uzavírá spec §16.6 (base modul).

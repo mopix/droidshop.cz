@@ -88,6 +88,19 @@ class OrderAdminController
             abort(404);
         }
 
+        // Resolved once: feeds both the "documents" prop below and the
+        // hasInvoice check the credit-note gate needs — DocumentBook::forOrder
+        // is a query, not a free property.
+        $documents = $this->documents->forOrder($order->uuid);
+
+        // Compared against the literal string, not Modules\Docs\Models\Document
+        // — this controller belongs to orders, not docs, and a module never
+        // imports another module's Eloquent model (CLAUDE.md).
+        $hasInvoice = $documents->contains(fn (DocumentView $document): bool => $document->documentType() === 'invoice');
+
+        $isReversed = $order->fulfillment_status === Order::FULFILLMENT_CANCELLED
+            || $order->payment_status === Order::PAYMENT_REFUNDED;
+
         return inertia('Modules/Orders/Show', [
             'order' => [
                 ...$this->summarise($order),
@@ -134,7 +147,7 @@ class OrderAdminController
                 // same as an order that has no documents yet: the page
                 // renders normally either way (DocumentBook::forOrder's
                 // docblock).
-                'documents' => $this->documents->forOrder($order->uuid)
+                'documents' => $documents
                     ->map(fn (DocumentView $document) => [
                         'number' => $document->documentNumber(),
                         'type' => $document->documentType(),
@@ -153,6 +166,17 @@ class OrderAdminController
                 // may edit orders without being allowed to issue legal
                 // documents, and vice versa.
                 'issueDocument' => (bool) $request->user('web')?->can('docs.manage'),
+                // Gates "Vystavit dobropis" — same permission as issueDocument,
+                // plus the credit-note rule itself (has an invoice, is
+                // cancelled/refunded). Mirrors CreditNoteIssuer::build() so the
+                // button only appears when the POST would actually succeed;
+                // the server-side gate remains the real defence.
+                'creditNote' => (bool) $request->user('web')?->can('docs.manage') && $hasInvoice && $isReversed,
+                // Gates "Vystavit proformu" — same permission as issueDocument.
+                // No further condition: a proforma is a payment request, not a
+                // tax document, so any order (whatever its status) may get
+                // one (ProformaIssuer::build() has no gate to mirror).
+                'proforma' => (bool) $request->user('web')?->can('docs.manage'),
             ],
         ]);
     }

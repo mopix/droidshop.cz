@@ -9,4 +9,11 @@ return [
 
     // Series used with SequenceService for invoice numbers.
     'invoice_series' => 'invoices',
+
+    // Series used with SequenceService for credit note and proforma numbers.
+    'credit_note_series' => 'credit_notes',
+    'proforma_series' => 'proformas',
+
+    // Zero-pad width of the sequence part of a document number ({PREFIX}{YYYY}{NNNN}).
+    'number_pad' => 4,
 ];

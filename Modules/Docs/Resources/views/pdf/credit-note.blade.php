@@ -1,14 +1,12 @@
 {{--
-    Invoice PDF (spec §16.6), rendered by Modules\Docs\Jobs\GenerateDocumentPdf.
+    Credit note PDF (spec §16.6), rendered by Modules\Docs\Jobs\GenerateDocumentPdf.
+    Copied from pdf/invoice.blade.php (Task 8 plan) with three differences:
+    title, a reference line to the corrected invoice, and no QR block — a
+    credit note is never a request to pay.
 
-    Everything below reads only from the immutable $document snapshot (plus
-    the $qr data URI and $footer text resolved by the job) — never a live
-    tenant/order/product read. A later change to the tenant's billing profile
-    or a product price must not alter an already-issued invoice.
-
-    dompdf has no flex/grid, so the layout is table-based throughout. Font is
-    DejaVu Sans, dompdf's built-in Unicode font, which keeps Czech diacritics
-    intact without embedding anything extra.
+    Everything below reads only from the immutable $document snapshot — never
+    a live tenant/order/product read. Amounts are already negative on the
+    snapshot (CreditNoteSnapshot) and print as-is, with the minus sign.
 --}}
 @php
     use App\Core\Money\Money;
@@ -93,15 +91,6 @@
             font-size: 12pt;
             padding-top: 8px;
         }
-        .qr-block {
-            margin-top: 16px;
-            border-top: 1px solid #ccc;
-            padding-top: 12px;
-        }
-        .qr-block img {
-            width: 100px;
-            height: 100px;
-        }
         .footer {
             margin-top: 24px;
             padding-top: 8px;
@@ -112,7 +101,7 @@
     </style>
 </head>
 <body>
-    <h1>{{ $isVatPayer ? 'Faktura – daňový doklad' : 'Faktura' }}</h1>
+    <h1>{{ $isVatPayer ? 'Opravný daňový doklad – dobropis' : 'Dobropis' }}</h1>
 
     <table class="parties">
         <tr>
@@ -170,8 +159,8 @@
         <tr>
             <td class="label">Číslo dokladu</td>
             <td>{{ $document->number }}</td>
-            <td class="label">Variabilní symbol</td>
-            <td>{{ $customer['order_number'] ?? '' }}</td>
+            <td class="label">Opravovaný doklad</td>
+            <td>{{ $document->corrects_number ?? '' }}</td>
         </tr>
         <tr>
             <td class="label">Datum vystavení</td>
@@ -242,22 +231,6 @@
             <td style="text-align: right;">Celkem k úhradě: {{ $document->total->format() }}</td>
         </tr>
     </table>
-
-    @if($qr)
-        <div class="qr-block">
-            <table>
-                <tr>
-                    <td style="width: 110px;">
-                        <img src="{{ $qr }}" alt="QR platba">
-                    </td>
-                    <td style="vertical-align: middle;">
-                        Naskenujte QR kód platební aplikací a fakturu uhraďte,<br>
-                        variabilní symbol {{ $customer['order_number'] ?? '' }}.
-                    </td>
-                </tr>
-            </table>
-        </div>
-    @endif
 
     @if(!empty($footer))
         <div class="footer">

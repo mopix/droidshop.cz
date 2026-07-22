@@ -1,6 +1,6 @@
 # As-is status — DroidShop.cz
 
-Poslední aktualizace: **2026-07-22** · Verze: **0.14.0**
+Poslední aktualizace: **2026-07-22** · Verze: **0.15.0**
 
 ## Oblasti
 
@@ -27,7 +27,8 @@ Poslední aktualizace: **2026-07-22** · Verze: **0.14.0**
 | Modul `orders` — perzistence, admin, dvojitý stavový automat | **hotovo** | §16.4 | [detail](2026-07-21-checkout.md); idempotentní odeslání, odpis skladu v téže transakci, edice s deltou skladu, ruční založení, storno; historie objednávek v účtu zákazníka hotová |
 | Modul `shipping` — způsoby dopravy a platby, matice | **hotovo** | §16.5 | admin-only + storefront options renderuje checkout; kontrakty `ShippingOptions`/`PaymentOptions` s guest-safe null bindingy; účet pro QR šifrovaný (`encrypted:array`), adminovi jen maskovaný; prázdná řada matice = všechny platby povoleny; provider `comgate` s maskovanými credentials přidán vlnou 1.4 |
 | Modul `payments` — online brána Comgate, návrat, webhook, expirace | **hotovo** | §16.6 | [detail](2026-07-21-payments.md); registry/driver (víc bran per tenant), verify-before-trust, idempotentní webhook mimo CSRF, `OrderSettlement` kontrakt, expirační job vrací sklad; jen Comgate driver, GoPay/Stripe = design-for |
-| Modul `docs` — faktury, PDF, číselná řada, e-mail | **hotovo** | §16.6 | [detail](2026-07-22-docs.md); base modul, `DocumentIssuer`/`DocumentBook` kontrakty, immutable doklad, auto-vystavení přes doménový event (`order.paid`/`order.shipped`, `DB::afterCommit`), dompdf, plátce/neplátce render distinkce; jen typ `invoice`, dobropis/CSV/proforma = vlna 1.6 |
+| Modul `docs` — faktury, PDF, číselná řada, e-mail | **hotovo** | §16.6 | [detail](2026-07-22-docs.md); base modul, `DocumentIssuer`/`DocumentBook` kontrakty, immutable doklad, auto-vystavení přes doménový event (`order.paid`/`order.shipped`, `DB::afterCommit`), dompdf, plátce/neplátce render distinkce |
+| Modul `docs` — dobropis, proforma, CSV VAT export, roční číslování | **hotovo** | §16.6 | [detail](2026-07-22-docs-1-6.md); registry + `DocumentWriter`, dobropis (plný storno, gated, bez QR), proforma (nedaňová, QR), export dle DUZP (CSV formula injection ošetřena) |
 | Modul `storefront` — layout, homepage, hledání, chybové stránky | **hotovo** | §4.1.1 | [detail](2026-07-20-storefront-katalog.md) |
 | Veřejný katalog — kategorie, produkt, řazení a filtr bez JS | **hotovo** | §16.1, §16.2 | bez košíku |
 | SEO výstupy — canonical, OG, JSON-LD, sitemap, robots, 301, 410 | **hotovo** | §3.1, §15.3 | page cache §15.6 chybí |

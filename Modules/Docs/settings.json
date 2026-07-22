@@ -3,5 +3,7 @@
     "email_invoice": "boolean",
     "invoice_footer": "nullable|string|max:2000",
     "due_days": "integer|min:0|max:90",
-    "number_prefix": "nullable|string|max:20"
+    "number_prefix": "nullable|string|max:20",
+    "credit_note_prefix": "nullable|string|max:20",
+    "proforma_prefix": "nullable|string|max:20"
 }

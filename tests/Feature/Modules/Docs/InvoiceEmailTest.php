@@ -17,7 +17,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
 use Modules\Checkout\Models\Cart;
-use Modules\Docs\Mail\InvoiceIssued;
+use Modules\Docs\Mail\DocumentIssued;
 use Modules\Docs\Models\Document;
 use Modules\Orders\Models\Order;
 use Modules\Products\Models\Product;
@@ -30,8 +30,8 @@ use Tests\TestCase;
 /**
  * Wave 1.5 Task 6 — e-mailing the issued invoice PDF to the customer.
  *
- * QUEUE_CONNECTION=sync in phpunit.xml, so InvoiceIssuer::issue()'s
- * GenerateInvoicePdf::dispatch() runs inline in these tests, and MailService
+ * QUEUE_CONNECTION=sync in phpunit.xml, so DocumentWriter::write()'s
+ * GenerateDocumentPdf::dispatch() runs inline in these tests, and MailService
  * (QueuedMailService) dispatches SendTenantMail inline too — both land on
  * Mail::fake() the same way PlaceOrderTest's confirmation-email test does.
  */
@@ -157,7 +157,7 @@ class InvoiceEmailTest extends TestCase
         $order = $this->placePaidCodOrder();
         $issued = $this->issue($order->uuid);
 
-        Mail::assertSent(InvoiceIssued::class, function (InvoiceIssued $mail) use ($issued) {
+        Mail::assertSent(DocumentIssued::class, function (DocumentIssued $mail) use ($issued) {
             return $mail->invoiceNumber === $issued->number
                 && $mail->hasTo('jana@example.cz');
         });
@@ -181,7 +181,7 @@ class InvoiceEmailTest extends TestCase
         $order = $this->placePaidCodOrder();
         $issued = $this->issue($order->uuid);
 
-        Mail::assertNotSent(InvoiceIssued::class);
+        Mail::assertNotSent(DocumentIssued::class);
 
         $sentAt = $this->context->runAs($this->tenant, fn () => $issued->fresh()->sent_at);
         $this->assertNull($sentAt);

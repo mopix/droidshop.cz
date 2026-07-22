@@ -4,12 +4,19 @@ namespace Modules\Docs\Providers;
 
 use App\Core\Documents\Contracts\DocumentBook;
 use App\Core\Documents\Contracts\DocumentIssuer;
+use App\Core\Documents\Contracts\DocumentLedger;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
 use Modules\Docs\Listeners\IssueInvoiceOnPaid;
 use Modules\Docs\Listeners\IssueInvoiceOnShipped;
+use Modules\Docs\Models\Document;
+use Modules\Docs\Services\CreditNoteIssuer;
+use Modules\Docs\Services\DocumentIssuerRegistry;
+use Modules\Docs\Services\DocumentWriter;
 use Modules\Docs\Services\EloquentDocumentBook;
+use Modules\Docs\Services\EloquentDocumentLedger;
 use Modules\Docs\Services\InvoiceIssuer;
+use Modules\Docs\Services\ProformaIssuer;
 use Modules\Orders\Events\OrderPaymentSettled;
 use Modules\Orders\Events\OrderShipped;
 
@@ -35,7 +42,17 @@ class ModuleProvider extends ServiceProvider
 
     public function register(): void
     {
-        $this->app->bind(DocumentIssuer::class, InvoiceIssuer::class);
+        $this->app->bind(DocumentIssuer::class, function ($app) {
+            return new DocumentIssuerRegistry(
+                $app->make(DocumentWriter::class),
+                [
+                    Document::TYPE_INVOICE => $app->make(InvoiceIssuer::class),
+                    Document::TYPE_CREDIT_NOTE => $app->make(CreditNoteIssuer::class),
+                    Document::TYPE_PROFORMA => $app->make(ProformaIssuer::class),
+                ],
+            );
+        });
         $this->app->bind(DocumentBook::class, EloquentDocumentBook::class);
+        $this->app->bind(DocumentLedger::class, EloquentDocumentLedger::class);
     }
 }

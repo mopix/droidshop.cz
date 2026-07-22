@@ -69,6 +69,44 @@ class SequenceService
     }
 
     /**
+     * The next raw counter value for a series — gap-free, no prefix applied.
+     *
+     * The presentation-free sibling of next(): document numbering (wave 1.6)
+     * formats {PREFIX}{YYYY}{NNNN} in DocumentNumber from this integer, so the
+     * prefix stored on the sequences row is irrelevant to that path. Same atomic
+     * LAST_INSERT_ID(expr) increment and bounded create-race retry as next().
+     */
+    public function nextNumber(string $series): int
+    {
+        $tenantId = $this->requireTenant();
+
+        for ($attempt = 0; $attempt < 5; $attempt++) {
+            $affected = DB::update(
+                'UPDATE sequences SET next_number = LAST_INSERT_ID(next_number) + 1
+                 WHERE tenant_id = ? AND series = ?',
+                [$tenantId, $series]
+            );
+
+            if ($affected > 0) {
+                return (int) DB::selectOne('SELECT LAST_INSERT_ID() AS n')->n;
+            }
+
+            $created = DB::table('sequences')->insertOrIgnore([
+                'tenant_id' => $tenantId,
+                'series' => $series,
+                'prefix' => '',
+                'next_number' => 2,
+            ]);
+
+            if ($created) {
+                return 1;
+            }
+        }
+
+        throw new \RuntimeException("Could not allocate a number for series [{$series}] after retries.");
+    }
+
+    /**
      * Sets the prefix and, optionally, the starting number for a series.
      *
      * Meant for configuration before a series is first used — e.g. a tenant

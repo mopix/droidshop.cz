@@ -1,10 +1,14 @@
 {{--
-    Invoice PDF (spec §16.6), rendered by Modules\Docs\Jobs\GenerateDocumentPdf.
+    Proforma PDF (spec §16.6), rendered by Modules\Docs\Jobs\GenerateDocumentPdf.
+
+    A proforma is a payment request, not a tax document: it carries no DUZP
+    (taxable_at is null) and must say so prominently. Copied from
+    pdf/invoice.blade.php rather than sharing a partial — an approved YAGNI
+    duplication for this wave, same as ProformaSnapshot vs InvoiceSnapshot.
 
     Everything below reads only from the immutable $document snapshot (plus
     the $qr data URI and $footer text resolved by the job) — never a live
-    tenant/order/product read. A later change to the tenant's billing profile
-    or a product price must not alter an already-issued invoice.
+    tenant/order/product read.
 
     dompdf has no flex/grid, so the layout is table-based throughout. Font is
     DejaVu Sans, dompdf's built-in Unicode font, which keeps Czech diacritics
@@ -33,6 +37,11 @@
         }
         h1 {
             font-size: 16pt;
+            margin: 0 0 4px 0;
+        }
+        .not-tax-document {
+            font-size: 11pt;
+            font-weight: bold;
             margin: 0 0 16px 0;
         }
         table {
@@ -112,7 +121,8 @@
     </style>
 </head>
 <body>
-    <h1>{{ $isVatPayer ? 'Faktura – daňový doklad' : 'Faktura' }}</h1>
+    <h1>Proforma faktura – výzva k platbě</h1>
+    <p class="not-tax-document">Toto není daňový doklad.</p>
 
     <table class="parties">
         <tr>
@@ -179,11 +189,10 @@
             <td class="label">Datum splatnosti</td>
             <td>{{ optional($document->due_at)->format('d.m.Y') }}</td>
         </tr>
+        {{-- No DUZP row: taxable_at is null on a proforma (not a tax document). --}}
         <tr>
-            <td class="label">DUZP</td>
-            <td>{{ optional($document->taxable_at)->format('d.m.Y') }}</td>
             <td class="label">Číslo objednávky</td>
-            <td>{{ $customer['order_number'] ?? '' }}</td>
+            <td colspan="3">{{ $customer['order_number'] ?? '' }}</td>
         </tr>
     </table>
 
@@ -251,7 +260,7 @@
                         <img src="{{ $qr }}" alt="QR platba">
                     </td>
                     <td style="vertical-align: middle;">
-                        Naskenujte QR kód platební aplikací a fakturu uhraďte,<br>
+                        Naskenujte QR kód platební aplikací a proformu uhraďte,<br>
                         variabilní symbol {{ $customer['order_number'] ?? '' }}.
                     </td>
                 </tr>
