@@ -237,4 +237,19 @@ class InvoiceIssuerTest extends TestCase
 
         $this->issue('00000000-0000-0000-0000-000000000000');
     }
+
+    public function test_number_prefix_setting_is_applied_to_the_invoice_number(): void
+    {
+        $order = $this->placePaidOrder();
+
+        $this->context->runAs($this->tenant, fn () => app(SettingsService::class)->set('docs', 'number_prefix', '2026'));
+
+        $document = $this->context->runAs($this->tenant, function () use ($order) {
+            app(DocumentIssuer::class)->issue($order->uuid);
+
+            return Document::query()->where('order_id', $order->id)->firstOrFail();
+        });
+
+        $this->assertStringStartsWith('2026', $document->number);
+    }
 }

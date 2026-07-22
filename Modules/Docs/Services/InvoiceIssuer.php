@@ -63,6 +63,14 @@ class InvoiceIssuer implements DocumentIssuer
         $data = $this->snapshot->for($order, $tenant, $dueDays);
         $series = config('documents.invoice_series');
 
+        // Sync the series prefix from the tenant's declared setting before
+        // allocating. configure() only ever refreshes the prefix — it never
+        // rewinds the counter — so this is safe to call on every issue. Only a
+        // raw string prefix is applied here; zero-padding and a yearly
+        // {YYYY}{NNNN} reset are wave 1.6.
+        $prefix = (string) $this->settings->get('docs', 'number_prefix', '');
+        $this->sequences->configure($series, $prefix);
+
         try {
             $document = DB::transaction(function () use ($orderId, $type, $series, $data): Document {
                 $number = $this->sequences->next($series);
@@ -77,9 +85,10 @@ class InvoiceIssuer implements DocumentIssuer
             });
         } catch (UniqueConstraintViolationException) {
             // A concurrent issue won the (tenant_id, order_id, type) unique
-            // index. The number this pass allocated is left skipped — acceptable:
-            // gap-free numbering guards against a rolled-back transaction, not
-            // against a duplicate document that must not exist in the first place.
+            // index. No gap results: SequenceService::next() increments inside
+            // this same DB::transaction, so the unique-violation rollback also
+            // reverts that increment. We simply re-read and return the winning
+            // document.
             return $this->existingDocument($orderId, $type)
                 ?? throw new RuntimeException("Concurrent issue for order [{$orderUuid}] left no winning document.");
         }

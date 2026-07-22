@@ -4,12 +4,14 @@ namespace Tests\Feature\Modules\Docs;
 
 use App\Core\Checkout\Contracts\CartRepository;
 use App\Core\Documents\Contracts\DocumentIssuer;
+use App\Core\Mail\MailKind;
 use App\Core\Orders\Contracts\OrderPlacement;
 use App\Core\Orders\PlacementRequest;
 use App\Core\Settings\SettingsService;
 use App\Core\Storage\FileStorage;
 use App\Core\Tax\TaxRates;
 use App\Core\Tenancy\TenantContext;
+use App\Models\MailMessage;
 use App\Models\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
@@ -162,6 +164,11 @@ class InvoiceEmailTest extends TestCase
 
         $sentAt = $this->context->runAs($this->tenant, fn () => $issued->fresh()->sent_at);
         $this->assertNotNull($sentAt);
+
+        // Logged as transactional against the tenant — never blocked by an
+        // exhausted quota (product decision, MailKind).
+        $message = MailMessage::withoutGlobalScopes()->where('tenant_id', $this->tenant->id)->firstOrFail();
+        $this->assertSame(MailKind::Transactional, $message->kind);
     }
 
     public function test_no_email_when_disabled(): void
