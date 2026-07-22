@@ -224,6 +224,56 @@ class DocumentAdminTest extends TestCase
             ->assertSessionHasErrors('order_uuid');
     }
 
+    /**
+     * Places, pays and invoices an order — the CreditNoteIssuer prerequisite
+     * ("has an invoice"). Callers still need to reverse it (cancel/refund)
+     * before a credit note is legal.
+     */
+    private function issuedInvoiceOrder(): Order
+    {
+        Storage::fake(FileStorage::PRIVATE_DISK);
+
+        $order = $this->placePaidOrder($this->tenant);
+        $this->context->runAs($this->tenant, fn () => app(DocumentIssuer::class)->issue($order->uuid));
+
+        return $order;
+    }
+
+    // --- storeCreditNote -----------------------------------------------------
+
+    public function test_admin_issues_a_credit_note_for_a_cancelled_order(): void
+    {
+        $order = $this->issuedInvoiceOrder();
+        $this->context->runAs(
+            $this->tenant,
+            fn () => $order->forceFill(['fulfillment_status' => Order::FULFILLMENT_CANCELLED])->save(),
+        );
+
+        $this->actingAs($this->owner)
+            ->post($this->url('/dobropis'), ['order_uuid' => $order->uuid])
+            ->assertRedirect();
+
+        $this->context->runAs($this->tenant, fn () => $this->assertSame(
+            1,
+            Document::query()->where('order_id', $order->id)->where('type', Document::TYPE_CREDIT_NOTE)->count(),
+        ));
+    }
+
+    public function test_credit_note_for_active_order_is_rejected(): void
+    {
+        $order = $this->issuedInvoiceOrder(); // not cancelled/refunded
+
+        $this->actingAs($this->owner)
+            ->from($this->url())
+            ->post($this->url('/dobropis'), ['order_uuid' => $order->uuid])
+            ->assertSessionHasErrors('order_uuid');
+
+        $this->context->runAs($this->tenant, fn () => $this->assertSame(
+            0,
+            Document::query()->where('order_id', $order->id)->where('type', Document::TYPE_CREDIT_NOTE)->count(),
+        ));
+    }
+
     // --- index ---------------------------------------------------------------
 
     public function test_the_listing_renders_issued_documents_for_a_user_with_the_manage_permission(): void

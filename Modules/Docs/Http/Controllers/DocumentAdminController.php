@@ -9,6 +9,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use Inertia\Response;
+use Modules\Docs\Exceptions\CreditNoteNotAllowed;
 use Modules\Docs\Http\Requests\StoreDocumentRequest;
 use Modules\Docs\Jobs\GenerateDocumentPdf;
 use Modules\Docs\Models\Document;
@@ -61,6 +62,25 @@ class DocumentAdminController
         $document = $this->issuer->issue($request->validated('order_uuid'));
 
         return back()->with('success', "Doklad {$document->documentNumber()} byl vystaven.");
+    }
+
+    /**
+     * Issuing a credit note reuses the same tenant-scoped order lookup as
+     * store() (StoreDocumentRequest) — only the gate differs, enforced by
+     * CreditNoteIssuer::build() itself (order must have an invoice and be
+     * cancelled/refunded). A rejected attempt is a validation error on the
+     * same field the request already validates, not a distinct HTTP status,
+     * so the order-detail page renders it the same way as an unknown uuid.
+     */
+    public function storeCreditNote(StoreDocumentRequest $request): RedirectResponse
+    {
+        try {
+            $document = $this->issuer->issue($request->validated('order_uuid'), Document::TYPE_CREDIT_NOTE);
+        } catch (CreditNoteNotAllowed $e) {
+            return back()->withErrors(['order_uuid' => $e->getMessage()]);
+        }
+
+        return back()->with('success', "Dobropis {$document->documentNumber()} byl vystaven.");
     }
 
     public function download(Request $request, string $number): StreamedResponse
