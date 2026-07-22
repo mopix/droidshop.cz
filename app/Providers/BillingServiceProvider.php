@@ -10,9 +10,9 @@ class BillingServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
-        $this->app->bind(SubscriptionGateway::class, function () {
+        $this->app->bind(SubscriptionGateway::class, function ($app) {
             return match (config('billing.subscription.driver')) {
-                // 'stripe' => new StripeSubscriptionGateway(...), // wave 1.8
+                // wave 1.8 Task 3: 'stripe' => $app->make(StripeSubscriptionGateway::class),
                 default => new NullSubscriptionGateway,
             };
         });

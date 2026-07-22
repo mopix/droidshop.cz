@@ -2,15 +2,26 @@
 
 namespace App\Core\Billing\Contracts;
 
-use App\Core\Billing\Support\ChargeResult;
-use App\Core\Billing\Support\SubscriptionCharge;
+use App\Models\Plan;
+use App\Models\Tenant;
 
 /**
- * Seam for charging a tenant's subscription. Wave 1.7 ships only the null
- * driver (dev auto-success); a StripeSubscriptionGateway implements this in
- * wave 1.8 without touching onboarding, the sweeper, or the ledger.
+ * Seam for a tenant's platform subscription. Stripe Billing model: we do not
+ * charge synchronously — we hand the tenant off to a hosted Checkout to set up
+ * the subscription, and to the Billing Portal to manage it. Activation and
+ * dunning arrive later as webhooks (StripeWebhookHandler).
  */
 interface SubscriptionGateway
 {
-    public function charge(SubscriptionCharge $charge): ChargeResult;
+    /**
+     * Hosted URL where the tenant sets up the subscription (card + first
+     * charge). Creates/reuses the Stripe customer and returns the redirect.
+     */
+    public function startCheckout(Tenant $tenant, Plan $plan): string;
+
+    /**
+     * Hosted Billing Portal URL for managing the subscription (card, cancel,
+     * invoice history).
+     */
+    public function billingPortalUrl(Tenant $tenant): string;
 }
