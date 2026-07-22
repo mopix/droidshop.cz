@@ -35,6 +35,9 @@ Route::middleware('auth')->group(function () {
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
+
+    Route::get('/onboarding/subdomena/check', \App\Http\Controllers\Onboarding\SubdomainCheckController::class)
+        ->name('onboarding.subdomain.check');
 });
 
 require __DIR__.'/auth.php';
