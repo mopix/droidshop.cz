@@ -3,6 +3,7 @@
 use App\Core\Storage\FileStorage;
 use App\Http\Controllers\ImpersonationController;
 use App\Http\Controllers\Onboarding\OnboardingController;
+use App\Http\Controllers\Onboarding\ShopEntryController;
 use App\Http\Controllers\Onboarding\SubdomainCheckController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\Storage\PrivateFileController;
@@ -32,6 +33,14 @@ Route::get('/impersonace/zahajit/{user}/{admin}', [ImpersonationController::clas
     ->name('impersonation.begin');
 Route::post('/impersonace/ukoncit', [ImpersonationController::class, 'end'])
     ->name('impersonation.end');
+
+// A freshly-provisioned owner lands here on the shop's own host, via a signed
+// URL minted right after onboarding provisioning (see OnboardingController).
+// `signed` proves the URL is ours and unexpired; not behind `auth`, since the
+// user isn't authenticated on this host yet.
+Route::get('/onboarding/vstup/{user}', [ShopEntryController::class, 'enter'])
+    ->middleware('signed')
+    ->name('onboarding.enter');
 
 Route::middleware('auth')->group(function () {
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
