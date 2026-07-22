@@ -8,6 +8,7 @@ use App\Core\Enums\TenantRole;
 use App\Core\Enums\TenantStatus;
 use App\Core\Mail\Contracts\MailService;
 use App\Core\Mail\MailKind;
+use App\Core\Tenancy\TenantContext;
 use App\Models\Tenant;
 use Illuminate\Console\Command;
 use Spatie\Multitenancy\Jobs\NotTenantAware;
@@ -25,7 +26,7 @@ class SweepTenantLifecycle extends Command implements NotTenantAware
 
     protected $description = 'Move expired trials to past_due and past-grace tenants to suspended.';
 
-    public function handle(MailService $mail): int
+    public function handle(MailService $mail, TenantContext $context): int
     {
         $graceDays = (int) config('billing.grace_days', 7);
 
@@ -34,12 +35,18 @@ class SweepTenantLifecycle extends Command implements NotTenantAware
             ->whereNotNull('trial_ends_at')
             ->where('trial_ends_at', '<', now())
             ->get()
-            ->each(function (Tenant $tenant) use ($mail): void {
-                $tenant->changeStatus(TenantStatus::PastDue, 'trial expired');
-                $to = $tenant->users()->wherePivot('role', TenantRole::Owner->value)->value('email');
-                if ($to) {
-                    $mail->send(new TrialExpiredMail($tenant), $to, MailKind::Transactional, $tenant);
-                }
+            ->each(function (Tenant $tenant) use ($mail, $context): void {
+                // Inside the tenant: changeStatus writes the audit entry itself,
+                // and without an ambient tenant AuditLog::log() would file it
+                // with tenant_id = null (same reasoning as
+                // TenantController::updateStatus).
+                $context->runAs($tenant, function () use ($tenant, $mail): void {
+                    $tenant->changeStatus(TenantStatus::PastDue, 'trial expired');
+                    $to = $tenant->users()->wherePivot('role', TenantRole::Owner->value)->value('email');
+                    if ($to) {
+                        $mail->send(new TrialExpiredMail($tenant), $to, MailKind::Transactional, $tenant);
+                    }
+                });
             });
 
         // past_due beyond grace -> suspended
@@ -47,12 +54,14 @@ class SweepTenantLifecycle extends Command implements NotTenantAware
             ->whereNotNull('trial_ends_at')
             ->where('trial_ends_at', '<', now()->subDays($graceDays))
             ->get()
-            ->each(function (Tenant $tenant) use ($mail): void {
-                $tenant->changeStatus(TenantStatus::Suspended, 'grace expired');
-                $to = $tenant->users()->wherePivot('role', TenantRole::Owner->value)->value('email');
-                if ($to) {
-                    $mail->send(new ShopSuspendedMail($tenant), $to, MailKind::Transactional, $tenant);
-                }
+            ->each(function (Tenant $tenant) use ($mail, $context): void {
+                $context->runAs($tenant, function () use ($tenant, $mail): void {
+                    $tenant->changeStatus(TenantStatus::Suspended, 'grace expired');
+                    $to = $tenant->users()->wherePivot('role', TenantRole::Owner->value)->value('email');
+                    if ($to) {
+                        $mail->send(new ShopSuspendedMail($tenant), $to, MailKind::Transactional, $tenant);
+                    }
+                });
             });
 
         return self::SUCCESS;

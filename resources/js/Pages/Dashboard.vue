@@ -48,7 +48,7 @@ defineProps<{
                                 </div>
                                 <a
                                     v-if="shop.host"
-                                    :href="`http://${shop.host}/admin`"
+                                    :href="`https://${shop.host}/admin`"
                                     class="text-sm text-blue-600 underline hover:text-blue-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
                                 >
                                     Spravovat

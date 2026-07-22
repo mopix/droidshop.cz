@@ -32,6 +32,6 @@ class ShopEntryController extends Controller
         Auth::guard('web')->login($user);
         $request->session()->regenerate();
 
-        return redirect('/admin');
+        return redirect()->route('admin.home');
     }
 }

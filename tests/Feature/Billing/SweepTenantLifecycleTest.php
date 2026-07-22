@@ -28,6 +28,28 @@ class SweepTenantLifecycleTest extends TestCase
         $this->assertSame(TenantStatus::PastDue, $tenant->fresh()->status);
     }
 
+    /**
+     * changeStatus() writes its own audit entry via ambient TenantContext, so
+     * the sweep has to run it inside TenantContext::runAs() — otherwise
+     * AuditLog::log() derives tenant_id from a null ambient context and the
+     * dunning trail is unattributed (finding: SweepTenantLifecycle wave 1.7
+     * review).
+     */
+    public function test_expired_trial_audit_entry_carries_tenant_id(): void
+    {
+        $tenant = Tenant::factory()->create([
+            'status' => TenantStatus::Trial,
+            'trial_ends_at' => now()->subDay(),
+        ]);
+
+        $this->artisan('billing:sweep-lifecycle')->assertSuccessful();
+
+        $this->assertDatabaseHas('audit_log', [
+            'tenant_id' => $tenant->id,
+            'action' => 'tenant.status_changed',
+        ]);
+    }
+
     public function test_active_trial_untouched(): void
     {
         $tenant = Tenant::factory()->create([
