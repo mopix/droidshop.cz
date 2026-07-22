@@ -31,7 +31,9 @@ class SweepTenantLifecycle extends Command implements NotTenantAware
         $graceDays = (int) config('billing.grace_days', 7);
 
         // trial -> past_due (storefront keeps running, spec deviation §2)
+        // Stripe-managed tenants have their lifecycle driven by webhooks, not by trial_ends_at
         Tenant::where('status', TenantStatus::Trial->value)
+            ->whereNull('stripe_subscription_id')
             ->whereNotNull('trial_ends_at')
             ->where('trial_ends_at', '<', now())
             ->get()
@@ -50,7 +52,9 @@ class SweepTenantLifecycle extends Command implements NotTenantAware
             });
 
         // past_due beyond grace -> suspended
+        // Stripe-managed tenants have their lifecycle driven by webhooks, not by trial_ends_at
         Tenant::where('status', TenantStatus::PastDue->value)
+            ->whereNull('stripe_subscription_id')
             ->whereNotNull('trial_ends_at')
             ->where('trial_ends_at', '<', now()->subDays($graceDays))
             ->get()
