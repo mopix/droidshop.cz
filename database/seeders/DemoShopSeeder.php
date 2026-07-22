@@ -3,9 +3,9 @@
 namespace Database\Seeders;
 
 use App\Core\Enums\TenantStatus;
-use App\Core\Modules\ModuleRegistry;
 use App\Core\Tax\TaxRates;
 use App\Core\Tenancy\TenantContext;
+use App\Core\Tenancy\TenantProvisioner;
 use App\Models\Module;
 use App\Models\Plan;
 use App\Models\PlatformAdmin;
@@ -30,8 +30,6 @@ use Modules\Shipping\Models\ShippingMethod;
  */
 class DemoShopSeeder extends Seeder
 {
-    private const MODULES = ['categories', 'products', 'shipping', 'customers', 'checkout', 'orders', 'payments'];
-
     public function run(): void
     {
         $this->call(PlanSeeder::class);
@@ -43,38 +41,23 @@ class DemoShopSeeder extends Seeder
 
         $plan = Plan::where('key', 'base')->firstOrFail();
 
-        $tenant = Tenant::firstWhere('name', 'Demo obchod')
-            ?? Tenant::factory()->create([
-                'name' => 'Demo obchod',
-                'status' => TenantStatus::Active,
-                'plan_id' => $plan->id,
-                'mail_reply_to' => 'demo@droidshop.cz',
-            ]);
+        $tenant = Tenant::firstWhere('name', 'Demo obchod');
 
-        if (! $tenant->domains()->where('domain', 'obchod.droidshop')->exists()) {
-            $tenant->domains()->create(['domain' => 'obchod.droidshop', 'is_primary' => true]);
-        }
-
-        // Grant every deployed module in the plan, so activation's dependency
-        // pull-in never trips the plan gate (a demo plan includes everything).
-        foreach (Module::query()->pluck('key') as $key) {
-            if (! $plan->modules()->where('module_key', $key)->exists()) {
-                $plan->modules()->attach($key);
+        if (! $tenant) {
+            // Demo plan must grant every deployed module so provisioning activates them all.
+            foreach (Module::query()->pluck('key') as $key) {
+                if (! $plan->modules()->where('module_key', $key)->exists()) {
+                    $plan->modules()->attach($key);
+                }
             }
-        }
 
-        $registry = app(ModuleRegistry::class);
-        foreach (self::MODULES as $key) {
-            $registry->activate($tenant, $key);
-        }
+            $owner = User::updateOrCreate(
+                ['email' => 'admin@demo.cz'],
+                ['name' => 'Majitel Demo', 'password' => Hash::make('password')],
+            );
 
-        $owner = User::updateOrCreate(
-            ['email' => 'admin@demo.cz'],
-            ['name' => 'Majitel Demo', 'password' => Hash::make('password')],
-        );
-
-        if (! $tenant->users()->where('users.id', $owner->id)->exists()) {
-            $tenant->users()->attach($owner, ['role' => 'owner', 'joined_at' => now()]);
+            $tenant = app(TenantProvisioner::class)->provision($owner, 'Demo obchod', 'obchod', $plan);
+            $tenant->update(['status' => TenantStatus::Active, 'mail_reply_to' => 'demo@droidshop.cz']);
         }
 
         app(TenantContext::class)->runAs($tenant, fn () => $this->seedShop());
