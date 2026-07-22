@@ -1,6 +1,6 @@
 # As-is status — DroidShop.cz
 
-Poslední aktualizace: **2026-07-22** · Verze: **0.16.0**
+Poslední aktualizace: **2026-07-22** · Verze: **0.17.0**
 
 ## Oblasti
 
@@ -36,9 +36,9 @@ Poslední aktualizace: **2026-07-22** · Verze: **0.16.0**
 | Onboarding — registrace → wizard → e-shop | **hotovo** | §3.1, §6.0 | [detail](2026-07-22-onboarding-billing.md); `TenantProvisioner`, subdoména s live checkem, cross-host signed auto-login, „Moje e-shopy" |
 | Trial lifecycle — scheduler | **hotovo** | §9 | `billing:sweep-lifecycle` (`NotTenantAware`), config `trial_days`/`grace_days`, trial→past_due→suspended + e-mail |
 | Platformní billing — fakturační ledger nájemci | **hotovo** | §9 | [detail](2026-07-22-onboarding-billing.md); netenantový `platform_invoices`, `PlatformInvoiceWriter` (idempotence per období, VAT split, PDF), stažení superadmin/nájemce |
-| Platformní billing — reálné inkaso (Stripe) | design-for | §9 | `SubscriptionGateway` seam + null driver; Stripe driver = vlna 1.8 |
+| Platformní billing — reálné inkaso (Stripe) | **hotovo** | §9 | [detail](2026-07-22-stripe-subscription.md); Stripe Billing (Checkout + Portal), webhook-driven aktivace na `invoice.paid`, idempotentní per období, sweeper skipuje Stripe-managed tenanty, superadmin manuální aktivace retirovaná |
 | Fakturační profil nájemce | **hotovo** | §16.6 | jádrová obrazovka `/admin/nastaveni/fakturace`, banner, dodavatel pro docs + odběratel pro platformní fakturu |
-| Tarify / trial / billing | částečně | §3.1 | tabulka `plans` + přiřazení z UI, trial + lifecycle + platformní faktura hotové; reálná platba za předplatné (Stripe) = vlna 1.8 |
+| Tarify / trial / billing | **hotovo** | §3.1 | tabulka `plans` + přiřazení z UI, trial + lifecycle + platformní faktura + reálné inkaso přes Stripe hotové; roční interval a upgrade/downgrade tarifu odloženo |
 | Playwright E2E | není | CLAUDE.md | blokováno omezením certifikátu, viz níže |
 | Design handoff | prázdné | `docs/design-droidshop/` | |
 
@@ -54,6 +54,7 @@ Nejdůležitější:
 4. **Inertia stránky modulů leží v core stromu** (`resources/js/Pages/Modules/<Modul>/`), ne uvnitř modulu — Inertia view finder neumí namapovat krátký název na cestu uvnitř modulu. Detail: [`2026-07-20-katalog-jadro.md`](2026-07-20-katalog-jadro.md).
 5. **Řazení kategorií je tlačítky ↑/↓**, ne drag&drop podle §16.2 — tažení nejde ovládat klávesnicí (WCAG 2.1.1).
 6. **Vyloučení košíku a pokladny z page cache je explicitní hlavička `Cache-Control: private, no-store`**, ne pravidlo na úrovni routy — page cache jako mechanismus ještě neexistuje. Detail: [`2026-07-21-checkout.md`](2026-07-21-checkout.md).
+7. **Stripe webhook je `/superadmin/stripe/webhook`**, ne `/platform/stripe/webhook` z návrhu specu — sedí do existující `/superadmin/*` konvence pro netenantové platformní routy. Paid-through datum předplatného reuse `trial_ends_at` místo vlastního sloupce. Detail: [`2026-07-22-stripe-subscription.md`](2026-07-22-stripe-subscription.md).
 
 ## Známá omezení, na která se narazí dřív než na cokoliv jiného
 

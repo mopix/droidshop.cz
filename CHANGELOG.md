@@ -11,6 +11,39 @@ Pravidla: [`.claude/skills/versioning/SKILL.md`](.claude/skills/versioning/SKILL
 
 > CHANGELOG vede milníky (minor/major). Detail patchů je v `git log`.
 
+## [0.17.0] – 2026-07-22
+
+**Fáze 1 / vlna 1.8 — Stripe subscription billing.** Nájemci teď reálně platí platformě za předplatné: Stripe Billing řídí opakovaný fakturační cyklus a dunning, my reagujeme webhooky. Uzavírá háček z vlny 1.7 (synchronní charge-success-then-issue-fail). 993 testů (+27 od 966 na konci vlny 1.7).
+
+### Seam `SubscriptionGateway` (redesign)
+
+- Nový tvar: `startCheckout(Tenant, Plan): string` (Stripe Checkout, subscription mode) + `billingPortalUrl(Tenant): string` (Stripe Billing Portal). Žádné karetní údaje u nás — PCI SAQ-A.
+- `StripeSubscriptionGateway` — reálný driver přes `\Stripe\StripeClient`, zakládá/reuse Stripe Customer, metadata `tenant_id` na checkout i subscription.
+- `NullSubscriptionGateway` — dev auto-success (lokální dev route simuluje aktivaci), default v testech.
+- Retirováno: synchronní `charge()`, `SubscriptionActivator`, `ChargeResult`, `ChargeFailed`, superadmin manuální aktivace. `SubscriptionCharge`/`MissingBillingProfile`/`PlatformInvoiceWriter` zůstávají.
+
+### Webhook
+
+- `StripeWebhookHandler` (netenantový) mapuje `checkout.session.completed` → propojení Stripe id, `invoice.paid` → vystavení platformní faktury (idempotentně per období) + `Active` + paid-through, `invoice.payment_failed` → `past_due`, `customer.subscription.deleted` → `suspended`.
+- Idempotence přes `stripe_events` (unique `event_id`) — claim + zpracování atomicky v jedné transakci, aby mid-processing selhání nezahodilo Stripe retry.
+- `POST /superadmin/stripe/webhook` — bez CSRF/session, autenticita jen podpisem (`Stripe-Signature`), 2xx po zpracování, 4xx jen na neplatný podpis.
+
+### Admin UX + lifecycle
+
+- Nájemce: `/admin/predplatne` (stav, Checkout, Billing Portal), trial banner (sdílené propy `trialDaysLeft`/`subscriptionActive`), guard na kompletní fakturační profil před checkoutem.
+- Superadmin: read-only stav předplatného v detailu tenanta (bez manuální aktivace).
+- Lifecycle sweeper (`billing:sweep-lifecycle`) přeskakuje tenanty s `stripe_subscription_id` — jejich životní cyklus řídí Stripe.
+- `CheckTenantStatus` rozlišuje admin vs. storefront (suspendovaný nájemce dál čte admin read-only).
+
+### Data
+
+- `tenants.stripe_customer_id`/`stripe_subscription_id`, `plans.stripe_price_id`, netenantová `stripe_events` (allowlist).
+- `config/billing.php` — sekce `stripe`; odstraněn mrtvý `monthly_charge_enabled`.
+
+### Mimo vlnu
+
+Roční interval, upgrade/downgrade tarifu s proraci, kupóny, víc měn — pozdější vlna. Skutečný Stripe test-mode běh (Checkout/Portal/webhook proti živému API) neověřen v tomto vývojovém prostředí — deploy smoke test před produkcí.
+
 ## [0.16.0] – 2026-07-22
 
 **Fáze 1 / vlna 1.7 — self-service onboarding + platformní billing.** Registrovaný uživatel si průvodcem založí e-shop na subdoméně s 14denním trialem, platforma řídí lifecycle nájemce a umí mu vystavit daňový doklad za předplatné. Reálné inkaso (Stripe) je připraveno kontraktem, implementuje se vlna 1.8. 966 testů (+3 od 963 na konci implementace, +8 od vlny 1.6).
