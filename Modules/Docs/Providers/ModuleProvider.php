@@ -9,6 +9,7 @@ use Illuminate\Support\ServiceProvider;
 use Modules\Docs\Listeners\IssueInvoiceOnPaid;
 use Modules\Docs\Listeners\IssueInvoiceOnShipped;
 use Modules\Docs\Models\Document;
+use Modules\Docs\Services\CreditNoteIssuer;
 use Modules\Docs\Services\DocumentIssuerRegistry;
 use Modules\Docs\Services\DocumentWriter;
 use Modules\Docs\Services\EloquentDocumentBook;
@@ -43,7 +44,8 @@ class ModuleProvider extends ServiceProvider
                 $app->make(DocumentWriter::class),
                 [
                     Document::TYPE_INVOICE => $app->make(InvoiceIssuer::class),
-                    // credit_note and proforma added in Stages 3 and 4.
+                    Document::TYPE_CREDIT_NOTE => $app->make(CreditNoteIssuer::class),
+                    // proforma added in Stage 4.
                 ],
             );
         });

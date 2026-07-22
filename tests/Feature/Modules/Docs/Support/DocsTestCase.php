@@ -155,4 +155,32 @@ abstract class DocsTestCase extends TestCase
             ->where('type', Document::TYPE_INVOICE)
             ->firstOrFail();
     }
+
+    /**
+     * Places a paid order, issues its invoice, and returns the Order model
+     * (not just the uuid) so credit-note gate tests can flip fulfillment or
+     * payment status afterwards.
+     */
+    protected function issuedInvoiceOrder(): Order
+    {
+        $orderUuid = $this->placePaidOrder();
+
+        app(DocumentIssuer::class)->issue($orderUuid, Document::TYPE_INVOICE);
+
+        return Order::query()->where('uuid', $orderUuid)->firstOrFail();
+    }
+
+    /**
+     * Places a paid order, marks it cancelled, but issues no invoice — the
+     * "reversed but nothing to correct" case the gate must still reject.
+     */
+    protected function cancelledOrderWithoutInvoice(): Order
+    {
+        $orderUuid = $this->placePaidOrder();
+
+        $order = Order::query()->where('uuid', $orderUuid)->firstOrFail();
+        $order->update(['fulfillment_status' => Order::FULFILLMENT_CANCELLED]);
+
+        return $order;
+    }
 }
