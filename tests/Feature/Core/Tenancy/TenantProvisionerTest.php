@@ -2,9 +2,9 @@
 
 namespace Tests\Feature\Core\Tenancy;
 
+use App\Core\Enums\TenantStatus;
 use App\Core\Tenancy\Exceptions\SubdomainTaken;
 use App\Core\Tenancy\TenantProvisioner;
-use App\Core\Enums\TenantStatus;
 use App\Models\Plan;
 use App\Models\Tenant;
 use App\Models\User;
@@ -45,14 +45,21 @@ class TenantProvisionerTest extends TestCase
         ]);
     }
 
-    public function test_provision_rejects_taken_subdomain(): void
+    public function test_provision_rejects_taken_subdomain_and_rolls_back(): void
     {
         $owner = User::factory()->create();
         $plan = $this->basePlan();
         app(TenantProvisioner::class)->provision($owner, 'První', 'mujshop', $plan);
 
-        $this->expectException(SubdomainTaken::class);
-        app(TenantProvisioner::class)->provision($owner, 'Druhý', 'MujShop', $plan);
+        $threw = false;
+        try {
+            app(TenantProvisioner::class)->provision($owner, 'Druhý', 'MujShop', $plan);
+        } catch (SubdomainTaken) {
+            $threw = true;
+        }
+
+        $this->assertTrue($threw, 'Expected SubdomainTaken on colliding subdomain.');
+        $this->assertSame(1, Tenant::count(), 'Failed provision must roll back its partial tenant row.');
     }
 
     public function test_provision_rolls_back_on_failure(): void

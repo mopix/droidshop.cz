@@ -25,6 +25,7 @@ class TenantProvisioner
     public function __construct(
         private readonly ModuleRegistry $registry,
         private readonly AuditLog $audit,
+        private readonly TenantContext $context,
     ) {}
 
     /**
@@ -65,7 +66,7 @@ class TenantProvisioner
                 $this->registry->activate($tenant, $key);
             }
 
-            $this->audit->log('tenant.provisioned', $tenant, ['host' => $host]);
+            $this->context->runAs($tenant, fn () => $this->audit->log('tenant.provisioned', $tenant, ['host' => $host]));
 
             return $tenant;
         });
