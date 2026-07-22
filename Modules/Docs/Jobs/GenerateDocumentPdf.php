@@ -17,13 +17,16 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
-use Modules\Docs\Mail\InvoiceIssued;
+use Modules\Docs\Mail\DocumentIssued;
 use Modules\Docs\Models\Document;
-use Modules\Docs\Support\InvoiceQr;
+use Modules\Docs\Support\DocumentQr;
 use Throwable;
 
 /**
  * Renders the PDF for an issued document and writes its pdf_path (spec §16.6).
+ *
+ * Type-agnostic since wave 1.6: the template is selected by the document's own
+ * type, so credit notes and proformas (Stages 3-4) reuse this job unchanged.
  *
  * Tenant-aware by default (config/multitenancy.php): dispatched inside a
  * tenant's request, it runs against that tenant when the worker picks it up.
@@ -33,7 +36,7 @@ use Throwable;
  * Redis/SQS worker with no request/host to resolve from); restoring it always
  * is simply the cheapest way to be correct on every driver, including sync.
  */
-class GenerateInvoicePdf implements ShouldQueue
+class GenerateDocumentPdf implements ShouldQueue
 {
     use Dispatchable;
     use InteractsWithQueue;
@@ -63,13 +66,19 @@ class GenerateInvoicePdf implements ShouldQueue
 
         $document = Document::findOrFail($this->documentId);
 
-        $pdf = Pdf::loadView('docs::pdf.invoice', [
+        $template = match ($document->type) {
+            Document::TYPE_CREDIT_NOTE => 'docs::pdf.credit-note',
+            Document::TYPE_PROFORMA => 'docs::pdf.proforma',
+            default => 'docs::pdf.invoice',
+        };
+
+        $pdf = Pdf::loadView($template, [
             'document' => $document,
             'qr' => $this->safeQrDataUri($document, $orders, $payments),
             'footer' => (string) $settings->get('docs', 'invoice_footer', ''),
         ])->setPaper('a4');
 
-        $path = 'invoices/'.$document->number.'.pdf';
+        $path = 'documents/'.$document->number.'.pdf';
 
         $storage->putPrivate($path, $pdf->output());
 
@@ -77,18 +86,18 @@ class GenerateInvoicePdf implements ShouldQueue
         $document->update(['pdf_path' => $path]);
 
         if ($settings->get('docs', 'email_invoice', true)) {
-            $this->safeEmailInvoice($document, $storage, $context, $mail, $path);
+            $this->safeEmailDocument($document, $storage, $context, $mail, $path);
         }
     }
 
     /**
-     * E-mails the just-rendered invoice to the customer, guarded end to end:
+     * E-mails the just-rendered document to the customer, guarded end to end:
      * a mail hiccup (SMTP down, unresolved tenant) must never fail the PDF
      * job — the document and its pdf_path are already committed by the time
      * this runs, so the worst case is a missing e-mail, logged, not a failed
-     * job retried into duplicate invoices.
+     * job retried into duplicate documents.
      */
-    private function safeEmailInvoice(Document $document, FileStorage $storage, TenantContext $context, MailService $mail, string $path): void
+    private function safeEmailDocument(Document $document, FileStorage $storage, TenantContext $context, MailService $mail, string $path): void
     {
         try {
             $tenant = $context->current();
@@ -104,17 +113,18 @@ class GenerateInvoicePdf implements ShouldQueue
                 return;
             }
 
-            // Base64-encoded: see InvoiceIssued's docblock — the raw PDF bytes
+            // Base64-encoded: see DocumentIssued's docblock — the raw PDF bytes
             // are not valid UTF-8 and break JSON-encoding the queued job payload.
             $pdfBytes = base64_encode($storage->get($path));
 
             $mail->send(
-                new InvoiceIssued(
+                new DocumentIssued(
                     shopName: $tenant->name,
                     invoiceNumber: $document->number,
                     orderNumber: (string) ($customer['order_number'] ?? ''),
                     total: $document->total->format(),
                     pdfBytes: $pdfBytes,
+                    documentType: $document->type,
                 ),
                 $toEmail,
                 MailKind::Transactional,
@@ -131,8 +141,8 @@ class GenerateInvoicePdf implements ShouldQueue
      * qrDataUri(), guarded end to end. Resolving the live payment method reads
      * an `encrypted:array` cast (PaymentMethod::settings) — a rotated APP_KEY
      * or a corrupt row throws a DecryptException there, well before
-     * InvoiceQr::dataUri()'s own try/catch ever runs. A QR is a convenience on
-     * an invoice, never the reason a legal document fails to generate, so any
+     * DocumentQr::dataUri()'s own try/catch ever runs. A QR is a convenience on
+     * a document, never the reason a legal document fails to generate, so any
      * throwable anywhere in resolution+render degrades to no QR.
      */
     private function safeQrDataUri(Document $document, OrderBook $orders, PaymentOptions $payments): ?string
@@ -147,14 +157,21 @@ class GenerateInvoicePdf implements ShouldQueue
     }
 
     /**
-     * The SPAYD QR as a PNG data URI, or null — for a paid invoice, an invoice
-     * whose order cannot be resolved, or a payment method that never carries a
-     * bank account (card, COD). Payment status lives on the order, not the
-     * document snapshot, so it is read fresh through OrderBook rather than
-     * inferred from anything stored at issue time.
+     * The SPAYD QR as a PNG data URI, or null. Payment status lives on the
+     * order, not the document snapshot, so it is read fresh through OrderBook
+     * rather than inferred from anything stored at issue time.
+     *
+     * Invoice: QR only while unpaid — a paid invoice is a receipt, not a
+     * request to pay. Proforma: always a request to pay, by definition, so it
+     * always qualifies once a bank account can be resolved. Any other type
+     * (credit note) never carries a QR.
      */
     private function qrDataUri(Document $document, OrderBook $orders, PaymentOptions $payments): ?string
     {
+        if (! in_array($document->type, [Document::TYPE_INVOICE, Document::TYPE_PROFORMA], true)) {
+            return null;
+        }
+
         $orderUuid = $document->documentOrderUuid();
 
         if ($orderUuid === '') {
@@ -163,7 +180,12 @@ class GenerateInvoicePdf implements ShouldQueue
 
         $order = $orders->findForAdmin($orderUuid);
 
-        if (! $order instanceof OrderView || $order->orderPaymentStatus() !== 'unpaid') {
+        if (! $order instanceof OrderView) {
+            return null;
+        }
+
+        // Invoice: QR only while unpaid. Proforma: always a request to pay.
+        if ($document->type === Document::TYPE_INVOICE && $order->orderPaymentStatus() !== 'unpaid') {
             return null;
         }
 
@@ -173,9 +195,9 @@ class GenerateInvoicePdf implements ShouldQueue
             return null;
         }
 
-        $spayd = InvoiceQr::spayd($account, $document->documentTotal(), $order->orderNumber());
+        $spayd = DocumentQr::spayd($account, $document->documentTotal(), $order->orderNumber());
 
-        return InvoiceQr::dataUri($spayd);
+        return DocumentQr::dataUri($spayd);
     }
 
     /**

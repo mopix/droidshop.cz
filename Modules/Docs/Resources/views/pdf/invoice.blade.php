@@ -1,5 +1,5 @@
 {{--
-    Invoice PDF (spec §16.6), rendered by Modules\Docs\Jobs\GenerateInvoicePdf.
+    Invoice PDF (spec §16.6), rendered by Modules\Docs\Jobs\GenerateDocumentPdf.
 
     Everything below reads only from the immutable $document snapshot (plus
     the $qr data URI and $footer text resolved by the job) — never a live

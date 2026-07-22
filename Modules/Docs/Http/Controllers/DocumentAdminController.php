@@ -9,7 +9,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Response;
 use Modules\Docs\Http\Requests\StoreDocumentRequest;
-use Modules\Docs\Jobs\GenerateInvoicePdf;
+use Modules\Docs\Jobs\GenerateDocumentPdf;
 use Modules\Docs\Models\Document;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -87,7 +87,7 @@ class DocumentAdminController
 
         $document = $this->findByNumber($number);
 
-        GenerateInvoicePdf::dispatch($this->context->id(), $document->id);
+        GenerateDocumentPdf::dispatch($this->context->id(), $document->id);
 
         return back()->with('success', "Doklad {$document->number} byl znovu odeslán.");
     }

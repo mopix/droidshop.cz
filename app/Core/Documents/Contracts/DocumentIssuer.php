@@ -10,7 +10,10 @@ use App\Core\Documents\Exceptions\DocumentIssuanceUnavailable;
  * The write side of invoicing, reached by the orders/payments modules and the
  * admin the same way OrderPlacement/OrderSettlement are — through a kernel
  * contract, never the docs model. The kernel binds NullDocumentIssuer; the
- * docs module overrides it with InvoiceIssuer at deploy level.
+ * docs module overrides it with Modules\Docs\Services\DocumentIssuerRegistry
+ * at deploy level (wave 1.6), which dispatches by $type to a
+ * TypedDocumentIssuer (InvoiceIssuer for 'invoice') and runs it through the
+ * shared DocumentWriter.
  */
 interface DocumentIssuer
 {
@@ -19,7 +22,7 @@ interface DocumentIssuer
      * existing one. Idempotent: a second call for the same (order, type) must
      * not allocate a new number nor write a second row.
      *
-     * @param  string  $type  one of invoice|proforma|credit_note; wave 1.5 issues only invoice
+     * @param  string  $type  one of invoice|proforma|credit_note; wave 1.6 issues only invoice, credit_note/proforma follow in Stages 3-4
      *
      * @throws DocumentIssuanceUnavailable when no implementation is active
      */

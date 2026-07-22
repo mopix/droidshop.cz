@@ -8,6 +8,9 @@ use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
 use Modules\Docs\Listeners\IssueInvoiceOnPaid;
 use Modules\Docs\Listeners\IssueInvoiceOnShipped;
+use Modules\Docs\Models\Document;
+use Modules\Docs\Services\DocumentIssuerRegistry;
+use Modules\Docs\Services\DocumentWriter;
 use Modules\Docs\Services\EloquentDocumentBook;
 use Modules\Docs\Services\InvoiceIssuer;
 use Modules\Orders\Events\OrderPaymentSettled;
@@ -35,7 +38,15 @@ class ModuleProvider extends ServiceProvider
 
     public function register(): void
     {
-        $this->app->bind(DocumentIssuer::class, InvoiceIssuer::class);
+        $this->app->bind(DocumentIssuer::class, function ($app) {
+            return new DocumentIssuerRegistry(
+                $app->make(DocumentWriter::class),
+                [
+                    Document::TYPE_INVOICE => $app->make(InvoiceIssuer::class),
+                    // credit_note and proforma added in Stages 3 and 4.
+                ],
+            );
+        });
         $this->app->bind(DocumentBook::class, EloquentDocumentBook::class);
     }
 }

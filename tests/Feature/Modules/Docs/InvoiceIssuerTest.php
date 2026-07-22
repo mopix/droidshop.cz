@@ -16,8 +16,9 @@ use App\Models\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Modules\Checkout\Models\Cart;
 use Modules\Docs\Models\Document;
+use Modules\Docs\Services\DocumentIssuerRegistry;
+use Modules\Docs\Services\DocumentWriter;
 use Modules\Docs\Services\InvoiceIssuer;
-use Modules\Docs\Services\InvoiceSnapshot;
 use Modules\Orders\Models\Order;
 use Modules\Products\Models\Product;
 use Modules\Products\Services\ProductWriter;
@@ -139,9 +140,13 @@ class InvoiceIssuerTest extends TestCase
 
     // --- scenarios --------------------------------------------------------
 
-    public function test_deploy_binds_the_invoice_issuer(): void
+    public function test_deploy_binds_the_document_issuer_registry(): void
     {
-        $this->assertInstanceOf(InvoiceIssuer::class, app(DocumentIssuer::class));
+        // Wave 1.6: the kernel DocumentIssuer binds to DocumentIssuerRegistry,
+        // which dispatches by type to a TypedDocumentIssuer — InvoiceIssuer
+        // for 'invoice' — and runs the shared DocumentWriter. See
+        // DocumentWriterTest for coverage of InvoiceIssuer directly.
+        $this->assertInstanceOf(DocumentIssuerRegistry::class, app(DocumentIssuer::class));
     }
 
     public function test_issue_creates_one_invoice_and_is_idempotent(): void
@@ -200,12 +205,14 @@ class InvoiceIssuerTest extends TestCase
         // The winner: a normally issued invoice holding the (order, type) key.
         $winner = $this->issue($order->uuid);
 
-        // The loser: an issuer whose first idempotency lookup is forced to miss,
-        // so it proceeds to an insert that collides with the winner's row on the
-        // (tenant_id, order_id, type) unique index. The catch must re-read and
-        // return the winner rather than surface a 500.
+        // The loser: a DocumentWriter whose first idempotency lookup is forced
+        // to miss, so it proceeds to an insert that collides with the
+        // winner's row on the (tenant_id, order_id, type) unique index. The
+        // catch must re-read and return the winner rather than surface a 500.
+        // The collision handling lives in DocumentWriter (wave 1.6), not
+        // InvoiceIssuer, so the subclass-under-test moved with it.
         $result = $this->context->runAs($this->tenant, function () use ($order) {
-            $issuer = new class(app(ShopModules::class), app(OrderBook::class), app(SequenceService::class), app(SettingsService::class), app(TenantContext::class), app(InvoiceSnapshot::class)) extends InvoiceIssuer
+            $writer = new class(app(ShopModules::class), app(OrderBook::class), app(SequenceService::class), app(TenantContext::class)) extends DocumentWriter
             {
                 public int $lookupCalls = 0;
 
@@ -221,7 +228,7 @@ class InvoiceIssuerTest extends TestCase
                 }
             };
 
-            return $issuer->issue($order->uuid);
+            return $writer->write(app(InvoiceIssuer::class), $order->uuid);
         });
 
         $this->assertSame($winner->documentNumber(), $result->documentNumber());

@@ -1,0 +1,139 @@
+<?php
+
+namespace Tests\Feature\Modules\Docs\Support;
+
+use App\Core\Checkout\Contracts\CartRepository;
+use App\Core\Modules\ModuleRegistry;
+use App\Core\Orders\Contracts\OrderPlacement;
+use App\Core\Orders\PlacementRequest;
+use App\Core\Tax\TaxRates;
+use App\Core\Tenancy\TenantContext;
+use App\Models\Tenant;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Modules\Checkout\Models\Cart;
+use Modules\Orders\Models\Order;
+use Modules\Products\Models\Product;
+use Modules\Products\Services\ProductWriter;
+use Modules\Shipping\Models\PaymentMethod;
+use Modules\Shipping\Models\ShippingMethod;
+use Tests\Concerns\ActivatesModules;
+use Tests\TestCase;
+
+/**
+ * Shared setup for the docs module's feature tests (wave 1.6 extraction):
+ * one tenant with `checkout`/`shipping`/`orders`/`docs` active, and a
+ * placePaidOrder() helper that places a real order through checkout and
+ * force-settles it paid — the same shape InvoiceIssuerTest/AutoIssueTest/etc.
+ * build inline.
+ *
+ * Unlike those tests, the tenant is left *current* for the whole test (no
+ * context->forget()/runAs() dance): DocumentWriterTest resolves DocumentWriter
+ * and InvoiceIssuer straight off the container and calls write() directly,
+ * matching how a request already inside a tenant's context would.
+ */
+abstract class DocsTestCase extends TestCase
+{
+    use ActivatesModules;
+    use RefreshDatabase;
+
+    protected Tenant $tenant;
+
+    protected TenantContext $context;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        config()->set('tenancy.platform_domain', 'droidshop');
+
+        $this->artisan('modules:sync')->assertSuccessful();
+
+        $this->context = app(TenantContext::class);
+
+        $this->tenant = Tenant::factory()->withDomain('shop1.droidshop')->create([
+            'name' => 'Shop One',
+            'billing_name' => 'Shop One s.r.o.',
+            'billing_ico' => '12345678',
+            'billing_dic' => 'CZ12345678',
+            'vat_payer' => true,
+            'billing_address' => ['street' => 'Hlavní 1', 'city' => 'Praha', 'zip' => '110 00', 'country' => 'CZ'],
+        ]);
+
+        foreach (['checkout', 'shipping', 'orders', 'docs'] as $module) {
+            $this->activateModule($this->tenant, $module);
+        }
+
+        $this->context->set($this->tenant);
+    }
+
+    /**
+     * Places a real order through checkout, force-settles it paid, and
+     * returns its uuid.
+     */
+    protected function placePaidOrder(): string
+    {
+        $product = app(ProductWriter::class)->create([
+            'name' => 'Klávesnice Acme',
+            'sku' => 'KB-1',
+            'price' => 99900,
+            'tax_rate_id' => app(TaxRates::class)->default()->id,
+            'status' => Product::STATUS_ACTIVE,
+        ]);
+
+        $shipping = ShippingMethod::query()->create([
+            'provider' => ShippingMethod::PROVIDER_FLAT,
+            'name' => 'Kurýr',
+            'price' => 9900,
+            'currency' => 'CZK',
+            'tax_rate_id' => app(TaxRates::class)->default()->id,
+            'is_active' => true,
+        ]);
+
+        $payment = PaymentMethod::query()->create([
+            'provider' => PaymentMethod::PROVIDER_COD,
+            'name' => 'Dobírka',
+            'fee' => 0,
+            'currency' => 'CZK',
+            'tax_rate_id' => app(TaxRates::class)->default()->id,
+            'is_active' => true,
+        ]);
+
+        /** @var Cart $cart */
+        $cart = app(CartRepository::class)->forToken(null);
+        app(CartRepository::class)->addItem($cart, $product->id, 2);
+
+        $placed = app(OrderPlacement::class)->place(new PlacementRequest(
+            cart: $cart,
+            shippingMethodId: $shipping->id,
+            paymentMethodId: $payment->id,
+            email: 'jana@example.cz',
+            phone: '+420777123456',
+            billing: [
+                'name' => 'Jana Nováková',
+                'street' => 'Hlavní 1',
+                'city' => 'Praha',
+                'zip' => '110 00',
+                'country' => 'CZ',
+            ],
+            shipping: null,
+            checkoutToken: 'tok-'.bin2hex(random_bytes(8)),
+            customerId: null,
+            source: 'storefront',
+            note: null,
+        ));
+
+        $order = Order::query()->where('uuid', $placed->uuid())->firstOrFail();
+        $order->forceFill(['payment_status' => Order::PAYMENT_PAID])->save();
+
+        return $order->uuid;
+    }
+
+    /**
+     * Deactivates the docs module for the test tenant, so ShopModules->has('docs')
+     * is false for the remainder of the test.
+     */
+    protected function disableDocsModule(): void
+    {
+        app(ModuleRegistry::class)->deactivate($this->tenant, 'docs');
+    }
+}

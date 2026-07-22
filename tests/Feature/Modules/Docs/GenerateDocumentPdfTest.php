@@ -16,9 +16,9 @@ use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Modules\Checkout\Models\Cart;
-use Modules\Docs\Jobs\GenerateInvoicePdf;
+use Modules\Docs\Jobs\GenerateDocumentPdf;
 use Modules\Docs\Models\Document;
-use Modules\Docs\Support\InvoiceQr;
+use Modules\Docs\Support\DocumentQr;
 use Modules\Orders\Models\Order;
 use Modules\Products\Models\Product;
 use Modules\Products\Services\ProductWriter;
@@ -30,13 +30,16 @@ use Tests\TestCase;
 /**
  * Wave 1.5 Task 5 — rendering the invoice PDF (dompdf) and writing its
  * pdf_path, the one post-issue mutation Document::booted() still allows.
+ * Renamed from GenerateInvoicePdfTest in wave 1.6 (Stage 2): the job under
+ * test is now type-agnostic (GenerateDocumentPdf), though every scenario here
+ * still exercises it against an invoice.
  *
- * QUEUE_CONNECTION=sync in phpunit.xml, so InvoiceIssuer::issue()'s
- * GenerateInvoicePdf::dispatch() runs inline in these tests exactly like it
+ * QUEUE_CONNECTION=sync in phpunit.xml, so DocumentWriter::write()'s
+ * GenerateDocumentPdf::dispatch() runs inline in these tests exactly like it
  * would on a real sync-driver deploy — no manual dispatch or Bus faking
  * needed to exercise the job.
  */
-class GenerateInvoicePdfTest extends TestCase
+class GenerateDocumentPdfTest extends TestCase
 {
     use ActivatesModules;
     use RefreshDatabase;
@@ -170,7 +173,7 @@ class GenerateInvoicePdfTest extends TestCase
 
         $order = $this->placePaidCodOrder();
 
-        // InvoiceIssuer dispatches GenerateInvoicePdf, which runs inline
+        // InvoiceIssuer dispatches GenerateDocumentPdf, which runs inline
         // (sync queue) before issue() returns.
         $issued = $this->issue($order->uuid);
 
@@ -187,21 +190,21 @@ class GenerateInvoicePdfTest extends TestCase
     {
         Storage::fake(FileStorage::PRIVATE_DISK);
 
-        // Bus::fake intercepts InvoiceIssuer's own GenerateInvoicePdf::dispatch(),
+        // Bus::fake intercepts DocumentWriter's own GenerateDocumentPdf::dispatch(),
         // so the document is created with no pdf_path yet — the job below is
         // the only thing that renders the PDF, proving handle() itself,
         // called with just the two scalar constructor args (no ambient tenant
         // context left from a wrapping runAs), restores enough tenant context
         // to read the tenant-scoped document and write under the right
         // tenant's storage prefix.
-        Bus::fake([GenerateInvoicePdf::class]);
+        Bus::fake([GenerateDocumentPdf::class]);
         $order = $this->placePaidCodOrder();
         $document = $this->issue($order->uuid);
-        Bus::assertDispatched(GenerateInvoicePdf::class);
+        Bus::assertDispatched(GenerateDocumentPdf::class);
 
         $this->context->forget();
 
-        app()->call([new GenerateInvoicePdf($this->tenant->id, $document->id), 'handle']);
+        app()->call([new GenerateDocumentPdf($this->tenant->id, $document->id), 'handle']);
 
         $path = $this->context->runAs($this->tenant, fn () => $document->fresh()->pdf_path);
         $this->assertNotNull($path);
@@ -225,7 +228,7 @@ class GenerateInvoicePdfTest extends TestCase
 
     public function test_invoice_qr_builds_a_valid_spayd_string(): void
     {
-        $spayd = InvoiceQr::spayd(
+        $spayd = DocumentQr::spayd(
             'CZ6508000000192000145399',
             new Money(45000, 'CZK'),
             'Faktura 2026001',
@@ -236,9 +239,9 @@ class GenerateInvoicePdfTest extends TestCase
 
     public function test_invoice_qr_data_uri_renders_a_png(): void
     {
-        $spayd = InvoiceQr::spayd('CZ6508000000192000145399', new Money(45000, 'CZK'), '2026001');
+        $spayd = DocumentQr::spayd('CZ6508000000192000145399', new Money(45000, 'CZK'), '2026001');
 
-        $uri = InvoiceQr::dataUri($spayd);
+        $uri = DocumentQr::dataUri($spayd);
 
         $this->assertNotNull($uri);
         $this->assertStringStartsWith('data:image/png;base64,', $uri);
@@ -267,9 +270,9 @@ class GenerateInvoicePdfTest extends TestCase
      * Task 5 review fix: a QR resolution failure (here, a payment method row
      * whose `settings` cannot be decrypted — e.g. a rotated APP_KEY) must
      * degrade to no QR, never abort the PDF. The failure has to happen inside
-     * bankAccount()/spaydAccount(), before InvoiceQr::dataUri()'s own
+     * bankAccount()/spaydAccount(), before DocumentQr::dataUri()'s own
      * try/catch is even reached, so this specifically exercises the guard
-     * wrapped around the whole qrDataUri() call in GenerateInvoicePdf::handle().
+     * wrapped around the whole qrDataUri() call in GenerateDocumentPdf::handle().
      */
     public function test_a_qr_resolution_failure_still_produces_a_pdf(): void
     {
@@ -280,7 +283,7 @@ class GenerateInvoicePdfTest extends TestCase
         // Corrupt the payment method's encrypted settings column directly in
         // the DB (bypassing Eloquent's encrypted:array cast on write), so
         // reading ->settings on the model throws a DecryptException the
-        // moment InvoiceQr's caller touches spaydAccount().
+        // moment DocumentQr's caller touches spaydAccount().
         $this->context->runAs($this->tenant, function () use ($order): void {
             $paymentId = $order->payment_snapshot['id'] ?? null;
             DB::table('payment_methods')->where('id', $paymentId)->update(['settings' => 'not-a-valid-encrypted-payload']);
