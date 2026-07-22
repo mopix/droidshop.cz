@@ -1,0 +1,11 @@
+<?php
+
+use App\Http\Controllers\Tenant\BillingProfileController;
+use Illuminate\Support\Facades\Route;
+
+/*
+ * Core tenant-admin routes — not owned by any module. Mounted under
+ * ['web', 'tenant.member'] by bootstrap/app.php.
+ */
+Route::get('/admin/nastaveni/fakturace', [BillingProfileController::class, 'edit'])->name('admin.billing.edit');
+Route::patch('/admin/nastaveni/fakturace', [BillingProfileController::class, 'update'])->name('admin.billing.update');

@@ -27,6 +27,13 @@ $app = Application::configure(basePath: dirname(__DIR__))
             // platform hosts by their own middleware.
             Route::middleware('web')
                 ->group(base_path('routes/platform.php'));
+
+            // Core tenant-admin routes (not owned by any module). Same
+            // authentication gate as the module admin group
+            // (ModuleRouteRegistrar::mountAdmin), minus the module gate —
+            // there is no module to check here.
+            Route::middleware(['web', 'tenant.member'])
+                ->group(base_path('routes/tenant.php'));
         },
     )
     ->withMiddleware(function (Middleware $middleware): void {
