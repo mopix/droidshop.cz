@@ -37,6 +37,16 @@ type OrderEventRow = {
   created_at: string | null
 }
 
+type DocumentRow = {
+  number: string
+  type: string
+  total: number
+  currency: string
+  issued_at: string | null
+  sent_at: string | null
+  downloadable: boolean
+}
+
 type OrderDetail = {
   uuid: string
   number: string
@@ -63,11 +73,12 @@ type OrderDetail = {
   editable: boolean
   items: OrderItem[]
   events: OrderEventRow[]
+  documents: DocumentRow[]
 }
 
 const props = defineProps<{
   order: OrderDetail
-  can: { edit: boolean; cancel: boolean }
+  can: { edit: boolean; cancel: boolean; issueDocument: boolean }
 }>()
 
 const FULFILLMENT_LABELS: Record<string, string> = {
@@ -174,6 +185,26 @@ const submitCancel = (reason: string) => {
         // (e.g. a missing reason) instead of losing what they typed.
       },
     })
+}
+
+// --- Documents (invoices) ---------------------------------------------------
+//
+// Issuing is not destructive (Document::booted refuses updates/deletes on an
+// issued row, so there is nothing here to undo) — no confirm dialog, unlike
+// storno above. issue() is idempotent server-side (InvoiceIssuer), so a
+// double click here at worst re-submits the same request rather than
+// creating a second document.
+
+const DOCUMENT_TYPE_LABELS: Record<string, string> = {
+  invoice: 'Faktura',
+  proforma: 'Zálohová faktura',
+  credit_note: 'Dobropis',
+}
+
+const issueForm = useForm({ order_uuid: props.order.uuid })
+
+const issueDocument = () => {
+  issueForm.post(route('admin.docs.store'), { preserveScroll: true })
 }
 
 // --- Item / address edit ----------------------------------------------------
@@ -386,6 +417,48 @@ const formatAddress = (address: Address) => {
           <p v-if="order.note" class="mt-4 rounded-md bg-gray-100 px-3 py-2 text-sm text-gray-800">
             <span class="font-medium">Poznámka zákazníka:</span> {{ order.note }}
           </p>
+        </section>
+
+        <!-- ===================== Documents (invoices) ===================== -->
+        <section v-if="can.issueDocument || order.documents.length" aria-labelledby="documents-heading" class="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+          <div class="flex items-center justify-between gap-3">
+            <h2 id="documents-heading" class="text-sm font-semibold text-gray-900">Doklady</h2>
+
+            <button
+              v-if="can.issueDocument"
+              type="button"
+              :disabled="issueForm.processing"
+              class="rounded-md bg-gray-900 px-3 py-2 text-sm font-semibold text-white hover:bg-gray-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-900 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-gray-400 disabled:text-gray-700"
+              @click="issueDocument"
+            >
+              Vytvořit doklad
+            </button>
+          </div>
+
+          <p v-if="order.documents.length === 0" class="mt-2 text-sm text-gray-600">
+            K této objednávce zatím nebyl vystaven žádný doklad.
+          </p>
+
+          <ul v-else class="mt-3 divide-y divide-gray-200">
+            <li v-for="document in order.documents" :key="document.number" class="flex flex-wrap items-center justify-between gap-2 py-2 text-sm">
+              <div>
+                <span class="font-medium text-gray-900">{{ document.number }}</span>
+                <span class="ml-2 text-gray-700">{{ DOCUMENT_TYPE_LABELS[document.type] ?? document.type }}</span>
+                <span v-if="document.issued_at" class="block text-xs text-gray-600">vystaveno {{ document.issued_at }}</span>
+              </div>
+              <div class="flex items-center gap-3">
+                <span class="text-gray-900">{{ money(document.total) }}</span>
+                <a
+                  v-if="document.downloadable"
+                  :href="route('admin.docs.download', document.number)"
+                  class="underline hover:no-underline focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-900"
+                >
+                  Stáhnout PDF
+                </a>
+                <span v-else class="text-gray-700">Připravuje se…</span>
+              </div>
+            </li>
+          </ul>
         </section>
 
         <!-- ===================== Edit (items / addresses) ===================== -->

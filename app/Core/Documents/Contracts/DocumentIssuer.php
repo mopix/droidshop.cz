@@ -24,4 +24,17 @@ interface DocumentIssuer
      * @throws DocumentIssuanceUnavailable when no implementation is active
      */
     public function issue(string $orderUuid, string $type = 'invoice'): DocumentView;
+
+    /**
+     * Every document already issued for $orderUuid, newest first — read
+     * companion to issue(), the same split OrderBook keeps between placing
+     * and reading an order. Unlike issue(), this never throws: a tenant that
+     * never activated the docs module, or an unknown order, simply has no
+     * documents, so the admin order screen (which calls this to decide
+     * whether to show a document or an "issue" button) renders normally
+     * either way.
+     *
+     * @return list<DocumentView>
+     */
+    public function forOrder(string $orderUuid): array;
 }

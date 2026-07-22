@@ -2,6 +2,8 @@
 
 namespace Modules\Orders\Http\Controllers;
 
+use App\Core\Documents\Contracts\DocumentIssuer;
+use App\Core\Documents\Contracts\DocumentView;
 use App\Core\Orders\Contracts\OrderBook;
 use App\Core\Orders\Contracts\OrderView;
 use App\Core\Orders\OrderFilter;
@@ -45,7 +47,10 @@ class OrderAdminController
         Order::PAYMENT_REFUNDED,
     ];
 
-    public function __construct(private readonly OrderBook $orders) {}
+    public function __construct(
+        private readonly OrderBook $orders,
+        private readonly DocumentIssuer $documents,
+    ) {}
 
     public function index(Request $request): Response
     {
@@ -123,10 +128,30 @@ class OrderAdminController
                     'note' => $event->note,
                     'created_at' => $event->created_at?->toIso8601String(),
                 ])->values()->all(),
+                // Read through the kernel contract, never the docs module's
+                // Eloquent model — this controller has no business knowing
+                // it exists. Empty when the tenant never activated docs,
+                // same as an order that has no documents yet: the page
+                // renders normally either way (DocumentIssuer::forOrder's
+                // docblock).
+                'documents' => array_map(fn (DocumentView $document) => [
+                    'number' => $document->documentNumber(),
+                    'type' => $document->documentType(),
+                    'total' => $document->documentTotal()->amount,
+                    'currency' => $document->documentCurrency(),
+                    'issued_at' => $document->documentIssuedAt()->toIso8601String(),
+                    'sent_at' => $document->documentSentAt()?->toIso8601String(),
+                    'downloadable' => $document->documentPdfPath() !== null,
+                ], $this->documents->forOrder($order->uuid)),
             ],
             'can' => [
                 'edit' => $request->user('web')->can('orders.edit'),
                 'cancel' => $request->user('web')->can('orders.cancel'),
+                // Gates the "Vytvořit doklad" button — a separate module's
+                // permission (docs.manage), not orders.edit: a staff member
+                // may edit orders without being allowed to issue legal
+                // documents, and vice versa.
+                'issueDocument' => (bool) $request->user('web')?->can('docs.manage'),
             ],
         ]);
     }
