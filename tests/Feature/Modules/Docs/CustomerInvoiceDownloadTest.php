@@ -147,6 +147,7 @@ class CustomerInvoiceDownloadTest extends TestCase
 
         $response->assertOk();
         $response->assertHeader('Content-Type', 'application/pdf');
+        $response->assertHeader('X-Robots-Tag', 'noindex');
         $this->assertStringStartsWith('%PDF-', $response->streamedContent());
     }
 

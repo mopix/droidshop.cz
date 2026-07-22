@@ -10,6 +10,13 @@ use Modules\Docs\Http\Controllers\DocumentDownloadController;
 // itself is checked inside the controller (via the kernel OrderBook
 // contract), not here — the same split AccountOrdersController uses for
 // order details.
+//
+// customer.session (Modules\Customers\Http\Middleware\AuthenticateCustomerSession,
+// aliased at deploy level by that module's ModuleProvider) pairs with
+// auth:customer here exactly like it does on every other route under
+// /ucet/*: a customer who changes their password to kill a stolen session
+// must not be able to keep pulling billing-sensitive invoices through this
+// route with the old, now-stale session.
 Route::get('/faktura/{number}/pdf', [DocumentDownloadController::class, 'show'])
-    ->middleware('auth:customer')
+    ->middleware(['auth:customer', 'customer.session'])
     ->name('download');

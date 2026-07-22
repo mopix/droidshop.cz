@@ -56,7 +56,13 @@ class DocumentDownloadController
                 echo $bytes;
             },
             'faktura-'.$document->number.'.pdf',
-            ['Content-Type' => 'application/pdf'],
+            [
+                'Content-Type' => 'application/pdf',
+                // Belt-and-braces alongside the account pages' <meta
+                // robots> tag: this endpoint has no HTML wrapper to carry
+                // one, so the noindex signal has to travel as a header.
+                'X-Robots-Tag' => 'noindex',
+            ],
         );
     }
 }
