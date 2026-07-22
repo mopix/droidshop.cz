@@ -2,6 +2,8 @@
 
 use App\Core\Storage\FileStorage;
 use App\Http\Controllers\ImpersonationController;
+use App\Http\Controllers\Onboarding\OnboardingController;
+use App\Http\Controllers\Onboarding\SubdomainCheckController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\Storage\PrivateFileController;
 use App\Http\Controllers\StorefrontEntryController;
@@ -36,8 +38,11 @@ Route::middleware('auth')->group(function () {
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
 
-    Route::get('/onboarding/subdomena/check', \App\Http\Controllers\Onboarding\SubdomainCheckController::class)
+    Route::get('/onboarding/subdomena/check', SubdomainCheckController::class)
         ->name('onboarding.subdomain.check');
+
+    Route::get('/onboarding', [OnboardingController::class, 'create'])->name('onboarding.create');
+    Route::post('/onboarding', [OnboardingController::class, 'store'])->name('onboarding.store');
 });
 
 require __DIR__.'/auth.php';
