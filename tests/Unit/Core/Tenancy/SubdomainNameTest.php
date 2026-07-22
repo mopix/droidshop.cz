@@ -43,4 +43,20 @@ class SubdomainNameTest extends TestCase
         config()->set('tenancy.platform_domain', 'droidshop.cz');
         $this->assertSame('mujshop.droidshop.cz', SubdomainName::host('mujshop'));
     }
+
+    public function test_from_input_throws_on_bad_format(): void
+    {
+        $this->expectException(InvalidSubdomain::class);
+        SubdomainName::fromInput('-x'); // invalid format, not reserved
+    }
+
+    public function test_from_input_returns_normalised_slug_on_valid_input(): void
+    {
+        $this->assertSame('mujshop', SubdomainName::fromInput('  MujShop '));
+    }
+
+    public function test_rejects_trailing_dash(): void
+    {
+        $this->assertFalse(SubdomainName::isValidFormat('x-'));
+    }
 }
