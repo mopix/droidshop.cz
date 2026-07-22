@@ -13,6 +13,5 @@ class BillingConfigTest extends TestCase
         $this->assertIsArray(config('billing.company'));
         $this->assertArrayHasKey('name', config('billing.company'));
         $this->assertSame('null', config('billing.subscription.driver'));
-        $this->assertFalse(config('billing.monthly_charge_enabled'));
     }
 }

@@ -9,18 +9,21 @@ return [
     'grace_days' => (int) env('BILLING_GRACE_DAYS', 7),
 
     /*
-     * Whether the design-for monthly charge sweeper runs. OFF until a real
-     * payment gateway exists (wave 1.8) — otherwise it would issue unpaid
-     * platform invoices forever.
-     */
-    'monthly_charge_enabled' => (bool) env('BILLING_MONTHLY_CHARGE', false),
-
-    /*
      * Subscription gateway driver. 'null' = no real charge (dev auto-success).
      * 'stripe' arrives in wave 1.8.
      */
     'subscription' => [
         'driver' => env('BILLING_SUBSCRIPTION_DRIVER', 'null'),
+    ],
+
+    /*
+     * Stripe API credentials and portal configuration.
+     */
+    'stripe' => [
+        'secret' => env('STRIPE_SECRET'),
+        'webhook_secret' => env('STRIPE_WEBHOOK_SECRET'),
+        // Billing Portal configuration id (bprc_...) created in Stripe dashboard.
+        'portal_config' => env('STRIPE_PORTAL_CONFIG'),
     ],
 
     /*
