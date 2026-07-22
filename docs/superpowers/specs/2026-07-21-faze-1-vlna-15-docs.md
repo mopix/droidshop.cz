@@ -1,7 +1,7 @@
 # Fáze 1, vlna 1.5 — Doklady k objednávkám (`docs`)
 
 **Datum:** 2026-07-21
-**Status:** draft
+**Status:** done
 **Související plán:** `docs/superpowers/plans/2026-07-21-faze-1-vlna-15-docs.md` (vznikne po schválení)
 **Zdroj pravdy:** produktová specifikace §16.6 (modul `docs`, base), §16.4 (tlačítko „vytvořit doklad" v detailu objednávky), §15.1 (`SequenceService`), pozn. §16 bod 8 (zaokrouhlování DPH v haléřích)
 
