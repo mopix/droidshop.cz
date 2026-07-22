@@ -54,6 +54,12 @@ class HandleInertiaRequests extends Middleware
             // registry lookup that answers nothing.
             'tenant' => fn () => $this->tenantProps($request),
 
+            // Drives the "complete your billing profile" banner in the tenant
+            // admin layout. `current()` returns null on platform hosts, so
+            // this safely reads false there too — the banner only renders
+            // inside AdminLayout, which platform pages never use.
+            'billingProfileComplete' => fn () => app(TenantContext::class)->current()?->billing_name !== null,
+
             // Drives the "you are impersonating" banner so a superadmin never
             // forgets they are acting as someone else.
             'impersonating' => $impersonation->isActive() ? [
