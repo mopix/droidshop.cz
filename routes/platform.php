@@ -4,6 +4,7 @@ use App\Http\Controllers\Platform\Auth\LoginController;
 use App\Http\Controllers\Platform\Auth\TwoFactorController;
 use App\Http\Controllers\Platform\ImpersonationController;
 use App\Http\Controllers\Platform\ModuleController;
+use App\Http\Controllers\Platform\PlatformInvoiceDownloadController;
 use App\Http\Controllers\Platform\TenantController;
 use App\Http\Controllers\Platform\TenantModuleController;
 use Illuminate\Support\Facades\Route;
@@ -69,5 +70,8 @@ Route::middleware('platform.host')->group(function () {
 
         Route::post('/superadmin/impersonace', [ImpersonationController::class, 'start'])
             ->name('platform.impersonate');
+
+        Route::get('/superadmin/faktury/{invoice}/pdf', PlatformInvoiceDownloadController::class)
+            ->name('platform.invoices.pdf');
     });
 });
