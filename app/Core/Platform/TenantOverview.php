@@ -62,6 +62,12 @@ class TenantOverview
             'plan_id' => $tenant->plan_id,
             'plan' => $tenant->plan?->only('id', 'key', 'name'),
             'trial_ends_at' => $tenant->trial_ends_at?->toDateTimeString(),
+            // Same "paid through" reading the tenant-facing subscription
+            // screen uses (Tenant/SubscriptionController::show): trial_ends_at
+            // doubles as the current period end once a subscription starts.
+            'paid_through' => $tenant->trial_ends_at?->toDateString(),
+            'stripe_customer_id' => $tenant->stripe_customer_id,
+            'stripe_subscription_id' => $tenant->stripe_subscription_id,
             'suspended_at' => $tenant->suspended_at?->toDateTimeString(),
             'deletion_requested_at' => $tenant->deletion_requested_at?->toDateTimeString(),
             'billing_name' => $tenant->billing_name,
