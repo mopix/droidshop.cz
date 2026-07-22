@@ -349,4 +349,36 @@ class GenerateDocumentPdfTest extends TestCase
         // The paths must differ regardless of the number collision above.
         $this->assertNotSame($invoicePath, $creditNotePath);
     }
+
+    /**
+     * A proforma renders through its own template (docs::pdf.proforma) and,
+     * being a payment request rather than a tax document, is always
+     * QR-eligible on an unpaid bank-transfer order — unlike an invoice, whose
+     * QR disappears once paid (see the qrDataUri() docblock).
+     */
+    public function test_a_proforma_renders_its_own_pdf_with_a_qr(): void
+    {
+        Storage::fake(FileStorage::PRIVATE_DISK);
+
+        $order = $this->placeUnpaidBankTransferOrder();
+
+        $proforma = $this->issueType($order->uuid, Document::TYPE_PROFORMA);
+
+        $path = $this->context->runAs($this->tenant, fn () => $proforma->fresh()->pdf_path);
+        $this->assertNotNull($path);
+        $this->assertTrue($this->context->runAs($this->tenant, fn () => app(FileStorage::class)->exists($path)));
+
+        $contents = $this->context->runAs($this->tenant, fn () => app(FileStorage::class)->get($path));
+        $this->assertStringStartsWith('%PDF-', $contents);
+
+        $this->assertNull($this->context->runAs($this->tenant, fn () => $proforma->fresh()->taxable_at));
+
+        // Distinct on-disk path from an invoice sharing the same order — the
+        // filename is keyed by type as well as number (GenerateDocumentPdf's
+        // own docblock).
+        $invoice = $this->issueType($order->uuid, Document::TYPE_INVOICE);
+        $invoicePath = $this->context->runAs($this->tenant, fn () => $invoice->fresh()->pdf_path);
+        $this->assertNotNull($invoicePath);
+        $this->assertNotSame($path, $invoicePath);
+    }
 }

@@ -239,6 +239,104 @@ class DocumentAdminTest extends TestCase
         return $order;
     }
 
+    /**
+     * Places an order paid by bank transfer, left unpaid — mirrors
+     * GenerateDocumentPdfTest::placeUnpaidBankTransferOrder(), the shape a
+     * proforma (a payment request) is issued against.
+     */
+    private function placeUnpaidBankTransferOrder(Tenant $tenant): Order
+    {
+        return $this->context->runAs($tenant, function (): Order {
+            $product = app(ProductWriter::class)->create([
+                'name' => 'Klávesnice Acme',
+                'sku' => 'KB-2',
+                'price' => 99900,
+                'tax_rate_id' => app(TaxRates::class)->default()->id,
+                'status' => Product::STATUS_ACTIVE,
+            ]);
+
+            $shipping = ShippingMethod::query()->create([
+                'provider' => ShippingMethod::PROVIDER_FLAT,
+                'name' => 'Kurýr',
+                'price' => 9900,
+                'currency' => 'CZK',
+                'tax_rate_id' => app(TaxRates::class)->default()->id,
+                'is_active' => true,
+            ]);
+
+            $payment = PaymentMethod::query()->create([
+                'provider' => PaymentMethod::PROVIDER_BANK_TRANSFER,
+                'name' => 'Bankovní převod',
+                'fee' => 0,
+                'currency' => 'CZK',
+                'tax_rate_id' => app(TaxRates::class)->default()->id,
+                'is_active' => true,
+                'settings' => ['account' => 'CZ6508000000192000145399'],
+            ]);
+
+            /** @var Cart $cart */
+            $cart = app(CartRepository::class)->forToken(null);
+            app(CartRepository::class)->addItem($cart, $product->id, 2);
+
+            $placed = app(OrderPlacement::class)->place(new PlacementRequest(
+                cart: $cart,
+                shippingMethodId: $shipping->id,
+                paymentMethodId: $payment->id,
+                email: 'jana@example.cz',
+                phone: '+420777123456',
+                billing: [
+                    'name' => 'Jana Nováková',
+                    'street' => 'Hlavní 1',
+                    'city' => 'Praha',
+                    'zip' => '110 00',
+                    'country' => 'CZ',
+                ],
+                shipping: null,
+                checkoutToken: 'tok-'.bin2hex(random_bytes(8)),
+                customerId: null,
+                source: 'storefront',
+                note: null,
+            ));
+
+            return Order::query()->where('uuid', $placed->uuid())->firstOrFail();
+        });
+    }
+
+    // --- storeProforma ---------------------------------------------------------
+
+    public function test_admin_issues_a_proforma(): void
+    {
+        Storage::fake(FileStorage::PRIVATE_DISK);
+
+        $order = $this->placeUnpaidBankTransferOrder($this->tenant);
+
+        $this->actingAs($this->owner)
+            ->post($this->url('/proforma'), ['order_uuid' => $order->uuid])
+            ->assertRedirect();
+
+        $this->context->runAs($this->tenant, fn () => $this->assertSame(
+            1,
+            Document::query()->where('order_id', $order->id)->where('type', Document::TYPE_PROFORMA)->count(),
+        ));
+    }
+
+    public function test_issuing_a_proforma_is_forbidden_without_the_manage_permission(): void
+    {
+        Storage::fake(FileStorage::PRIVATE_DISK);
+
+        $staff = $this->staffWith([]);
+        $order = $this->placeUnpaidBankTransferOrder($this->tenant);
+
+        $this->actingAs($staff)
+            ->post($this->url('/proforma'), ['order_uuid' => $order->uuid])
+            ->assertForbidden();
+
+        $this->context->runAs($this->tenant, fn () => $this->assertSame(
+            0,
+            Document::query()->where('order_id', $order->id)->where('type', Document::TYPE_PROFORMA)->count(),
+        ));
+    }
+
     // --- storeCreditNote -----------------------------------------------------
 
     public function test_admin_issues_a_credit_note_for_a_cancelled_order(): void

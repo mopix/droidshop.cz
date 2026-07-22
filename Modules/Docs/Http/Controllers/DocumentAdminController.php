@@ -83,6 +83,19 @@ class DocumentAdminController
         return back()->with('success', "Dobropis {$document->documentNumber()} byl vystaven.");
     }
 
+    /**
+     * A proforma is a payment request, not a tax document: any order may get
+     * one, so unlike storeCreditNote() there is no gate to catch and no prior
+     * document required — the writer's own idempotency (one per order/type)
+     * is the only thing standing between repeat clicks and a second row.
+     */
+    public function storeProforma(StoreDocumentRequest $request): RedirectResponse
+    {
+        $document = $this->issuer->issue($request->validated('order_uuid'), Document::TYPE_PROFORMA);
+
+        return back()->with('success', "Proforma {$document->documentNumber()} byla vystavena.");
+    }
+
     public function download(Request $request, string $number): StreamedResponse
     {
         abort_unless($request->user('web')->can('docs.manage'), 403);

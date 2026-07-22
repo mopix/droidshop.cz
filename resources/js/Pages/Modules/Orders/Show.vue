@@ -78,7 +78,7 @@ type OrderDetail = {
 
 const props = defineProps<{
   order: OrderDetail
-  can: { edit: boolean; cancel: boolean; issueDocument: boolean; creditNote: boolean }
+  can: { edit: boolean; cancel: boolean; issueDocument: boolean; creditNote: boolean; proforma: boolean }
 }>()
 
 const FULFILLMENT_LABELS: Record<string, string> = {
@@ -215,6 +215,16 @@ const creditNoteForm = useForm({ order_uuid: props.order.uuid })
 
 const issueCreditNote = () => {
   creditNoteForm.post(route('admin.docs.credit-note'), { preserveScroll: true })
+}
+
+// A proforma is a payment request, not a tax document — any order may get
+// one, so unlike creditNoteForm there is no status condition to mirror;
+// `can.proforma` gates on docs.manage alone. issue() is idempotent
+// server-side (one proforma per order), so a repeat click is a no-op.
+const proformaForm = useForm({ order_uuid: props.order.uuid })
+
+const issueProforma = () => {
+  proformaForm.post(route('admin.docs.proforma'), { preserveScroll: true })
 }
 
 // --- Item / address edit ----------------------------------------------------
@@ -430,11 +440,21 @@ const formatAddress = (address: Address) => {
         </section>
 
         <!-- ===================== Documents (invoices) ===================== -->
-        <section v-if="can.issueDocument || can.creditNote || order.documents.length" aria-labelledby="documents-heading" class="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+        <section v-if="can.issueDocument || can.creditNote || can.proforma || order.documents.length" aria-labelledby="documents-heading" class="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
           <div class="flex items-center justify-between gap-3">
             <h2 id="documents-heading" class="text-sm font-semibold text-gray-900">Doklady</h2>
 
             <div class="flex items-center gap-2">
+              <button
+                v-if="can.proforma"
+                type="button"
+                :disabled="proformaForm.processing"
+                class="rounded-md border border-gray-300 px-3 py-2 text-sm font-medium text-gray-800 hover:bg-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-900 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-500"
+                @click="issueProforma"
+              >
+                Vystavit proformu
+              </button>
+
               <button
                 v-if="can.creditNote"
                 type="button"

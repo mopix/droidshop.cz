@@ -14,6 +14,7 @@ use Modules\Docs\Services\DocumentIssuerRegistry;
 use Modules\Docs\Services\DocumentWriter;
 use Modules\Docs\Services\EloquentDocumentBook;
 use Modules\Docs\Services\InvoiceIssuer;
+use Modules\Docs\Services\ProformaIssuer;
 use Modules\Orders\Events\OrderPaymentSettled;
 use Modules\Orders\Events\OrderShipped;
 
@@ -45,7 +46,7 @@ class ModuleProvider extends ServiceProvider
                 [
                     Document::TYPE_INVOICE => $app->make(InvoiceIssuer::class),
                     Document::TYPE_CREDIT_NOTE => $app->make(CreditNoteIssuer::class),
-                    // proforma added in Stage 4.
+                    Document::TYPE_PROFORMA => $app->make(ProformaIssuer::class),
                 ],
             );
         });

@@ -131,6 +131,69 @@ abstract class DocsTestCase extends TestCase
     }
 
     /**
+     * Places a real order through checkout with a bank-transfer payment
+     * method, left unpaid (no force-settle step), and returns its uuid — the
+     * shape a proforma is issued against (a payment request only makes sense
+     * before payment lands, and QR-eligibility needs a bank account).
+     * Mirrors placePaidOrder() otherwise.
+     */
+    protected function placeUnpaidBankTransferOrder(): string
+    {
+        $product = app(ProductWriter::class)->create([
+            'name' => 'Klávesnice Acme',
+            'sku' => 'KB-2',
+            'price' => 99900,
+            'tax_rate_id' => app(TaxRates::class)->default()->id,
+            'status' => Product::STATUS_ACTIVE,
+        ]);
+
+        $shipping = ShippingMethod::query()->create([
+            'provider' => ShippingMethod::PROVIDER_FLAT,
+            'name' => 'Kurýr',
+            'price' => 9900,
+            'currency' => 'CZK',
+            'tax_rate_id' => app(TaxRates::class)->default()->id,
+            'is_active' => true,
+        ]);
+
+        $payment = PaymentMethod::query()->create([
+            'provider' => PaymentMethod::PROVIDER_BANK_TRANSFER,
+            'name' => 'Bankovní převod',
+            'fee' => 0,
+            'currency' => 'CZK',
+            'tax_rate_id' => app(TaxRates::class)->default()->id,
+            'is_active' => true,
+            'settings' => ['account' => 'CZ6508000000192000145399'],
+        ]);
+
+        /** @var Cart $cart */
+        $cart = app(CartRepository::class)->forToken(null);
+        app(CartRepository::class)->addItem($cart, $product->id, 2);
+
+        $placed = app(OrderPlacement::class)->place(new PlacementRequest(
+            cart: $cart,
+            shippingMethodId: $shipping->id,
+            paymentMethodId: $payment->id,
+            email: 'jana@example.cz',
+            phone: '+420777123456',
+            billing: [
+                'name' => 'Jana Nováková',
+                'street' => 'Hlavní 1',
+                'city' => 'Praha',
+                'zip' => '110 00',
+                'country' => 'CZ',
+            ],
+            shipping: null,
+            checkoutToken: 'tok-'.bin2hex(random_bytes(8)),
+            customerId: null,
+            source: 'storefront',
+            note: null,
+        ));
+
+        return Order::query()->where('uuid', $placed->uuid())->firstOrFail()->uuid;
+    }
+
+    /**
      * Deactivates the docs module for the test tenant, so ShopModules->has('docs')
      * is false for the remainder of the test.
      */

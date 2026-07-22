@@ -172,6 +172,11 @@ class OrderAdminController
                 // button only appears when the POST would actually succeed;
                 // the server-side gate remains the real defence.
                 'creditNote' => (bool) $request->user('web')?->can('docs.manage') && $hasInvoice && $isReversed,
+                // Gates "Vystavit proformu" — same permission as issueDocument.
+                // No further condition: a proforma is a payment request, not a
+                // tax document, so any order (whatever its status) may get
+                // one (ProformaIssuer::build() has no gate to mirror).
+                'proforma' => (bool) $request->user('web')?->can('docs.manage'),
             ],
         ]);
     }
