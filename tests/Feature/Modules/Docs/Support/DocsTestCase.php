@@ -10,6 +10,7 @@ use App\Core\Orders\PlacementRequest;
 use App\Core\Tax\TaxRates;
 use App\Core\Tenancy\TenantContext;
 use App\Models\Tenant;
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Modules\Checkout\Models\Cart;
 use Modules\Docs\Models\Document;
@@ -245,5 +246,55 @@ abstract class DocsTestCase extends TestCase
         $order->update(['fulfillment_status' => Order::FULFILLMENT_CANCELLED]);
 
         return $order;
+    }
+
+    /**
+     * Attaches an owner to the test tenant and authenticates the test client
+     * as them — an owner role carries `docs.manage` per the manifest (same
+     * assumption DocumentAdminTest's `$this->owner` relies on).
+     */
+    protected function actingAsDocsManager(): static
+    {
+        $owner = User::factory()->create();
+        $this->tenant->users()->attach($owner, ['role' => 'owner', 'joined_at' => now()]);
+
+        return $this->actingAs($owner);
+    }
+
+    /**
+     * Creates a second tenant (its own host, its own active module set) with
+     * its own owner and authenticates as that owner — the tenant-isolation
+     * half of an export test. Use vatExportUrl('shop2.droidshop', ...)
+     * afterwards to hit routes against this tenant's host.
+     */
+    protected function actingAsOtherTenantDocsManager(): static
+    {
+        $other = Tenant::factory()->withDomain('shop2.droidshop')->create([
+            'billing_name' => 'Shop Two s.r.o.',
+            'billing_address' => ['street' => 'Vedlejší 2', 'city' => 'Brno', 'zip' => '602 00', 'country' => 'CZ'],
+        ]);
+
+        foreach (['checkout', 'shipping', 'orders', 'docs'] as $module) {
+            $this->activateModule($other, $module);
+        }
+
+        $owner = User::factory()->create();
+        $other->users()->attach($owner, ['role' => 'owner', 'joined_at' => now()]);
+
+        return $this->actingAs($owner);
+    }
+
+    /**
+     * Absolute URL for the VAT export route against a given tenant host.
+     * `route()` alone resolves against config('app.url'), not the tenant's
+     * own domain the ResolveHost/SetTenantContext pipeline requires for module
+     * gating (spec §15.2) — so this builds the path from the named route
+     * (never hand-written) and prepends the host the request actually needs.
+     */
+    protected function vatExportUrl(string $host, string $from, string $to): string
+    {
+        $path = route('admin.docs.vat-export', ['from' => $from, 'to' => $to], false);
+
+        return 'http://'.$host.$path;
     }
 }

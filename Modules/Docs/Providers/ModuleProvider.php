@@ -4,6 +4,7 @@ namespace Modules\Docs\Providers;
 
 use App\Core\Documents\Contracts\DocumentBook;
 use App\Core\Documents\Contracts\DocumentIssuer;
+use App\Core\Documents\Contracts\DocumentLedger;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
 use Modules\Docs\Listeners\IssueInvoiceOnPaid;
@@ -13,6 +14,7 @@ use Modules\Docs\Services\CreditNoteIssuer;
 use Modules\Docs\Services\DocumentIssuerRegistry;
 use Modules\Docs\Services\DocumentWriter;
 use Modules\Docs\Services\EloquentDocumentBook;
+use Modules\Docs\Services\EloquentDocumentLedger;
 use Modules\Docs\Services\InvoiceIssuer;
 use Modules\Docs\Services\ProformaIssuer;
 use Modules\Orders\Events\OrderPaymentSettled;
@@ -51,5 +53,6 @@ class ModuleProvider extends ServiceProvider
             );
         });
         $this->app->bind(DocumentBook::class, EloquentDocumentBook::class);
+        $this->app->bind(DocumentLedger::class, EloquentDocumentLedger::class);
     }
 }
