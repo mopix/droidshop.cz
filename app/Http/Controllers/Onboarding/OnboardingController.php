@@ -50,7 +50,7 @@ class OnboardingController extends Controller
         // after.
         $host = $tenant->primaryDomain->domain;
         $previousRoot = URL::to('/');
-        URL::forceRootUrl($request->getScheme().'://'.$host);
+        URL::forceRootUrl('https://'.$host);
 
         try {
             $target = URL::temporarySignedRoute('onboarding.enter', now()->addMinutes(5), [
