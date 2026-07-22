@@ -29,8 +29,8 @@ const form = useForm({
   plan_id: props.plans[0]?.id ?? null,
 })
 
-type AvailabilityReason = 'idle' | 'checking' | 'ok' | 'invalid' | 'reserved' | 'taken'
-type AvailabilityResponse = { available: boolean; reason: Exclude<AvailabilityReason, 'idle' | 'checking'> }
+type AvailabilityReason = 'idle' | 'checking' | 'ok' | 'invalid' | 'reserved' | 'taken' | 'error'
+type AvailabilityResponse = { available: boolean; reason: Exclude<AvailabilityReason, 'idle' | 'checking' | 'error'> }
 
 const availability = ref<AvailabilityReason>('idle')
 let checkTimer: ReturnType<typeof setTimeout> | null = null
@@ -44,12 +44,23 @@ watch(
 
     availability.value = 'checking'
     checkTimer = setTimeout(async () => {
-      const response = await fetch(route('onboarding.subdomain.check', { slug }), {
-        headers: { Accept: 'application/json' },
-        cache: 'no-store',
-      })
-      const data = (await response.json()) as AvailabilityResponse
-      availability.value = data.reason
+      try {
+        const response = await fetch(route('onboarding.subdomain.check', { slug }), {
+          headers: { Accept: 'application/json' },
+          cache: 'no-store',
+        })
+        if (slug !== form.subdomain) return
+        if (!response.ok) {
+          availability.value = 'error'
+          return
+        }
+        const data = (await response.json()) as AvailabilityResponse
+        if (slug !== form.subdomain) return
+        availability.value = data.reason
+      } catch {
+        if (slug !== form.subdomain) return
+        availability.value = 'error'
+      }
     }, 350)
   },
 )
@@ -66,6 +77,7 @@ const goToStep1 = () => {
 }
 
 const submit = () => {
+  if (step.value !== 2) return
   form.post(route('onboarding.store'))
 }
 </script>
@@ -146,6 +158,7 @@ const submit = () => {
                 <span v-else-if="availability === 'taken'" class="text-red-600">Tato subdoména je již obsazená.</span>
                 <span v-else-if="availability === 'reserved'" class="text-red-600">Tato subdoména je rezervovaná.</span>
                 <span v-else-if="availability === 'invalid'" class="text-red-600">Neplatný formát subdomény.</span>
+                <span v-else-if="availability === 'error'" class="text-red-600">Ověření selhalo, upravte pole a zkuste znovu.</span>
               </p>
               <InputError class="mt-1" :message="form.errors.subdomain" />
             </div>
@@ -185,7 +198,11 @@ const submit = () => {
 
             <div class="mt-6 flex gap-3">
               <SecondaryButton type="button" @click="goToStep1">Zpět</SecondaryButton>
-              <PrimaryButton type="submit" class="flex-1 justify-center" :disabled="form.processing || !form.plan_id">
+              <PrimaryButton
+                type="submit"
+                class="flex-1 justify-center"
+                :disabled="form.processing || !form.plan_id || step !== 2"
+              >
                 Vytvořit e-shop
               </PrimaryButton>
             </div>
