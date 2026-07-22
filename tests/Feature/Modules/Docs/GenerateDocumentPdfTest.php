@@ -165,6 +165,14 @@ class GenerateDocumentPdfTest extends TestCase
         return $document;
     }
 
+    private function issueType(string $uuid, string $type): Document
+    {
+        /** @var Document $document */
+        $document = $this->context->runAs($this->tenant, fn () => app(DocumentIssuer::class)->issue($uuid, $type));
+
+        return $document;
+    }
+
     // --- scenarios ------------------------------------------------------
 
     public function test_pdf_job_writes_file_and_sets_path(): void
@@ -296,5 +304,49 @@ class GenerateDocumentPdfTest extends TestCase
 
         $contents = $this->context->runAs($this->tenant, fn () => app(FileStorage::class)->get($path));
         $this->assertStringStartsWith('%PDF-', $contents);
+    }
+
+    /**
+     * A credit note renders through its own template (docs::pdf.credit-note)
+     * and, since it is only issuable once the order is cancelled/refunded and
+     * already has an invoice, must be written under a path distinct from that
+     * invoice's — Task 7 Fix D keys the on-disk filename by type as well as
+     * number, because the two series can print the same number for a given
+     * tenant (see GenerateDocumentPdf's own docblock on `$path`).
+     */
+    public function test_a_credit_note_renders_its_own_pdf(): void
+    {
+        Storage::fake(FileStorage::PRIVATE_DISK);
+
+        $order = $this->placePaidCodOrder();
+        $invoice = $this->issue($order->uuid);
+
+        $this->context->runAs($this->tenant, function () use ($order): void {
+            $order->forceFill(['fulfillment_status' => Order::FULFILLMENT_CANCELLED])->save();
+        });
+
+        $creditNote = $this->issueType($order->uuid, Document::TYPE_CREDIT_NOTE);
+
+        $invoicePath = $this->context->runAs($this->tenant, fn () => $invoice->fresh()->pdf_path);
+        $creditNotePath = $this->context->runAs($this->tenant, fn () => $creditNote->fresh()->pdf_path);
+
+        $this->assertNotNull($invoicePath);
+        $this->assertNotNull($creditNotePath);
+        $this->assertTrue($this->context->runAs($this->tenant, fn () => app(FileStorage::class)->exists($creditNotePath)));
+
+        $creditNoteContents = $this->context->runAs($this->tenant, fn () => app(FileStorage::class)->get($creditNotePath));
+        $this->assertStringStartsWith('%PDF-', $creditNoteContents);
+
+        // Invoice and credit note are independent series (config/documents.php:
+        // invoice_series 'invoices' vs credit_note_series 'credit_notes'), each
+        // with its own per-tenant sequence starting at 1 — with no prefix
+        // configured on either, the first document of each type prints the
+        // *same* number. Confirmed here rather than assumed, because it is
+        // exactly the collision that would silently overwrite one PDF with the
+        // other on disk if GenerateDocumentPdf's path were keyed by number alone.
+        $this->assertSame($invoice->fresh()->number, $creditNote->fresh()->number);
+
+        // The paths must differ regardless of the number collision above.
+        $this->assertNotSame($invoicePath, $creditNotePath);
     }
 }
