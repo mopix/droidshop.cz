@@ -2,6 +2,9 @@
 
 namespace App\Http\Controllers\Platform;
 
+use App\Core\Billing\Exceptions\ChargeFailed;
+use App\Core\Billing\Exceptions\MissingBillingProfile;
+use App\Core\Billing\SubscriptionActivator;
 use App\Core\Enums\TenantStatus;
 use App\Core\Platform\PlanSwitcher;
 use App\Core\Platform\TenantOverview;
@@ -89,6 +92,40 @@ class TenantController extends Controller
         }
 
         return back()->with('success', $message);
+    }
+
+    /**
+     * Charges the tenant, issues the platform invoice and flips it to active.
+     *
+     * PendingDeletion/Deleted are rejected here, before the activator ever
+     * runs: changeStatus() writes whatever status it is given without
+     * validating the transition, so a stray click on a shop already on its
+     * way out would silently resurrect it. Active is rejected too — a repeat
+     * click would re-charge the gateway and keep pushing trial_ends_at out
+     * even though the period-deduplicated invoice hides the double billing.
+     */
+    public function activateSubscription(Tenant $tenant, SubscriptionActivator $activator): RedirectResponse
+    {
+        if (in_array($tenant->status, [TenantStatus::PendingDeletion, TenantStatus::Deleted], true)) {
+            return back()->withErrors(['subscription' => 'E-shop v tomto stavu nelze aktivovat.']);
+        }
+
+        if ($tenant->status === TenantStatus::Active) {
+            return back()->withErrors(['subscription' => 'E-shop již má aktivní předplatné.']);
+        }
+
+        try {
+            // Inside the tenant: activate() -> changeStatus() writes the audit
+            // entry itself, and outside the context it would be filed as a
+            // platform-wide action (same reasoning as updateStatus() above).
+            $this->context->runAs($tenant, fn () => $activator->activate($tenant));
+        } catch (MissingBillingProfile) {
+            return back()->withErrors(['subscription' => 'Nájemce nemá vyplněné fakturační údaje.']);
+        } catch (ChargeFailed $e) {
+            return back()->withErrors(['subscription' => 'Platba se nezdařila: '.$e->getMessage()]);
+        }
+
+        return back()->with('success', 'Předplatné aktivováno, faktura vystavena.');
     }
 
     /**

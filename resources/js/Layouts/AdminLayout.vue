@@ -37,6 +37,8 @@ const impersonating = computed(
   () => (page.props.impersonating as { user_id: number; admin_id: number } | null) ?? null,
 )
 
+const billingProfileComplete = computed(() => page.props.billingProfileComplete as boolean)
+
 // Ziggy's route() helper is a global template property only, so URLs are
 // resolved in the template and handed to these actions.
 const logout = (url: string) => router.post(url)
@@ -72,6 +74,21 @@ const stopImpersonating = (url: string) => router.post(url)
       >
         Ukončit impersonaci
       </button>
+    </div>
+
+    <!-- role="status" (not "alert"): a missing billing profile is not an
+         error the user made just now, so it should not interrupt a screen
+         reader the way the impersonation banner does. -->
+    <div
+      v-if="!billingProfileComplete"
+      role="status"
+      class="bg-amber-100 px-4 py-3 text-center text-sm text-amber-900"
+    >
+      Doplňte prosím
+      <Link :href="route('admin.billing.edit')" class="font-semibold underline hover:no-underline">
+        fakturační údaje
+      </Link>
+      , jinak nelze vystavit fakturu ani aktivovat předplatné.
     </div>
 
     <!-- Light bar, deliberately unlike the platform console's dark one: the

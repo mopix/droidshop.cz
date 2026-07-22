@@ -11,6 +11,36 @@ Pravidla: [`.claude/skills/versioning/SKILL.md`](.claude/skills/versioning/SKILL
 
 > CHANGELOG vede milníky (minor/major). Detail patchů je v `git log`.
 
+## [0.16.0] – 2026-07-22
+
+**Fáze 1 / vlna 1.7 — self-service onboarding + platformní billing.** Registrovaný uživatel si průvodcem založí e-shop na subdoméně s 14denním trialem, platforma řídí lifecycle nájemce a umí mu vystavit daňový doklad za předplatné. Reálné inkaso (Stripe) je připraveno kontraktem, implementuje se vlna 1.8. 966 testů (+3 od 963 na konci implementace, +8 od vlny 1.6).
+
+### Onboarding
+
+- `TenantProvisioner` — jeden transakční recept na založení tenanta (tenant + primární subdoména + owner + moduly tarifu + audit); `DemoShopSeeder` ho volá.
+- Inertia wizard (registrace → `/onboarding` → e-shop): název + subdoména s živou kontrolou dostupnosti (`GET /onboarding/subdomena/check`, `no-store`), výběr tarifu, přistání v adminu.
+- Cross-host signed auto-login (`onboarding.enter`) — kvůli host-only cookies (`SESSION_DOMAIN=null`) přechod z platform hostu do admin subdomény přes krátkodobou podepsanou URL s membership kontrolou.
+- Dashboard „Moje e-shopy" (seznam e-shopů uživatele + „Založit e-shop"). Jádrová admin routa `admin.home` směruje do adminu.
+
+### Trial lifecycle
+
+- Command `billing:sweep-lifecycle` (`NotTenantAware`, denní): `trial`→`past_due` (storefront běží dál), `past_due` po grace → `suspended`, e-mail ownerovi. Config `config/billing.php` (`trial_days=14`, `grace_days=7`).
+
+### Platformní fakturační ledger (netenantový)
+
+- `platform_invoices` + immutable `PlatformInvoice`, `PlatformSequenceService` (gap-free, netenantový), číslo `PF{YYYY}{NNNN}`.
+- `PlatformInvoiceWriter` — VAT split dle *našeho* plátcovství, snímek dodavatele (config) + odběratele (nájemce), idempotence per období `(billed_tenant_id, period_from, period_to)`, transakční alokace čísla, PDF přes dompdf na privátní disk.
+- `SubscriptionGateway` seam + `NullSubscriptionGateway` (žádné peníze), `SubscriptionActivator` (charge → faktura → `Active`). Superadmin akce „Aktivovat předplatné" se stavovým guardem. Stažení faktury: superadmin libovolnou, nájemce jen vlastní (cizí → 404).
+
+### Fakturační profil nájemce
+
+- Jádrová obrazovka `/admin/nastaveni/fakturace` (nová route skupina `routes/tenant.php`) — dodavatel na fakturách nájemce i odběratel na naší faktuře. Banner „doplňte fakturační údaje" (sdílený prop `billingProfileComplete`).
+
+### Mimo vlnu (design-for / fáze 2)
+
+- Reálné inkaso Stripe = vlna 1.8 (jen driver + webhook, bez zásahu do onboardingu/scheduleru/ledgeru).
+- Vlastní doména nájemce = fáze 2 (ověření vlastnictví + TLS emise na VPS).
+
 ## [0.15.0] – 2026-07-22
 
 **Fáze 1 / vlna 1.6 — modul `docs`: dobropis, proforma, CSV VAT export, číslování.** Doplňuje zbývající dva typy dokladu z enumu (`credit_note`, `proforma`), účetní CSV export podle DUZP a roční reset číslování odložený z vlny 1.5. Uzavírá spec §16.6 pro `docs` v rozsahu MVP (905 testů, +47 oproti 858 na začátku vlny).

@@ -69,6 +69,18 @@ return [
             'throw' => true,
         ],
 
+        /*
+         * Platform (landlord) file storage — subscription invoice PDFs and
+         * other non-tenant billing artefacts. Never served by URL, same
+         * pattern as tenant_private, but scoped to the platform's own ledger.
+         */
+        'platform_private' => [
+            'driver' => 'local',
+            'root' => storage_path('app/platform'),
+            'visibility' => 'private',
+            'throw' => true,
+        ],
+
         's3' => [
             'driver' => 's3',
             'key' => env('AWS_ACCESS_KEY_ID'),
