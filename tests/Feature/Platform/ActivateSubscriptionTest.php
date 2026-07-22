@@ -65,4 +65,17 @@ class ActivateSubscriptionTest extends TestCase
         $this->assertSame(TenantStatus::PendingDeletion, $tenant->fresh()->status);
         $this->assertDatabaseMissing('platform_invoices', ['billed_tenant_id' => $tenant->id]);
     }
+
+    public function test_an_already_active_tenant_cannot_be_reactivated(): void
+    {
+        Storage::fake('platform_private');
+        $plan = Plan::create(['key' => 'base', 'name' => 'Z', 'price_month' => 49900, 'price_year' => 499000,
+            'level' => 'base', 'is_public' => true, 'limits' => ['products' => 1, 'storage_mb' => 1, 'emails_month' => 1]]);
+        $tenant = Tenant::factory()->create(['status' => TenantStatus::Active, 'plan_id' => $plan->id, 'billing_name' => 'Nájemce', 'vat_payer' => false]);
+
+        $this->post($this->activateUrl($tenant))->assertSessionHasErrors('subscription');
+
+        $this->assertSame(TenantStatus::Active, $tenant->fresh()->status);
+        $this->assertDatabaseCount('platform_invoices', 0);
+    }
 }
