@@ -25,9 +25,17 @@ class CheckTenantStatus
             return $next($request);
         }
 
-        // Wave 0.1 gates the storefront only. Admin routes get their own
-        // read-only gate for suspended tenants once the admin exists (§6.0).
-        if (! $tenant->allowsStorefront()) {
+        // Admin routes get their own read-only gate; storefront requests are
+        // gated by allowsStorefront. Spec §6.0: suspended tenants keep admin
+        // access to read and export data before deletion; deleted tenants get
+        // neither storefront nor admin (§2.1).
+        $isAdminRoute = str_starts_with(ltrim($request->path(), '/'), 'admin');
+
+        if ($isAdminRoute && ! $tenant->status->allowsAdminRead()) {
+            return response()->view('tenancy.unavailable', ['tenant' => $tenant], 503);
+        }
+
+        if (! $isAdminRoute && ! $tenant->status->allowsStorefront()) {
             return response()->view('tenancy.unavailable', ['tenant' => $tenant], 503);
         }
 

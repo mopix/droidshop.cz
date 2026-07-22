@@ -96,4 +96,17 @@ class SubscriptionCheckoutTest extends TestCase
         $this->post($this->host().'/admin/predplatne/checkout')
             ->assertRedirect(); // tenant.member throws AuthenticationException -> login redirect
     }
+
+    public function test_dev_complete_blocks_illegal_status_reactivation(): void
+    {
+        config()->set('billing.subscription.driver', 'null');
+        [$tenant, $owner] = $this->ownerOnHost(['status' => TenantStatus::PendingDeletion]);
+
+        $this->actingAs($owner)
+            ->get($this->host().'/admin/predplatne/dev-dokonceni')
+            ->assertForbidden();
+
+        $tenant->refresh();
+        $this->assertSame(TenantStatus::PendingDeletion, $tenant->status);
+    }
 }

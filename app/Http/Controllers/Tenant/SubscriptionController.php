@@ -65,6 +65,12 @@ class SubscriptionController extends Controller
         abort_unless(config('billing.subscription.driver') === 'null', 404);
 
         $tenant = $this->context->current();
+        abort_unless(
+            $tenant->status === TenantStatus::Active
+                || $tenant->status->canTransitionTo(TenantStatus::Active),
+            403,
+        );
+
         $this->context->runAs($tenant, function () use ($tenant): void {
             if ($tenant->status !== TenantStatus::Active) {
                 $tenant->changeStatus(TenantStatus::Active, 'dev subscription (null gateway)');
