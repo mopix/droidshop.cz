@@ -50,13 +50,18 @@ class VatCsvWriter
             $other = $this->otherRatesTotal($vatSummary);
 
             yield [
-                $doc->number,
-                $this->typeLabel($doc->type),
-                optional($doc->issued_at)->format('d.m.Y') ?? '',
-                optional($doc->taxable_at)->format('d.m.Y') ?? '',
-                (string) ($billing['name'] ?? $customer['email'] ?? ''),
-                (string) ($billing['ico'] ?? ''),
-                (string) ($billing['dic'] ?? ''),
+                $this->neutralize($doc->number),
+                $this->neutralize($this->typeLabel($doc->type)),
+                $this->neutralize(optional($doc->issued_at)->format('d.m.Y') ?? ''),
+                $this->neutralize(optional($doc->taxable_at)->format('d.m.Y') ?? ''),
+                $this->neutralize((string) ($billing['name'] ?? $customer['email'] ?? '')),
+                $this->neutralize((string) ($billing['ico'] ?? '')),
+                $this->neutralize((string) ($billing['dic'] ?? '')),
+                // Money columns are never customer-controlled free text — they are
+                // formatted internally by money() from integer haléře — so they are
+                // deliberately NOT passed through neutralize(). A legitimate negative
+                // credit-note amount starts with '-', which neutralize() would quote
+                // as text and corrupt the accountant's SUM() formulas.
                 $this->money($this->amountFor($vatSummary, 21, 'base')),
                 $this->money($this->amountFor($vatSummary, 21, 'vat')),
                 $this->money($this->amountFor($vatSummary, 12, 'base')),
@@ -65,7 +70,7 @@ class VatCsvWriter
                 $this->money($other['base']),
                 $this->money($other['vat']),
                 $this->money($doc->total->amount),
-                $doc->currency,
+                $this->neutralize($doc->currency),
             ];
         }
     }
@@ -83,6 +88,26 @@ class VatCsvWriter
     private function money(int $haler): string
     {
         return number_format($haler / 100, 2, ',', '');
+    }
+
+    /**
+     * Defuses CSV formula injection (CWE-1236): if a cell's first character
+     * would be interpreted by Excel/LibreOffice/Sheets as a formula trigger
+     * (`=`, `+`, `-`, `@`, tab, CR, LF), prefix it with a single quote so the
+     * application opens the cell as plain text instead of evaluating it.
+     * Applied only to free-text/identifier columns — see the money-column
+     * comment at the call site for why numeric columns are exempt.
+     */
+    private function neutralize(string $value): string
+    {
+        if ($value === '') {
+            return $value;
+        }
+
+        return match ($value[0]) {
+            '=', '+', '-', '@', "\t", "\r", "\n" => "'".$value,
+            default => $value,
+        };
     }
 
     /**
