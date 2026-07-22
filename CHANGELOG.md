@@ -11,6 +11,33 @@ Pravidla: [`.claude/skills/versioning/SKILL.md`](.claude/skills/versioning/SKILL
 
 > CHANGELOG vede milníky (minor/major). Detail patchů je v `git log`.
 
+## [0.14.0] – 2026-07-22
+
+**Fáze 1 / vlna 1.5 — modul `docs`: faktury k objednávkám.** Objednávka konečně dostane fakturu. Nájemce ji vystaví tlačítkem v detailu objednávky, nebo se vystaví sama při zaplacení či expedici (dle nastavení `auto_issue_on`). PDF (A4, QR u nezaplacených, patička) se vygeneruje na pozadí a uloží na privátní disk; zákazník dostane fakturu e-mailem a stáhne si ji ve svém účtu. Doklad je jednou vystavený neměnný. Uzavírá spec §16.6 (base modul).
+
+### Jádro — `app/Core/Documents/`
+
+- Kontrakty `DocumentIssuer` (write: `issue()`, idempotentní) a `DocumentBook` (read: `forOrder()`) — **oddělený read/write split**, stejný vzor jako `OrderBook`/`OrderPlacement`; cizí modul nikdy nesahá na model `Document`.
+- `DocumentView` — úzký snímkový tvar (číslo, typ, PDF cesta, total, currency, issued_at, sent_at); `NullDocumentIssuer`/`NullDocumentBook` guest-safe.
+
+### Modul `docs` (base, nelze vypnout)
+
+- `documents` tabulka přesně dle §16.6; unique `(tenant_id, number)` + unique `(tenant_id, order_id, type)` jako DB-level idempotence.
+- `Document` — **immutable model**: update povolen jen na `pdf_path`/`sent_at`, delete vždy vyhodí; oprava jen dobropisem (vlna 1.6).
+- `InvoiceIssuer` — gap-free číslo přes `SequenceService` v transakci s insertem, idempotence na `(order_id, type)`.
+- `GenerateInvoicePdf` — dompdf (`barryvdh/laravel-dompdf`), A4, SPAYD QR pro nezaplacené, uloženo přes `FileStorage::putPrivate()` (`tenant_private`); e-mail zákazníkovi (`MailKind::Transactional`) obalený guardem, aby chyba pošty nespadla vygenerovaný doklad.
+- `IssueInvoiceOnPaid`/`IssueInvoiceOnShipped` — naslouchají doménovým eventům `OrderPaymentSettled`/`OrderShipped`, dispatchovaným z `OrderWorkflow` přes **`DB::afterCommit`** (settlement transakci vnoří, inline dispatch by běžel před commitem). Payments/orders nezná modul `docs`.
+- Admin (`docs.manage`): vystavit, výpis, stáhnout, znovu odeslat. Zákazník: stažení vlastní faktury přes gated route (`auth:customer` + `customer.session` + vlastnictví přes `OrderBook::findForCustomer`, cizí = 404).
+- Plátce vs neplátce DPH = render distinkce v PDF šabloně, ne nový typ enumu; snapshot dodavatele z `tenants.billing_*` v okamžiku vystavení.
+
+### Testy
+
+Nové: `DocsModuleManifestTest`, `InvoiceIssuerTest`, `DocumentImmutabilityTest`, `GenerateInvoicePdfTest`, `InvoiceEmailTest`, `DocumentAdminTest`, `CustomerInvoiceDownloadTest`, `NullDocumentIssuerTest`. Celá suite **858 passed**.
+
+### Mimo rozsah vlny
+
+Dobropis (`credit_note`), CSV VAT export za období, proforma faktura — vlna 1.6. Enum `type` nese všechny tři hodnoty od začátku, 1.5 vystavuje jen `invoice`.
+
 ## [0.13.0] – 2026-07-21
 
 **Fáze 1 / vlna 1.4 — modul `payments`: online platební brána Comgate.** Zákazník zaplatí kartou přes Comgate: po odeslání objednávky redirect na bránu, po ověřeném zaplacení `payment_status = paid` a děkovná stránka s potvrzením. Neúspěch/vypršení vrátí sklad a nechá objednávku pro nový nákup. Vypnutý modul nechá pokladnu na dobírku/převod (spec §16.6).

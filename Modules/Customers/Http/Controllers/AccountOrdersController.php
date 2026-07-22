@@ -2,6 +2,7 @@
 
 namespace Modules\Customers\Http\Controllers;
 
+use App\Core\Documents\Contracts\DocumentBook;
 use App\Core\Orders\Contracts\OrderBook;
 use App\Core\Orders\Contracts\OrderView;
 use Illuminate\Contracts\View\View;
@@ -24,10 +25,19 @@ use Modules\Storefront\Support\Seo;
  * resolved by uuid alone. A foreign order's uuid — another customer's, or
  * another shop's — must 404 here exactly like a foreign customer_address id
  * in AccountController.
+ *
+ * The detail also reads through the kernel's DocumentBook contract — never
+ * Modules\Docs\Models\Document directly — to decide whether to show a
+ * "download invoice" link (wave 1.5 Task 8). Same reasoning as OrderBook:
+ * an inactive docs module, or an order with nothing issued yet, is simply an
+ * empty collection here, never an error.
  */
 class AccountOrdersController
 {
-    public function __construct(private readonly OrderBook $orders) {}
+    public function __construct(
+        private readonly OrderBook $orders,
+        private readonly DocumentBook $documents,
+    ) {}
 
     public function index(Request $request): View
     {
@@ -48,6 +58,7 @@ class AccountOrdersController
         return view('customers::storefront.account.order-detail', [
             'seo' => new Seo(title: 'Objednávka č. '.$order->orderNumber(), noindex: true),
             'order' => $order,
+            'documents' => $this->documents->forOrder($uuid),
         ]);
     }
 

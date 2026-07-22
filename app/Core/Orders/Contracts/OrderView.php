@@ -21,6 +21,13 @@ use Illuminate\Support\Collection;
  */
 interface OrderView
 {
+    /**
+     * The order's internal primary key, for a caller that has to key a foreign
+     * row against it — an issued document's order_id, say. Deliberately not the
+     * uuid: the uuid is the public identifier, this is the storage identity.
+     */
+    public function orderInternalId(): int;
+
     public function orderUuid(): string;
 
     public function orderNumber(): string;
@@ -78,4 +85,22 @@ interface OrderView
      * @return array<string, mixed>|null
      */
     public function orderPaymentSnapshot(): ?array;
+
+    /**
+     * The billing party as it was recorded at placement — name, address, and
+     * (when the buyer is a company) ico/dic. A snapshot, never re-read from a
+     * customer profile that may have changed since.
+     *
+     * @return array<string, mixed>
+     */
+    public function orderBilling(): array;
+
+    /**
+     * The per-rate VAT recap computed in haléře at placement (base, vat, rate).
+     * A document takes its VAT from here rather than recomputing it, so the
+     * money on the invoice is exactly the money the customer paid.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function orderVatSummary(): array;
 }

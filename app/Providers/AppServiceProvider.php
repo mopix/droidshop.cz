@@ -6,6 +6,10 @@ use App\Core\Checkout\Contracts\CartRepository;
 use App\Core\Checkout\NullCartRepository;
 use App\Core\Customers\Contracts\CustomerIdentity;
 use App\Core\Customers\NullCustomerIdentity;
+use App\Core\Documents\Contracts\DocumentBook;
+use App\Core\Documents\Contracts\DocumentIssuer;
+use App\Core\Documents\NullDocumentBook;
+use App\Core\Documents\NullDocumentIssuer;
 use App\Core\Limits\LimitsService;
 use App\Core\Mail\Contracts\MailService;
 use App\Core\Mail\MailLimitCounter;
@@ -83,6 +87,20 @@ class AppServiceProvider extends ServiceProvider
         // Modules\Payments\Providers\ModuleProvider overwrites it with a
         // registry that knows the deployed, tenant-configured drivers.
         $this->app->bind(PaymentGatewayRegistry::class, NullPaymentGatewayRegistry::class);
+
+        // Same pattern for document issuance: app(DocumentIssuer::class)
+        // resolves even on a deploy without the docs module. Unlike the
+        // guest-safe checkout defaults, NullDocumentIssuer::issue() throws
+        // rather than pretending a document was issued — see its own
+        // docblock. Modules\Docs\Providers\ModuleProvider overwrites it.
+        $this->app->bind(DocumentIssuer::class, NullDocumentIssuer::class);
+
+        // The read side of documents is its own contract (DocumentBook),
+        // the same split OrderBook/OrderPlacement keeps — see DocumentBook's
+        // docblock. Guest-safe like OrderBook/ShippingOptions: an empty
+        // Collection, never a throw. Modules\Docs\Providers\ModuleProvider
+        // overwrites it.
+        $this->app->bind(DocumentBook::class, NullDocumentBook::class);
     }
 
     /**
