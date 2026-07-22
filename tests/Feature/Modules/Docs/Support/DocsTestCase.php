@@ -3,6 +3,7 @@
 namespace Tests\Feature\Modules\Docs\Support;
 
 use App\Core\Checkout\Contracts\CartRepository;
+use App\Core\Documents\Contracts\DocumentIssuer;
 use App\Core\Modules\ModuleRegistry;
 use App\Core\Orders\Contracts\OrderPlacement;
 use App\Core\Orders\PlacementRequest;
@@ -11,6 +12,7 @@ use App\Core\Tenancy\TenantContext;
 use App\Models\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Modules\Checkout\Models\Cart;
+use Modules\Docs\Models\Document;
 use Modules\Orders\Models\Order;
 use Modules\Products\Models\Product;
 use Modules\Products\Services\ProductWriter;
@@ -135,5 +137,22 @@ abstract class DocsTestCase extends TestCase
     protected function disableDocsModule(): void
     {
         app(ModuleRegistry::class)->deactivate($this->tenant, 'docs');
+    }
+
+    /**
+     * Places a paid order and issues its invoice through the same kernel
+     * contract a real request would use, then re-fetches the persisted
+     * Document row (issue() returns a DocumentView, not necessarily the
+     * concrete model callers of this helper want to assert against).
+     */
+    protected function issuedInvoice(): Document
+    {
+        $orderUuid = $this->placePaidOrder();
+
+        app(DocumentIssuer::class)->issue($orderUuid, Document::TYPE_INVOICE);
+
+        return Document::query()
+            ->where('type', Document::TYPE_INVOICE)
+            ->firstOrFail();
     }
 }
