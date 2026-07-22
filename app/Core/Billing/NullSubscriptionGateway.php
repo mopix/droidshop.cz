@@ -15,13 +15,11 @@ class NullSubscriptionGateway implements SubscriptionGateway
 {
     public function startCheckout(Tenant $tenant, Plan $plan): string
     {
-        // TODO(task-6): switch to route('admin.subscription.dev-complete', absolute: false)
-        return '/admin/predplatne/dev-dokonceni';
+        return route('admin.subscription.dev-complete', absolute: false);
     }
 
     public function billingPortalUrl(Tenant $tenant): string
     {
-        // TODO(task-6): switch to route('admin.subscription', absolute: false)
-        return '/admin/predplatne';
+        return route('admin.subscription', absolute: false);
     }
 }
