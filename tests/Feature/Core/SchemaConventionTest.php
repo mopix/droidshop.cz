@@ -49,6 +49,13 @@ class SchemaConventionTest extends TestCase
         // Platform administration, deliberately separate from tenant data.
         'platform_admins',
 
+        // Platform billing ledger: the invoices WE issue to a tenant for their
+        // subscription, and their gap-free number counter. Non-tenant on
+        // purpose (wave 1.7) — the customer is a tenant (billed_tenant_id), but
+        // the ledger is the platform's, not a shop's books.
+        'platform_invoices',
+        'platform_sequences',
+
         // VAT rates are law, not shop configuration. A tenant_id here would
         // invite a shop to invent its own rates (spec §6.2).
         'tax_rates',
