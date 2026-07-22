@@ -126,8 +126,8 @@ const PAYMENT_NEXT: Record<string, string[]> = {
   refunded: [],
 }
 
-const money = (haler: number) =>
-  new Intl.NumberFormat('cs-CZ', { style: 'currency', currency: props.order.currency }).format(haler / 100)
+const money = (haler: number, currency: string = props.order.currency) =>
+  new Intl.NumberFormat('cs-CZ', { style: 'currency', currency }).format(haler / 100)
 
 const fulfillmentOptions = computed(() => FULFILLMENT_NEXT[props.order.fulfillment_status] ?? [])
 const paymentOptions = computed(() => PAYMENT_NEXT[props.order.payment_status] ?? [])
@@ -447,7 +447,7 @@ const formatAddress = (address: Address) => {
                 <span v-if="document.issued_at" class="block text-xs text-gray-600">vystaveno {{ document.issued_at }}</span>
               </div>
               <div class="flex items-center gap-3">
-                <span class="text-gray-900">{{ money(document.total) }}</span>
+                <span class="text-gray-900">{{ money(document.total, document.currency) }}</span>
                 <a
                   v-if="document.downloadable"
                   :href="route('admin.docs.download', document.number)"

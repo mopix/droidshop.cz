@@ -2,20 +2,23 @@
 
 namespace Modules\Docs\Providers;
 
+use App\Core\Documents\Contracts\DocumentBook;
 use App\Core\Documents\Contracts\DocumentIssuer;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
 use Modules\Docs\Listeners\IssueInvoiceOnPaid;
 use Modules\Docs\Listeners\IssueInvoiceOnShipped;
+use Modules\Docs\Services\EloquentDocumentBook;
 use Modules\Docs\Services\InvoiceIssuer;
 use Modules\Orders\Events\OrderPaymentSettled;
 use Modules\Orders\Events\OrderShipped;
 
 /**
- * Overrides the kernel's NullDocumentIssuer with the real issuer at deploy
- * level. The per-tenant "is the module active" question is answered at call
- * time by ShopModules inside InvoiceIssuer, not here — this binding is per
- * deploy, matching Modules\Orders\Providers\ModuleProvider.
+ * Overrides the kernel's null bindings — NullDocumentIssuer (write) and
+ * NullDocumentBook (read) — with the real implementations at deploy level.
+ * The per-tenant "is the module active" question is answered at call time by
+ * ShopModules inside InvoiceIssuer/EloquentDocumentBook, not here — these
+ * bindings are per deploy, matching Modules\Orders\Providers\ModuleProvider.
  */
 class ModuleProvider extends ServiceProvider
 {
@@ -33,5 +36,6 @@ class ModuleProvider extends ServiceProvider
     public function register(): void
     {
         $this->app->bind(DocumentIssuer::class, InvoiceIssuer::class);
+        $this->app->bind(DocumentBook::class, EloquentDocumentBook::class);
     }
 }

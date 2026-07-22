@@ -19,9 +19,4 @@ final class NullDocumentIssuer implements DocumentIssuer
     {
         throw DocumentIssuanceUnavailable::moduleOff();
     }
-
-    public function forOrder(string $orderUuid): array
-    {
-        return [];
-    }
 }

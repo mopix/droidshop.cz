@@ -2,7 +2,7 @@
 
 namespace Modules\Orders\Http\Controllers;
 
-use App\Core\Documents\Contracts\DocumentIssuer;
+use App\Core\Documents\Contracts\DocumentBook;
 use App\Core\Documents\Contracts\DocumentView;
 use App\Core\Orders\Contracts\OrderBook;
 use App\Core\Orders\Contracts\OrderView;
@@ -49,7 +49,7 @@ class OrderAdminController
 
     public function __construct(
         private readonly OrderBook $orders,
-        private readonly DocumentIssuer $documents,
+        private readonly DocumentBook $documents,
     ) {}
 
     public function index(Request $request): Response
@@ -132,17 +132,18 @@ class OrderAdminController
                 // Eloquent model — this controller has no business knowing
                 // it exists. Empty when the tenant never activated docs,
                 // same as an order that has no documents yet: the page
-                // renders normally either way (DocumentIssuer::forOrder's
+                // renders normally either way (DocumentBook::forOrder's
                 // docblock).
-                'documents' => array_map(fn (DocumentView $document) => [
-                    'number' => $document->documentNumber(),
-                    'type' => $document->documentType(),
-                    'total' => $document->documentTotal()->amount,
-                    'currency' => $document->documentCurrency(),
-                    'issued_at' => $document->documentIssuedAt()->toIso8601String(),
-                    'sent_at' => $document->documentSentAt()?->toIso8601String(),
-                    'downloadable' => $document->documentPdfPath() !== null,
-                ], $this->documents->forOrder($order->uuid)),
+                'documents' => $this->documents->forOrder($order->uuid)
+                    ->map(fn (DocumentView $document) => [
+                        'number' => $document->documentNumber(),
+                        'type' => $document->documentType(),
+                        'total' => $document->documentTotal()->amount,
+                        'currency' => $document->documentCurrency(),
+                        'issued_at' => $document->documentIssuedAt()->toIso8601String(),
+                        'sent_at' => $document->documentSentAt()?->toIso8601String(),
+                        'downloadable' => $document->documentPdfPath() !== null,
+                    ])->values()->all(),
             ],
             'can' => [
                 'edit' => $request->user('web')->can('orders.edit'),

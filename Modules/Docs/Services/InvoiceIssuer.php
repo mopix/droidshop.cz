@@ -93,28 +93,6 @@ class InvoiceIssuer implements DocumentIssuer
     }
 
     /**
-     * @return list<DocumentView>
-     */
-    public function forOrder(string $orderUuid): array
-    {
-        if (! $this->modules->has('docs')) {
-            return [];
-        }
-
-        $order = $this->orders->findForAdmin($orderUuid);
-
-        if ($order === null) {
-            return [];
-        }
-
-        return Document::query()
-            ->where('order_id', $order->orderInternalId())
-            ->orderByDesc('issued_at')
-            ->get()
-            ->all();
-    }
-
-    /**
      * The (order, type) idempotency lookup, isolated so a test can force the
      * concurrent-collision path by making the first call miss.
      */
