@@ -20,7 +20,7 @@ use Illuminate\Support\Facades\Storage;
  * but non-tenant.
  *
  * Idempotency has two levels, same as DocumentWriter: a pre-allocation
- * (billed_tenant_id, period_from, period_to) lookup so a repeat never consumes
+ * (billed_tenant_id, stripe_invoice_id) lookup so a repeat never consumes
  * a series slot, and the matching unique index as the concurrency backstop.
  * The number is allocated inside the same DB::transaction as the insert, so a
  * unique-violation rollback also reverts the counter increment — no gap.
@@ -47,7 +47,7 @@ class PlatformInvoiceWriter
         $prefix = (string) config('billing.invoice_prefix', 'PF');
         $seriesKey = DocumentNumber::seriesKey('platform_invoices', $year);
 
-        $total = (int) $charge->plan->price_month; // gross, haléře
+        $total = $charge->grossTotal; // gross, haléře
         $rate = (int) config('billing.vat_rate', 21);
         $supplierIsPayer = (bool) config('billing.company.vat_payer', false);
 
@@ -74,6 +74,7 @@ class PlatformInvoiceWriter
                 return PlatformInvoice::create([
                     'number' => $number,
                     'billed_tenant_id' => $tenant->id,
+                    'stripe_invoice_id' => $charge->stripeInvoiceId,
                     'supplier' => $this->supplierSnapshot(),
                     'customer' => $this->customerSnapshot($tenant),
                     'plan_key' => $charge->plan->key,
@@ -113,8 +114,7 @@ class PlatformInvoiceWriter
     {
         return PlatformInvoice::query()
             ->where('billed_tenant_id', $tenantId)
-            ->where('period_from', $charge->periodFrom)
-            ->where('period_to', $charge->periodTo)
+            ->where('stripe_invoice_id', $charge->stripeInvoiceId)
             ->first();
     }
 

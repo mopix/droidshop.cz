@@ -1,6 +1,6 @@
 # As-is status — DroidShop.cz
 
-Poslední aktualizace: **2026-07-22** · Verze: **0.17.0**
+Poslední aktualizace: **2026-07-23** · Verze: **0.17.x** (vlna 1.9)
 
 ## Oblasti
 
@@ -37,6 +37,7 @@ Poslední aktualizace: **2026-07-22** · Verze: **0.17.0**
 | Trial lifecycle — scheduler | **hotovo** | §9 | `billing:sweep-lifecycle` (`NotTenantAware`), config `trial_days`/`grace_days`, trial→past_due→suspended + e-mail |
 | Platformní billing — fakturační ledger nájemci | **hotovo** | §9 | [detail](2026-07-22-onboarding-billing.md); netenantový `platform_invoices`, `PlatformInvoiceWriter` (idempotence per období, VAT split, PDF), stažení superadmin/nájemce |
 | Platformní billing — reálné inkaso (Stripe) | **hotovo** | §9 | [detail](2026-07-22-stripe-subscription.md); Stripe Billing (Checkout + Portal), webhook-driven aktivace na `invoice.paid`, idempotentní per období, sweeper skipuje Stripe-managed tenanty, superadmin manuální aktivace retirovaná |
+| Platformní billing — roční interval + upgrade/downgrade tarifu | **hotovo** | §9, §13 | [detail](2026-07-23-deferred-billing.md); `plan_prices` (plan×interval), výběr intervalu v checkoutu, změna tarifu přes Billing Portal + `TenantPlanSwitcher` (rekonciliace modulů), idempotence dokladu per Stripe invoice id, `invoice.paid` bere částku/tarif z faktury; Portal konfigurace + 4 Price ids = deploy |
 | Fakturační profil nájemce | **hotovo** | §16.6 | jádrová obrazovka `/admin/nastaveni/fakturace`, banner, dodavatel pro docs + odběratel pro platformní fakturu |
 | Tarify / trial / billing | **hotovo** | §3.1 | tabulka `plans` + přiřazení z UI, trial + lifecycle + platformní faktura + reálné inkaso přes Stripe hotové; roční interval a upgrade/downgrade tarifu odloženo |
 | Playwright E2E | není | CLAUDE.md | blokováno omezením certifikátu, viz níže |

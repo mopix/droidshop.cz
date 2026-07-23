@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Core\Billing\Enums\BillingInterval;
 use App\Core\Enums\PlanLevel;
 use Database\Factories\PlanFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -36,11 +37,25 @@ class Plan extends Model
             ->withPivot('limits');
     }
 
+    public function prices(): HasMany
+    {
+        return $this->hasMany(PlanPrice::class);
+    }
+
     /**
      * Limit value for a key, or null when the plan does not cap it.
      */
     public function limit(string $key): ?int
     {
         return $this->limits[$key] ?? null;
+    }
+
+    /**
+     * Stripe price row for a billing interval, or null when the plan does not
+     * offer it.
+     */
+    public function priceFor(BillingInterval $interval): ?PlanPrice
+    {
+        return $this->prices()->where('interval', $interval->value)->first();
     }
 }

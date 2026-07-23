@@ -3,10 +3,12 @@
 namespace App\Http\Controllers\Tenant;
 
 use App\Core\Billing\Contracts\SubscriptionGateway;
+use App\Core\Billing\Enums\BillingInterval;
 use App\Core\Enums\TenantStatus;
 use App\Core\Tenancy\TenantContext;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response as InertiaResponse;
 use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
@@ -32,10 +34,16 @@ class SubscriptionController extends Controller
             'paidThrough' => $tenant->trial_ends_at?->toDateString(),
             'hasSubscription' => filled($tenant->stripe_subscription_id),
             'billingProfileComplete' => filled($tenant->billing_name),
+            'prices' => $tenant->plan
+                ? $tenant->plan->prices->map(fn ($p) => [
+                    'interval' => $p->interval,
+                    'priceAmount' => (int) $p->price_amount,
+                ])->values()
+                : [],
         ]);
     }
 
-    public function checkout(SubscriptionGateway $gateway): SymfonyResponse
+    public function checkout(Request $request, SubscriptionGateway $gateway): SymfonyResponse
     {
         $tenant = $this->context->current();
 
@@ -49,8 +57,11 @@ class SubscriptionController extends Controller
                 ->withErrors(['subscription' => 'Váš e-shop nemá přiřazený tarif.']);
         }
 
+        $interval = BillingInterval::tryFrom((string) $request->input('interval', 'month'))
+            ?? BillingInterval::Month;
+
         // External redirect. Inertia::location breaks out of the SPA visit.
-        return Inertia::location($gateway->startCheckout($tenant, $tenant->plan));
+        return Inertia::location($gateway->startCheckout($tenant, $tenant->plan, $interval));
     }
 
     public function portal(SubscriptionGateway $gateway): SymfonyResponse

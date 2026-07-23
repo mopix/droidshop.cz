@@ -3,6 +3,7 @@
 namespace Tests\Feature\Billing;
 
 use App\Core\Billing\Contracts\SubscriptionGateway;
+use App\Core\Billing\Enums\BillingInterval;
 use App\Core\Billing\NullSubscriptionGateway;
 use App\Models\Plan;
 use App\Models\Tenant;
@@ -29,7 +30,7 @@ class NullSubscriptionGatewayTest extends TestCase
         $plan = Plan::create(['key' => 'base', 'name' => 'Z', 'price_month' => 49900, 'price_year' => 499000,
             'level' => 'base', 'is_public' => true, 'limits' => ['products' => 1, 'storage_mb' => 1, 'emails_month' => 1]]);
 
-        $checkoutUrl = $gateway->startCheckout($tenant, $plan);
+        $checkoutUrl = $gateway->startCheckout($tenant, $plan, BillingInterval::Month);
         $this->assertIsString($checkoutUrl);
         $this->assertNotSame('', $checkoutUrl);
 

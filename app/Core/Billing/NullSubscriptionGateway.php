@@ -3,6 +3,7 @@
 namespace App\Core\Billing;
 
 use App\Core\Billing\Contracts\SubscriptionGateway;
+use App\Core\Billing\Enums\BillingInterval;
 use App\Models\Plan;
 use App\Models\Tenant;
 
@@ -13,7 +14,7 @@ use App\Models\Tenant;
  */
 class NullSubscriptionGateway implements SubscriptionGateway
 {
-    public function startCheckout(Tenant $tenant, Plan $plan): string
+    public function startCheckout(Tenant $tenant, Plan $plan, BillingInterval $interval): string
     {
         return route('admin.subscription.dev-complete', absolute: false);
     }

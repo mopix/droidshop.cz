@@ -11,15 +11,17 @@ const props = defineProps<{
   paidThrough: string | null
   hasSubscription: boolean
   billingProfileComplete: boolean
+  prices: Array<{ interval: 'month' | 'year'; priceAmount: number }>
 }>()
 
 const processing = ref(false)
+const interval = ref<'month' | 'year'>('month')
 
 const money = (h: number) => (h / 100).toLocaleString('cs-CZ', { style: 'currency', currency: 'CZK' })
 
-function post(url: string) {
+function post(url: string, body: Record<string, unknown> = {}) {
   processing.value = true
-  router.post(url, {}, { onFinish: () => (processing.value = false) })
+  router.post(url, body, { onFinish: () => (processing.value = false) })
 }
 </script>
 
@@ -62,13 +64,39 @@ function post(url: string) {
         .
       </p>
 
+      <fieldset
+        v-if="!props.hasSubscription && props.prices.length > 0"
+        class="mt-6 rounded-md border border-gray-200 p-4"
+      >
+        <legend class="px-1 text-sm font-medium text-gray-900">Fakturační období</legend>
+        <div class="mt-2 space-y-2">
+          <label
+            v-for="option in props.prices"
+            :key="option.interval"
+            class="flex cursor-pointer items-center justify-between gap-4 rounded-md border border-gray-200 px-3 py-2 text-sm has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-gray-900"
+          >
+            <span class="flex items-center gap-2">
+              <input
+                v-model="interval"
+                type="radio"
+                name="billing-interval"
+                :value="option.interval"
+                class="h-4 w-4 border-gray-300 text-gray-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-900"
+              />
+              <span class="text-gray-900">{{ option.interval === 'month' ? 'Měsíčně' : 'Ročně' }}</span>
+            </span>
+            <span class="font-medium text-gray-900">{{ money(option.priceAmount) }}</span>
+          </label>
+        </div>
+      </fieldset>
+
       <div class="mt-6 flex justify-end">
         <button
           v-if="!props.hasSubscription"
           type="button"
           :disabled="!props.billingProfileComplete || processing"
           class="rounded-md bg-gray-900 px-4 py-2 text-sm font-semibold text-white hover:bg-gray-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-900 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-gray-400 disabled:text-gray-700"
-          @click="post('/admin/predplatne/checkout')"
+          @click="post('/admin/predplatne/checkout', { interval })"
         >
           Aktivovat předplatné
         </button>

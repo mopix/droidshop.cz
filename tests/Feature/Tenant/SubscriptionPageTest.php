@@ -4,6 +4,8 @@ namespace Tests\Feature\Tenant;
 
 use App\Core\Enums\TenantStatus;
 use App\Models\Domain;
+use App\Models\Plan;
+use App\Models\PlanPrice;
 use App\Models\Tenant;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -50,5 +52,20 @@ class SubscriptionPageTest extends TestCase
 
         $this->get($this->host().'/admin/predplatne')
             ->assertRedirect();
+    }
+
+    public function test_subscription_page_exposes_prices_for_both_intervals(): void
+    {
+        $plan = Plan::factory()->create(['price_month' => 49900]);
+        PlanPrice::create(['plan_id' => $plan->id, 'interval' => 'month', 'stripe_price_id' => 'price_m', 'price_amount' => 49900, 'currency' => 'CZK']);
+        PlanPrice::create(['plan_id' => $plan->id, 'interval' => 'year', 'stripe_price_id' => 'price_y', 'price_amount' => 499000, 'currency' => 'CZK']);
+
+        [, $owner] = $this->ownerOnHost(['status' => TenantStatus::Trial, 'billing_name' => 'Acme', 'plan_id' => $plan->id]);
+
+        $this->actingAs($owner)
+            ->get($this->host().'/admin/predplatne')
+            ->assertInertia(fn ($page) => $page
+                ->component('Tenant/Subscription')
+                ->has('prices', 2));
     }
 }
