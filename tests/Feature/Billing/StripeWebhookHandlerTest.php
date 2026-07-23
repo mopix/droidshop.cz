@@ -2,11 +2,15 @@
 
 namespace Tests\Feature\Billing;
 
+use App\Core\Billing\Enums\BillingInterval;
 use App\Core\Billing\Exceptions\MissingBillingProfile;
 use App\Core\Billing\Models\PlatformInvoice;
 use App\Core\Billing\Models\StripeEvent;
 use App\Core\Billing\StripeWebhookHandler;
+use App\Core\Billing\TenantPlanSwitcher;
 use App\Core\Enums\TenantStatus;
+use App\Core\Modules\ModuleRegistry;
+use App\Models\Module;
 use App\Models\Plan;
 use App\Models\PlanPrice;
 use App\Models\Tenant;
@@ -17,6 +21,15 @@ use Tests\TestCase;
 class StripeWebhookHandlerTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        // Registry results are cached for the kill switch to stay quick;
+        // tests must not read a neighbouring test's registry.
+        config()->set('cache.default', 'array');
+    }
 
     private function stripeEvent(string $type, array $object, string $id = 'evt_1'): Event
     {
@@ -192,5 +205,56 @@ class StripeWebhookHandlerTest extends TestCase
         app(StripeWebhookHandler::class)->handle($this->stripeEvent('customer.updated', ['id' => 'cus_x'], 'evt_unknown'));
 
         $this->assertSame(1, StripeEvent::where('event_id', 'evt_unknown')->count());
+    }
+
+    public function test_subscription_updated_switches_plan_and_reconciles_modules(): void
+    {
+        [$base, $premium, $baseKey, $premiumOnlyKey] = $this->seedPlans();
+        PlanPrice::create(['plan_id' => $premium->id, 'interval' => 'month', 'stripe_price_id' => 'price_prem_m', 'price_amount' => 99900, 'currency' => 'CZK']);
+
+        $tenant = Tenant::factory()->create(['plan_id' => $base->id, 'stripe_customer_id' => 'cus_x']);
+        app(TenantPlanSwitcher::class)->switchTo($tenant, $base, BillingInterval::Month);
+
+        app(StripeWebhookHandler::class)->handle($this->stripeEvent('customer.subscription.updated', [
+            'customer' => 'cus_x',
+            'items' => ['data' => [['price' => ['id' => 'price_prem_m']]]],
+        ], 'evt_upd'));
+
+        $tenant->refresh();
+        $this->assertSame($premium->id, $tenant->plan_id);
+        $this->assertTrue(app(ModuleRegistry::class)->isEnabled($tenant, $premiumOnlyKey));
+    }
+
+    public function test_subscription_updated_for_unknown_price_is_a_no_op(): void
+    {
+        $tenant = Tenant::factory()->create(['stripe_customer_id' => 'cus_x']);
+        $before = $tenant->plan_id;
+
+        app(StripeWebhookHandler::class)->handle($this->stripeEvent('customer.subscription.updated', [
+            'customer' => 'cus_x',
+            'items' => ['data' => [['price' => ['id' => 'price_unknown']]]],
+        ], 'evt_upd2'));
+
+        $this->assertSame($before, $tenant->fresh()->plan_id);
+    }
+
+    /**
+     * Two plans that share one module and differ by exactly one more —
+     * mirrors TenantPlanSwitcherTest::seedPlans().
+     *
+     * @return array{0: Plan, 1: Plan, 2: string, 3: string}
+     */
+    private function seedPlans(): array
+    {
+        $baseModule = Module::factory()->key('base-module')->create();
+        $premiumModule = Module::factory()->key('premium-module')->create();
+
+        $base = Plan::factory()->create();
+        $base->modules()->attach($baseModule->key);
+
+        $premium = Plan::factory()->premium()->create();
+        $premium->modules()->attach([$baseModule->key, $premiumModule->key]);
+
+        return [$base, $premium, $baseModule->key, $premiumModule->key];
     }
 }

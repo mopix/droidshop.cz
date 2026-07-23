@@ -2,6 +2,7 @@
 
 namespace App\Core\Billing;
 
+use App\Core\Billing\Enums\BillingInterval;
 use App\Core\Billing\Models\StripeEvent;
 use App\Core\Billing\Support\SubscriptionCharge;
 use App\Core\Enums\TenantStatus;
@@ -24,6 +25,7 @@ class StripeWebhookHandler
     public function __construct(
         private readonly PlatformInvoiceWriter $writer,
         private readonly TenantContext $context,
+        private readonly TenantPlanSwitcher $switcher,
     ) {}
 
     public function handle(Event $event): void
@@ -47,6 +49,7 @@ class StripeWebhookHandler
                     'invoice.paid' => $this->onInvoicePaid($object),
                     'invoice.payment_failed' => $this->onPaymentFailed($object),
                     'customer.subscription.deleted' => $this->onSubscriptionDeleted($object),
+                    'customer.subscription.updated' => $this->onSubscriptionUpdated($object),
                     default => null,
                 };
             });
@@ -135,6 +138,24 @@ class StripeWebhookHandler
         }
 
         $this->context->runAs($tenant, fn () => $tenant->changeStatus(TenantStatus::Suspended, 'stripe subscription ended'));
+    }
+
+    private function onSubscriptionUpdated(object $subscription): void
+    {
+        $tenant = $this->tenantByCustomer($subscription->customer);
+        if ($tenant === null) {
+            return;
+        }
+
+        $priceId = $subscription->items->data[0]->price->id ?? null;
+        $price = $priceId ? PlanPrice::where('stripe_price_id', $priceId)->first() : null;
+        if ($price === null || $price->plan === null) {
+            return; // unknown price → nothing authoritative to switch to
+        }
+
+        $interval = BillingInterval::tryFrom((string) $price->interval) ?? BillingInterval::Month;
+
+        $this->context->runAs($tenant, fn () => $this->switcher->switchTo($tenant, $price->plan, $interval));
     }
 
     private function tenantByCustomer(string $customerId): ?Tenant
