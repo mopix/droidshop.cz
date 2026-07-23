@@ -3,6 +3,7 @@
 namespace App\Core\Billing;
 
 use App\Core\Billing\Contracts\SubscriptionGateway;
+use App\Core\Billing\Enums\BillingInterval;
 use App\Models\Plan;
 use App\Models\Tenant;
 use RuntimeException;
@@ -18,10 +19,12 @@ class StripeSubscriptionGateway implements SubscriptionGateway
 {
     public function __construct(private readonly StripeClient $stripe) {}
 
-    public function startCheckout(Tenant $tenant, Plan $plan): string
+    public function startCheckout(Tenant $tenant, Plan $plan, BillingInterval $interval): string
     {
-        if (blank($plan->stripe_price_id)) {
-            throw new RuntimeException("Plan {$plan->key} has no stripe_price_id.");
+        $price = $plan->priceFor($interval);
+
+        if ($price === null || blank($price->stripe_price_id)) {
+            throw new RuntimeException("Plan {$plan->key} has no stripe price for interval {$interval->value}.");
         }
 
         $customerId = $this->customerId($tenant);
@@ -29,7 +32,7 @@ class StripeSubscriptionGateway implements SubscriptionGateway
         $session = $this->stripe->checkout->sessions->create([
             'mode' => 'subscription',
             'customer' => $customerId,
-            'line_items' => [['price' => $plan->stripe_price_id, 'quantity' => 1]],
+            'line_items' => [['price' => $price->stripe_price_id, 'quantity' => 1]],
             'metadata' => ['tenant_id' => (string) $tenant->id],
             'subscription_data' => ['metadata' => ['tenant_id' => (string) $tenant->id]],
             'success_url' => route('admin.subscription').'?stav=ok',

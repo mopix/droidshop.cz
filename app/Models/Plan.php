@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Core\Billing\Enums\BillingInterval;
 use App\Core\Enums\PlanLevel;
 use Database\Factories\PlanFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -51,10 +52,10 @@ class Plan extends Model
 
     /**
      * Stripe price row for a billing interval, or null when the plan does not
-     * offer it. Accepts the raw interval string (BillingInterval->value in Task 2).
+     * offer it.
      */
-    public function priceFor(string $interval): ?PlanPrice
+    public function priceFor(BillingInterval $interval): ?PlanPrice
     {
-        return $this->prices()->where('interval', $interval)->first();
+        return $this->prices()->where('interval', $interval->value)->first();
     }
 }
