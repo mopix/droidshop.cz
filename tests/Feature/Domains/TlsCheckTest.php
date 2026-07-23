@@ -21,6 +21,24 @@ class TlsCheckTest extends TestCase
 {
     use RefreshDatabase;
 
+    private const TOKEN = 'test-shared-secret';
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        config()->set('platform.tls_check_token', self::TOKEN);
+    }
+
+    /**
+     * Appends the shared-secret token every passing test needs, the way
+     * Caddy's configured ask URL would.
+     */
+    private function url(string $path): string
+    {
+        return $path.(str_contains($path, '?') ? '&' : '?').'token='.self::TOKEN;
+    }
+
     public function test_verified_custom_domain_of_active_tenant_is_allowed(): void
     {
         $tenant = Tenant::factory()->create(['status' => TenantStatus::Active]);
@@ -28,7 +46,7 @@ class TlsCheckTest extends TestCase
             'verified_at' => now(),
         ]);
 
-        $this->get('/internal/tls-check?domain=shop.example.cz')->assertOk();
+        $this->get($this->url('/internal/tls-check?domain=shop.example.cz'))->assertOk();
     }
 
     public function test_verified_custom_domain_of_trial_tenant_is_allowed(): void
@@ -38,7 +56,7 @@ class TlsCheckTest extends TestCase
             'verified_at' => now(),
         ]);
 
-        $this->get('/internal/tls-check?domain=shop.example.cz')->assertOk();
+        $this->get($this->url('/internal/tls-check?domain=shop.example.cz'))->assertOk();
     }
 
     public function test_verified_custom_domain_of_past_due_tenant_is_allowed(): void
@@ -48,7 +66,7 @@ class TlsCheckTest extends TestCase
             'verified_at' => now(),
         ]);
 
-        $this->get('/internal/tls-check?domain=shop.example.cz')->assertOk();
+        $this->get($this->url('/internal/tls-check?domain=shop.example.cz'))->assertOk();
     }
 
     public function test_unverified_custom_domain_is_denied(): void
@@ -58,12 +76,12 @@ class TlsCheckTest extends TestCase
             'verified_at' => null,
         ]);
 
-        $this->get('/internal/tls-check?domain=shop.example.cz')->assertNotFound();
+        $this->get($this->url('/internal/tls-check?domain=shop.example.cz'))->assertNotFound();
     }
 
     public function test_unknown_domain_is_denied(): void
     {
-        $this->get('/internal/tls-check?domain=nowhere.example.cz')->assertNotFound();
+        $this->get($this->url('/internal/tls-check?domain=nowhere.example.cz'))->assertNotFound();
     }
 
     public function test_suspended_tenant_is_denied(): void
@@ -73,7 +91,7 @@ class TlsCheckTest extends TestCase
             'verified_at' => now(),
         ]);
 
-        $this->get('/internal/tls-check?domain=shop.example.cz')->assertNotFound();
+        $this->get($this->url('/internal/tls-check?domain=shop.example.cz'))->assertNotFound();
     }
 
     public function test_pending_deletion_tenant_is_denied(): void
@@ -83,7 +101,7 @@ class TlsCheckTest extends TestCase
             'verified_at' => now(),
         ]);
 
-        $this->get('/internal/tls-check?domain=shop.example.cz')->assertNotFound();
+        $this->get($this->url('/internal/tls-check?domain=shop.example.cz'))->assertNotFound();
     }
 
     public function test_deleted_tenant_is_denied(): void
@@ -93,7 +111,7 @@ class TlsCheckTest extends TestCase
             'verified_at' => now(),
         ]);
 
-        $this->get('/internal/tls-check?domain=shop.example.cz')->assertNotFound();
+        $this->get($this->url('/internal/tls-check?domain=shop.example.cz'))->assertNotFound();
     }
 
     public function test_subdomain_is_denied_even_though_it_resolves_fine(): void
@@ -107,12 +125,12 @@ class TlsCheckTest extends TestCase
             'type' => DomainType::Subdomain,
         ]);
 
-        $this->get('/internal/tls-check?domain='.$host)->assertNotFound();
+        $this->get($this->url('/internal/tls-check?domain='.$host))->assertNotFound();
     }
 
     public function test_missing_domain_query_param_is_denied(): void
     {
-        $this->get('/internal/tls-check')->assertNotFound();
+        $this->get($this->url('/internal/tls-check'))->assertNotFound();
     }
 
     public function test_domain_query_param_is_matched_case_insensitively(): void
@@ -122,7 +140,7 @@ class TlsCheckTest extends TestCase
             'verified_at' => now(),
         ]);
 
-        $this->get('/internal/tls-check?domain=SHOP.EXAMPLE.CZ')->assertOk();
+        $this->get($this->url('/internal/tls-check?domain=SHOP.EXAMPLE.CZ'))->assertOk();
     }
 
     public function test_request_from_non_localhost_ip_is_denied(): void
@@ -132,7 +150,7 @@ class TlsCheckTest extends TestCase
             'verified_at' => now(),
         ]);
 
-        $this->get('/internal/tls-check?domain=shop.example.cz', [
+        $this->get($this->url('/internal/tls-check?domain=shop.example.cz'), [
             'REMOTE_ADDR' => '203.0.113.5',
         ])->assertNotFound();
     }
@@ -144,7 +162,7 @@ class TlsCheckTest extends TestCase
             'verified_at' => now(),
         ]);
 
-        $this->get('/internal/tls-check?domain=shop.example.cz', [
+        $this->get($this->url('/internal/tls-check?domain=shop.example.cz'), [
             'REMOTE_ADDR' => '127.0.0.1',
         ])->assertOk();
     }
@@ -156,7 +174,7 @@ class TlsCheckTest extends TestCase
             'verified_at' => now(),
         ]);
 
-        $this->get('/internal/tls-check?domain=shop.example.cz', [
+        $this->get($this->url('/internal/tls-check?domain=shop.example.cz'), [
             'REMOTE_ADDR' => '::1',
         ])->assertOk();
     }
@@ -168,13 +186,45 @@ class TlsCheckTest extends TestCase
             'verified_at' => now(),
         ]);
 
-        $this->get('/internal/tls-check?domain=shop.example.cz')->assertOk();
+        $this->get($this->url('/internal/tls-check?domain=shop.example.cz'))->assertOk();
 
         DB::enableQueryLog();
-        $this->get('/internal/tls-check?domain=shop.example.cz')->assertOk();
+        $this->get($this->url('/internal/tls-check?domain=shop.example.cz'))->assertOk();
         $queries = DB::getQueryLog();
         DB::disableQueryLog();
 
         $this->assertCount(0, $queries);
+    }
+
+    public function test_missing_token_is_denied_even_for_an_otherwise_valid_domain(): void
+    {
+        $tenant = Tenant::factory()->create(['status' => TenantStatus::Active]);
+        Domain::factory()->for($tenant)->custom('shop.example.cz')->create([
+            'verified_at' => now(),
+        ]);
+
+        $this->get('/internal/tls-check?domain=shop.example.cz')->assertNotFound();
+    }
+
+    public function test_wrong_token_is_denied_even_for_an_otherwise_valid_domain(): void
+    {
+        $tenant = Tenant::factory()->create(['status' => TenantStatus::Active]);
+        Domain::factory()->for($tenant)->custom('shop.example.cz')->create([
+            'verified_at' => now(),
+        ]);
+
+        $this->get('/internal/tls-check?domain=shop.example.cz&token=wrong-secret')->assertNotFound();
+    }
+
+    public function test_unconfigured_token_denies_every_request(): void
+    {
+        config()->set('platform.tls_check_token', null);
+
+        $tenant = Tenant::factory()->create(['status' => TenantStatus::Active]);
+        Domain::factory()->for($tenant)->custom('shop.example.cz')->create([
+            'verified_at' => now(),
+        ]);
+
+        $this->get('/internal/tls-check?domain=shop.example.cz&token='.self::TOKEN)->assertNotFound();
     }
 }

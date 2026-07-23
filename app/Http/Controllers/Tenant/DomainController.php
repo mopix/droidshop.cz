@@ -10,10 +10,12 @@ use App\Core\Services\AuditLog;
 use App\Core\Tenancy\DomainTenantFinder;
 use App\Core\Tenancy\TenantContext;
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\Internal\TlsCheckController;
 use App\Http\Requests\Tenant\AddCustomDomainRequest;
 use App\Models\Domain;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -93,6 +95,7 @@ class DomainController extends Controller
 
     public function verify(): RedirectResponse
     {
+        $tenant = $this->context->current();
         $domain = $this->customDomain();
 
         if ($domain === null) {
@@ -108,7 +111,11 @@ class DomainController extends Controller
             // make this button a no-op.
             $domain->ssl_status = SslStatus::Pending;
             $domain->verification_error = null;
-            $domain->save();
+
+            $this->context->runAs($tenant, function () use ($domain): void {
+                $domain->save();
+                $this->audit->log('domain.cert_recheck', $domain, ['domain' => $domain->domain]);
+            });
 
             $this->probe->probe($domain);
         }
@@ -157,6 +164,12 @@ class DomainController extends Controller
         $removedHost = $domain->domain;
 
         $domain->delete();
+
+        // The tls-check ask endpoint (Caddy's on-demand TLS) caches its
+        // issuable answer under this key for tls_check_ttl seconds; a
+        // removed domain must stop being issuable immediately, not after
+        // the cache happens to expire.
+        Cache::forget(TlsCheckController::cacheKey($removedHost));
 
         $this->context->runAs($tenant, function () use ($removedHost): void {
             $this->audit->log('domain.removed', null, ['domain' => $removedHost]);

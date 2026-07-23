@@ -6,10 +6,12 @@ use App\Core\Domains\Contracts\DnsChecker;
 use App\Core\Enums\DomainType;
 use App\Core\Enums\SslStatus;
 use App\Core\Enums\TenantStatus;
+use App\Http\Controllers\Internal\TlsCheckController;
 use App\Models\Domain;
 use App\Models\Tenant;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\Support\FakeDnsChecker;
@@ -163,6 +165,12 @@ class DomainControllerTest extends TestCase
         $custom->refresh();
         $this->assertSame(SslStatus::Issued, $custom->ssl_status);
         $this->assertNull($custom->verification_error);
+
+        $this->assertDatabaseHas('audit_log', [
+            'action' => 'domain.cert_recheck',
+            'tenant_id' => $tenant->id,
+            'subject_id' => $custom->id,
+        ]);
     }
 
     public function test_owner_can_remove_the_custom_domain_and_restores_the_subdomain_as_primary(): void
@@ -187,6 +195,25 @@ class DomainControllerTest extends TestCase
             'action' => 'domain.removed',
             'tenant_id' => $tenant->id,
         ]);
+    }
+
+    public function test_removing_the_custom_domain_invalidates_the_tls_check_cache(): void
+    {
+        [$tenant, $owner] = $this->ownerOnHost();
+        $custom = Domain::factory()->for($tenant, 'tenant')->custom('muj-eshop.cz')->create([
+            'ssl_status' => SslStatus::Issued,
+            'verified_at' => now(),
+        ]);
+
+        // Simulate a prior "yes, issuable" answer sitting in the tls-check
+        // cache, the way a real Caddy ask would have populated it.
+        Cache::put(TlsCheckController::cacheKey('muj-eshop.cz'), true, 60);
+
+        $this->actingAs($owner)
+            ->delete($this->host().'/admin/nastaveni/domena')
+            ->assertRedirect();
+
+        $this->assertFalse(Cache::has(TlsCheckController::cacheKey('muj-eshop.cz')));
     }
 
     public function test_guest_cannot_access(): void

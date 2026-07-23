@@ -44,4 +44,16 @@ return [
      * cache — how long Caddy trusts a positive answer before asking again.
      */
     'tls_check_ttl' => 60,
+
+    /*
+     * Shared secret Caddy must present (as ?token=) when calling the
+     * on-demand TLS "ask" endpoint. The `internal.local` middleware alone is
+     * not sufficient: when Caddy reverse-proxies to the app on the same
+     * host, REMOTE_ADDR is 127.0.0.1 for every request it forwards,
+     * including public storefront traffic — the localhost check cannot tell
+     * Caddy's own ask call from a request a stranger routed through the
+     * proxy. A null/empty token always denies (fail closed), so this must
+     * be set before on-demand TLS works in any environment.
+     */
+    'tls_check_token' => env('PLATFORM_TLS_CHECK_TOKEN'),
 ];
