@@ -97,6 +97,44 @@ class SweepPendingDomainsTest extends TestCase
         $this->assertNotNull($fresh->last_checked_at);
     }
 
+    /**
+     * created_at never changes, so without excluding already-timed-out rows
+     * from the Group A query the timeout branch would keep re-firing every
+     * backoff window forever, rewriting the row and appending a fresh
+     * domain.verification_timeout audit entry each time (2026-07-23 review
+     * finding). The timeout must fire exactly once per domain.
+     */
+    public function test_already_timed_out_domain_is_not_reprocessed_by_a_later_sweep(): void
+    {
+        $ttlHours = (int) config('platform.pending_ttl_hours');
+        $backoffMinutes = (int) config('platform.dns_backoff_minutes');
+
+        $tenant = Tenant::factory()->create();
+        $domain = Domain::factory()->for($tenant)->custom('shop.example.cz')->create([
+            'challenge_token' => 'abc123token',
+            'verified_at' => null,
+            'last_checked_at' => null,
+            'created_at' => now()->subHours($ttlHours + 1),
+        ]);
+
+        $this->artisan('domains:sweep-pending')->assertSuccessful();
+
+        $timedOut = $domain->fresh();
+        $this->assertSame(SslStatus::Error, $timedOut->ssl_status);
+        $this->assertDatabaseCount('audit_log', 1);
+
+        // Move well past the backoff window so the row would be eligible
+        // again on backoff grounds alone — only the timed-out exclusion
+        // should keep it out of Group A now.
+        $this->travel($backoffMinutes + 5)->minutes();
+
+        $this->artisan('domains:sweep-pending')->assertSuccessful();
+
+        $untouched = $domain->fresh();
+        $this->assertTrue($untouched->last_checked_at->equalTo($timedOut->last_checked_at));
+        $this->assertDatabaseCount('audit_log', 1);
+    }
+
     public function test_recently_checked_pending_domain_is_skipped_by_backoff(): void
     {
         $tenant = Tenant::factory()->create();

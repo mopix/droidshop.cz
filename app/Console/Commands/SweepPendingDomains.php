@@ -24,7 +24,11 @@ use Spatie\Multitenancy\Jobs\NotTenantAware;
  * - Group A (ownership): unverified domains, including ones stuck in a
  *   verification error — DNS errors are transient (the tenant may fix their
  *   zone at any time) and are auto-retried here rather than requiring a
- *   manual "check now".
+ *   manual "check now". A domain that has already timed out (expired past
+ *   pending_ttl_hours and been flipped to Error) is excluded: created_at
+ *   never changes, so without this exclusion the timeout write below would
+ *   fire again every backoff window forever, for any abandoned domain
+ *   nobody cleans up. The timeout fires exactly once per domain.
  * - Group B (certificate): verified domains still waiting on Caddy to issue
  *   a cert. A cert ssl_status=Error is terminal (attempts exhausted) and
  *   deliberately excluded — DomainCertProbe already retried
@@ -46,17 +50,24 @@ class SweepPendingDomains extends Command implements NotTenantAware
         $backoffMinutes = (int) config('platform.dns_backoff_minutes');
         $ttlHours = (int) config('platform.pending_ttl_hours');
         $backoffCutoff = now()->subMinutes($backoffMinutes);
+        $ttlCutoff = now()->subHours($ttlHours);
 
         Domain::query()
+            ->with('tenant')
             ->where('type', DomainType::Custom)
             ->whereNull('verified_at')
             ->where(function ($query) use ($backoffCutoff): void {
                 $query->whereNull('last_checked_at')
                     ->orWhere('last_checked_at', '<', $backoffCutoff);
             })
+            // Already timed out (see class docblock) -> excluded, not reprocessed.
+            ->where(function ($query) use ($ttlCutoff): void {
+                $query->where('created_at', '>', $ttlCutoff)
+                    ->orWhere('ssl_status', '!=', SslStatus::Error);
+            })
             ->get()
-            ->each(function (Domain $domain) use ($verifier, $context, $audit, $ttlHours): void {
-                $expired = $domain->created_at <= now()->subHours($ttlHours);
+            ->each(function (Domain $domain) use ($verifier, $context, $audit, $ttlCutoff): void {
+                $expired = $domain->created_at <= $ttlCutoff;
 
                 if ($expired) {
                     $domain->ssl_status = SslStatus::Error;
@@ -75,6 +86,7 @@ class SweepPendingDomains extends Command implements NotTenantAware
             });
 
         Domain::query()
+            ->with('tenant')
             ->where('type', DomainType::Custom)
             ->whereNotNull('verified_at')
             ->where('ssl_status', SslStatus::Pending)
