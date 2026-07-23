@@ -86,10 +86,13 @@ class StripeWebhookHandler
         $from = $period ? Carbon::createFromTimestamp($period->start) : now()->startOfMonth();
         $to = $period ? Carbon::createFromTimestamp($period->end) : now()->endOfMonth();
 
-        $this->context->runAs($tenant, function () use ($tenant, $from, $to): void {
-            // Issue our tax document (idempotent per period), then activate and
-            // extend paid-through. Order matters only for audit context.
-            $this->writer->issue(new SubscriptionCharge($tenant, $tenant->plan, $from, $to));
+        $this->context->runAs($tenant, function () use ($tenant, $invoice, $from, $to): void {
+            // Issue our tax document (idempotent per Stripe invoice id), then
+            // activate and extend paid-through. Order matters only for audit
+            // context. Amount source and zero-amount guard are task 6.
+            $stripeInvoiceId = (string) ($invoice->id ?? '');
+            $grossTotal = (int) ($invoice->amount_paid ?? $tenant->plan->price_month);
+            $this->writer->issue(new SubscriptionCharge($tenant, $tenant->plan, $from, $to, $stripeInvoiceId, $grossTotal));
 
             if ($tenant->status !== TenantStatus::Active) {
                 $tenant->changeStatus(TenantStatus::Active, 'stripe invoice paid');

@@ -18,5 +18,7 @@ final class SubscriptionCharge
         public readonly Plan $plan,
         public readonly Carbon $periodFrom,
         public readonly Carbon $periodTo,
+        public readonly string $stripeInvoiceId,
+        public readonly int $grossTotal,
     ) {}
 }
