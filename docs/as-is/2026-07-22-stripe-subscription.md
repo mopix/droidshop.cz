@@ -38,7 +38,7 @@ aktivaci teď spouští výhradně webhook po skutečném zaplacení.
 - `app/Http/Controllers/Tenant/SubscriptionController.php` (`show`/`checkout`/`portal`/`devComplete`) + `routes/tenant.php`: `/admin/predplatne`, `/admin/predplatne/checkout`, `/admin/predplatne/portal`, `/admin/predplatne/dev-dokonceni`. `checkout` guarduje na kompletní fakturační profil (`billing_name`) → jinak redirect na `/admin/nastaveni/fakturace`. `devComplete` je jen na `null` driveru (`abort_unless` 404 jinak) a guarduje proti nelegální reaktivaci (`TenantStatus::canTransitionTo`).
 - `resources/js/Pages/Tenant/Subscription.vue` — stav, plán, cena, paid-through, tlačítka Checkout/Portal.
 - `app/Http/Middleware/HandleInertiaRequests.php` — sdílené propy `trialDaysLeft` a `subscriptionActive` (trial banner v `AdminLayout.vue`).
-- `app/Http/Middleware/CheckTenantStatus.php` — rozlišuje admin routy od storefrontu (`TenantStatus::allowsAdminRead()` vs `allowsStorefront()`): suspendovaný nájemce dál vidí read-only admin (aktivovat předplatné, stáhnout data), storefront je dole. Vedlejší fix bundlovaný s `devComplete` guardem (dokončuje háček z vlny 0.1).
+- `app/Http/Middleware/CheckTenantStatus.php` — rozlišuje admin routy od storefrontu: `allowsAdminRead()` (jen `Deleted` blokuje read) + **write-freeze** `allowsAdminWrite()` (Suspended/PendingDeletion nesmí mutovat — nebezpečné metody POST/PATCH/DELETE → 503), s výjimkou `admin.subscription.checkout`/`admin.subscription.portal` (aby se suspendovaný nájemce mohl zaplatit zpět). Suspendovaný nájemce vidí read-only admin (stáhnout data), storefront je dole. Read-gate split se původně svezl s `devComplete` guardem, write-freeze doplněn ve final-review fixu (`e2331fc`).
 
 ### Superadmin
 - Manuální „Aktivovat předplatné" (`TenantController::activateSubscription`, dialog v `Show.vue`) **retirováno**. `Show.vue` teď zobrazuje read-only blok: stav, `stripe_subscription_id`, placeno do. `app/Core/Platform/TenantOverview.php` přidává `paid_through`/`stripe_customer_id`/`stripe_subscription_id` do snímku (žádná tajemství — jen id).
@@ -98,7 +98,14 @@ superadmin blok (žádný leak Stripe secretu, jen id).
 
 1. **Webhook endpoint je `POST /superadmin/stripe/webhook`, ne `/platform/stripe/webhook`** jak psal návrh spec. Sedí do existující `routes/platform.php` konvence (`/superadmin/*` prefix pro všechny netenantové platformní routy, `platform.host` middleware) — nová `/platform/*` skupina by byla druhý vzor pro totéž.
 2. **Paid-through reuse `trial_ends_at`, ne nový `paid_through_at` sloupec.** Spec nechávala rozhodnutí na plánu. `Tenant::status` + `trial_ends_at` páru dohromady nese „do kdy platí" bez ohledu na to, jestli je to ještě trial nebo už placené období — stejné pole čte trial banner (1.7) i tenant-facing i superadmin subscription screen. Riziko: název pole je matoucí pro čtenáře kódu mimo kontext (`trial_ends_at` u aktivního plateného tenanta). Zmíněno jako otevřený háček ve spec i v CLAUDE.md.
-3. **`CheckTenantStatus` middleware rozšířen o admin/storefront rozlišení** (`allowsAdminRead()`) v rámci commitu opravujícího `devComplete` guard — nebylo explicitně v zadání Tasku 6, ale dokončuje otevřený TODO z vlny 0.1 („admin routes get their own read-only gate... once the admin exists") a bylo nutné pro smysluplné chování suspendovaného nájemce v adminu (čte read-only, nemůže nakupovat/prodávat). Zdokumentováno zde, ne jako samostatná vlna.
+3. **`CheckTenantStatus` middleware rozšířen o admin/storefront rozlišení + write-freeze** — dokončuje otevřený TODO z vlny 0.1 („admin routes get their own read-only gate... once the admin exists"). Read-gate split (`allowsAdminRead()`) se svezl s `devComplete` guardem (Task 6 fix); **write-freeze** (`allowsAdminWrite()` blokuje mutující metody pro Suspended/PendingDeletion, výjimka checkout/portal) doplněn ve final-review fixu — final review odhalil, že read-gate bez write-gate otevřel suspendovaným nájemcům zápis v adminu. Zdokumentováno zde, ne jako samostatná vlna.
+
+### Fast-follows (ne blockery, do další vlny)
+- PDF faktury se renderuje uvnitř webhook claim transakce — regres 1.7 vlastnosti „PDF best-effort po commitu"; přesunout na `DB::afterCommit`/queue job (idempotence zachována, jen drží transakci přes IO).
+- `devComplete` (GET, dev-only/null driver) obchází verb-based write-freeze — neškodné (guarded), ale pokud má být freeze verb-agnostický, dořešit.
+- 4 test-aserce k doplnění (blocked-checkout error bag, portal-config URL, bad-sig no-mutation, plan->key v exception).
+- `Subscription.vue` bez odkazu na `/admin/predplatne/faktury`.
+- Reálné Stripe volání neověřeno bez test-mode klíčů — deploy smoke test.
 4. **`billingPortalUrl` a `startCheckout` nejsou ověřeny proti živému Stripe API** — bez test-mode klíčů v tomto prostředí. SDK volání jsou správná dle Stripe PHP API (ověřeno ze znalosti API tvaru, ne behaviorálním testem proti Stripe serveru).
 
 ## Technický dluh a pre-deploy checklist
