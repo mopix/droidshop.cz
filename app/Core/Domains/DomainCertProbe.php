@@ -9,6 +9,7 @@ use App\Core\Tenancy\DomainTenantFinder;
 use App\Core\Tenancy\TenantContext;
 use App\Models\Domain;
 use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 
 /**
@@ -48,14 +49,26 @@ class DomainCertProbe
             $domain->ssl_status = SslStatus::Issued;
             $domain->verification_error = null;
 
-            $this->context->runAs($domain->tenant, function () use ($domain): void {
-                $domain->save();
-                $this->audit->log('domain.cert_issued', $domain, ['domain' => $domain->domain]);
+            // The issued flip and the canonical-host promotion are one unit
+            // of work: the top-of-probe guard above never re-probes a
+            // domain once ssl_status is Issued, so a promote() that threw
+            // *after* an already-committed Issued flip would leave the
+            // domain issued-but-not-primary forever, with no retry path.
+            // Wrapping both in a transaction means a promote() failure (DB
+            // blip, deadlock) rolls the flip back too, so the next probe
+            // attempt sees the domain still Pending and tries again clean.
+            // promote() opening its own nested transaction is fine —
+            // Laravel turns that into a savepoint.
+            DB::transaction(function () use ($domain): void {
+                $this->context->runAs($domain->tenant, function () use ($domain): void {
+                    $domain->save();
+                    $this->audit->log('domain.cert_issued', $domain, ['domain' => $domain->domain]);
+                });
+
+                $this->canonical->promote($domain);
             });
 
             $this->finder->forget($domain->domain);
-
-            $this->canonical->promote($domain);
 
             return;
         }

@@ -103,4 +103,16 @@ class CanonicalRedirectTest extends TestCase
         $response->assertStatus(200);
         $response->assertSee('ok');
     }
+
+    public function test_platform_host_request_is_not_redirected(): void
+    {
+        // No tenant exists at all here, and the request never resolves one
+        // (the platform apex is not a tenant host): TenantContext::current()
+        // is null, so the middleware must pass straight through rather than
+        // dereference a tenant that isn't there.
+        $response = $this->get('http://droidshop/produkt/mycka');
+
+        $response->assertStatus(200);
+        $response->assertSee('product:mycka');
+    }
 }

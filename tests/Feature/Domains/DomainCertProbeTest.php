@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Domains;
 
+use App\Core\Domains\CanonicalDomain;
 use App\Core\Domains\DomainCertProbe;
 use App\Core\Domains\Jobs\ProbeDomainCertJob;
 use App\Core\Enums\SslStatus;
@@ -11,6 +12,8 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
+use Mockery;
+use RuntimeException;
 use Tests\TestCase;
 
 /**
@@ -80,8 +83,39 @@ class DomainCertProbeTest extends TestCase
 
         $this->probe->probe($domain);
 
-        $this->assertTrue($domain->fresh()->is_primary);
+        $fresh = $domain->fresh();
+        $this->assertSame(SslStatus::Issued, $fresh->ssl_status);
+        $this->assertTrue($fresh->is_primary);
         $this->assertFalse($subdomain->fresh()->is_primary);
+    }
+
+    public function test_promote_failure_rolls_back_the_issued_transition(): void
+    {
+        // The issued flip and the canonical-host promotion are one unit of
+        // work (2026-07-23 fix): if promote() throws, the flip must not
+        // survive — the top-of-probe guard would otherwise never let a
+        // stuck issued-but-not-primary domain be re-probed.
+        $canonical = Mockery::mock(CanonicalDomain::class);
+        $canonical->shouldReceive('promote')->once()->andThrow(new RuntimeException('db blip'));
+        $this->app->instance(CanonicalDomain::class, $canonical);
+
+        $probe = $this->app->make(DomainCertProbe::class);
+
+        $domain = $this->verifiedDomain(['is_primary' => false]);
+
+        Http::fake([
+            'https://shop.example.cz/up' => Http::response('', 200),
+        ]);
+
+        $this->expectException(RuntimeException::class);
+
+        try {
+            $probe->probe($domain);
+        } finally {
+            $fresh = $domain->fresh();
+            $this->assertSame(SslStatus::Pending, $fresh->ssl_status);
+            $this->assertFalse($fresh->is_primary);
+        }
     }
 
     public function test_failed_probe_below_max_attempts_stays_pending_and_schedules_retry(): void

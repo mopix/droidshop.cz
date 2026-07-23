@@ -41,6 +41,16 @@ class CanonicalDomain
             return;
         }
 
+        if ($custom->is_primary && ! $this->hasAnotherPrimary($custom)) {
+            // Already the tenant's one and only primary domain: a repeat
+            // call (e.g. a cert re-probe on an already-issued/-promoted
+            // domain) has nothing to change. Returning here avoids a
+            // redundant "demote everyone else" UPDATE and a
+            // domain.promoted audit entry that would misleadingly suggest
+            // something happened.
+            return;
+        }
+
         $previousPrimary = Domain::query()
             ->where('tenant_id', $custom->tenant_id)
             ->where('is_primary', true)
@@ -93,5 +103,14 @@ class CanonicalDomain
             ->where('tenant_id', $tenant->id)
             ->where('is_primary', true)
             ->first();
+    }
+
+    private function hasAnotherPrimary(Domain $custom): bool
+    {
+        return Domain::query()
+            ->where('tenant_id', $custom->tenant_id)
+            ->where('id', '!=', $custom->id)
+            ->where('is_primary', true)
+            ->exists();
     }
 }

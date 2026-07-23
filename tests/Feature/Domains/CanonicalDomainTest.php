@@ -111,10 +111,10 @@ class CanonicalDomainTest extends TestCase
         $tenant = Tenant::factory()->create();
         $subdomain = Domain::factory()->for($tenant)->create([
             'domain' => 'shop.'.config('tenancy.platform_domain', 'droidshop'),
-            'is_primary' => false,
+            'is_primary' => true,
         ]);
         $custom = Domain::factory()->for($tenant)->custom('shop.example.cz')->create([
-            'is_primary' => true,
+            'is_primary' => false,
             'ssl_status' => SslStatus::Issued,
         ]);
 
@@ -124,6 +124,11 @@ class CanonicalDomainTest extends TestCase
         $this->assertSame(1, Domain::query()->where('tenant_id', $tenant->id)->where('is_primary', true)->count());
         $this->assertTrue($custom->fresh()->is_primary);
         $this->assertFalse($subdomain->fresh()->is_primary);
+
+        // A repeat call once the custom domain is the tenant's one and only
+        // primary is a true no-op: no second audit entry pretending a
+        // promotion happened again.
+        $this->assertSame(1, AuditLogEntry::where('action', 'domain.promoted')->count());
     }
 
     public function test_promote_forgets_the_finder_cache_for_the_custom_and_previous_primary_host(): void
