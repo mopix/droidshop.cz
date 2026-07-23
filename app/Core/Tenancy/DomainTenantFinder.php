@@ -2,6 +2,7 @@
 
 namespace App\Core\Tenancy;
 
+use App\Core\Enums\DomainType;
 use App\Models\Domain;
 use App\Models\Tenant;
 use Illuminate\Support\Facades\Cache;
@@ -31,7 +32,16 @@ class DomainTenantFinder
         $tenantId = Cache::remember(
             $this->cacheKey($host),
             config('tenancy.domain_cache_ttl', 300),
-            fn () => Domain::query()->where('domain', $host)->value('tenant_id')
+            // Subdomains are ours from provisioning and resolve unconditionally.
+            // Custom domains only resolve once ownership is proven — an
+            // unverified one could belong to anyone (spec §4.3 / wave 2.1).
+            fn () => Domain::query()
+                ->where('domain', $host)
+                ->where(function ($query) {
+                    $query->where('type', DomainType::Subdomain)
+                        ->orWhereNotNull('verified_at');
+                })
+                ->value('tenant_id')
         );
 
         if ($tenantId === null) {

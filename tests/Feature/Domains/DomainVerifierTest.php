@@ -5,7 +5,6 @@ namespace Tests\Feature\Domains;
 use App\Core\Domains\Contracts\DnsChecker;
 use App\Core\Domains\DomainVerifier;
 use App\Core\Enums\SslStatus;
-use App\Core\Tenancy\DomainTenantFinder;
 use App\Models\Domain;
 use App\Models\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -199,16 +198,23 @@ class DomainVerifierTest extends TestCase
             'challenge_token' => 'abc123token',
         ]);
 
-        $finder = $this->app->make(DomainTenantFinder::class);
-        $finder->find($domain->domain);
-        $this->assertTrue(Cache::has('tenancy:domain:'.$domain->domain));
+        // Since wave 2.1, DomainTenantFinder::find() legitimately caches null
+        // for an unverified custom domain, and Laravel's Cache::remember()
+        // re-runs the callback whenever the stored value is null — so a real
+        // find() call here would never leave a persistent cache entry to
+        // forget. Seed the entry directly to prove verify() invalidates it
+        // regardless of how it got there (e.g. a stale value from before
+        // this domain was re-pointed at another tenant).
+        $cacheKey = 'tenancy:domain:'.$domain->domain;
+        Cache::put($cacheKey, $tenant->id, 300);
+        $this->assertTrue(Cache::has($cacheKey));
 
         $this->dns->setTxt($this->challengeHost($domain), ['abc123token']);
         $this->dns->setCname($domain->domain, 'tenant-42.'.config('platform.edge_host'));
 
         $this->verifier->verify($domain);
 
-        $this->assertFalse(Cache::has('tenancy:domain:'.$domain->domain));
+        $this->assertFalse(Cache::has($cacheKey));
     }
 
     public function test_subdomain_is_never_dns_verified(): void
