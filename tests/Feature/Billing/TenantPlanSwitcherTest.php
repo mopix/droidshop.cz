@@ -122,6 +122,32 @@ class TenantPlanSwitcherTest extends TestCase
         $this->assertSame($base->id, $tenant->fresh()->plan_id);
     }
 
+    public function test_switch_to_skips_a_plan_module_that_is_globally_killed_instead_of_throwing(): void
+    {
+        // Risk B (re-review): a module can still be plan-assigned (in
+        // plan_modules) after superadmin globally kill-switches it
+        // (Module::enabled_globally = false). It then disappears from
+        // ModuleRegistry::available() but NOT from $newPlan->modules(), so
+        // the naive diff (newPlanKeys - enabledKeys) would still try to
+        // activate it and ModuleRegistry::activate() throws
+        // UnresolvableDependencies — inside StripeWebhookHandler's single
+        // DB::transaction, that throw would roll back the idempotency claim
+        // too and Stripe would retry the webhook forever.
+        $baseModule = Module::factory()->key('base-module')->create();
+        $killedModule = Module::factory()->key('killed-module')->killed()->create();
+
+        $plan = Plan::factory()->create();
+        $plan->modules()->attach([$baseModule->key, $killedModule->key]);
+
+        $tenant = Tenant::factory()->create(['plan_id' => $plan->id]);
+        $registry = app(ModuleRegistry::class);
+
+        app(TenantPlanSwitcher::class)->switchTo($tenant->fresh(), $plan, BillingInterval::Month);
+
+        $this->assertTrue($registry->isEnabled($tenant->fresh(), $baseModule->key));
+        $this->assertFalse($registry->isEnabled($tenant->fresh(), $killedModule->key));
+    }
+
     /**
      * Two plans that share one module and differ by exactly one more: base
      * has "base-module", premium has "base-module" + "premium-module". Both

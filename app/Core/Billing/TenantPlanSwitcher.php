@@ -48,7 +48,18 @@ class TenantPlanSwitcher
         // plan_modules) — critical so deactivation never targets a core module.
         $planCatalogKeys = DB::table('plan_modules')->distinct()->pluck('module_key')->all();
 
-        foreach (array_diff($newKeys, $enabledKeys) as $key) {
+        // Risk B (re-review): a plan-assigned module can be globally
+        // kill-switched (Module::enabled_globally = false) by superadmin. It
+        // is still returned by $newPlan->modules() but ModuleRegistry::activate()
+        // guards on available() (registered + not killed) and throws
+        // UnresolvableDependencies for anything outside it. That throw would
+        // bubble out of the single DB::transaction StripeWebhookHandler runs
+        // this in — including the stripe_events idempotency claim — causing
+        // Stripe to redeliver the webhook forever. A killed module simply
+        // stays inactive here; it is restored once superadmin un-kills it.
+        $availableKeys = $this->registry->available()->keys()->all();
+
+        foreach (array_intersect(array_diff($newKeys, $enabledKeys), $availableKeys) as $key) {
             $this->registry->activate($tenant, $key);
         }
 
