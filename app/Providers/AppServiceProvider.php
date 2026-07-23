@@ -12,6 +12,8 @@ use App\Core\Documents\Contracts\DocumentLedger;
 use App\Core\Documents\NullDocumentBook;
 use App\Core\Documents\NullDocumentIssuer;
 use App\Core\Documents\NullDocumentLedger;
+use App\Core\Domains\Contracts\DnsChecker;
+use App\Core\Domains\SystemDnsChecker;
 use App\Core\Limits\LimitsService;
 use App\Core\Mail\Contracts\MailService;
 use App\Core\Mail\MailLimitCounter;
@@ -109,6 +111,14 @@ class AppServiceProvider extends ServiceProvider
         // like DocumentBook: an empty Collection, never a throw.
         // Modules\Docs\Providers\ModuleProvider overwrites it.
         $this->app->bind(DocumentLedger::class, NullDocumentLedger::class);
+
+        // The default DnsChecker is the real resolver. Domain verification
+        // tests swap in Tests\Support\FakeDnsChecker via
+        // $this->app->instance(DnsChecker::class, $fake) so lookups stay
+        // deterministic — this binding is never overwritten by a module
+        // provider (there is no null/module variant, unlike the contracts
+        // above).
+        $this->app->bind(DnsChecker::class, SystemDnsChecker::class);
     }
 
     /**
