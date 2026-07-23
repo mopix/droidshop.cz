@@ -144,6 +144,29 @@ class DomainVerifierTest extends TestCase
         $this->assertNotNull($domain->last_checked_at);
     }
 
+    public function test_cname_target_sharing_only_a_suffix_with_edge_host_fails_routing(): void
+    {
+        // Regression: config('platform.edge_host') is 'edge.droidshop.cz'.
+        // 'notedge.droidshop.cz' shares that literal suffix but is not a
+        // subdomain of it — Str::endsWith() without a dot boundary would
+        // wrongly accept it, letting a domain "verify" while routing
+        // somewhere the platform never controls.
+        $tenant = Tenant::factory()->create();
+        $domain = Domain::factory()->for($tenant)->custom('shop.example.cz')->create([
+            'challenge_token' => 'abc123token',
+        ]);
+
+        $this->dns->setTxt($this->challengeHost($domain), ['abc123token']);
+        $this->dns->setCname($domain->domain, 'not'.config('platform.edge_host'));
+
+        $this->verifier->verify($domain);
+
+        $domain->refresh();
+        $this->assertNull($domain->verified_at);
+        $this->assertSame(SslStatus::Error, $domain->ssl_status);
+        $this->assertNotNull($domain->verification_error);
+    }
+
     public function test_repeated_verification_on_still_valid_dns_stays_verified(): void
     {
         $tenant = Tenant::factory()->create();

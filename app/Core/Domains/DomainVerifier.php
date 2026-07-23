@@ -59,9 +59,9 @@ class DomainVerifier
             $domain->ssl_status = SslStatus::Error;
         }
 
-        $domain->save();
-
         $this->context->runAs($domain->tenant, function () use ($domain, $error): void {
+            $domain->save();
+
             if ($error === null) {
                 $this->audit->log('domain.verified', $domain, ['domain' => $domain->domain]);
             } else {
@@ -98,7 +98,7 @@ class DomainVerifier
         $edgeHost = (string) config('platform.edge_host');
         $cname = $this->dns->cname($domain->domain);
 
-        if ($cname !== null && Str::endsWith($cname, $edgeHost)) {
+        if ($cname !== null && ($cname === $edgeHost || Str::endsWith($cname, '.'.$edgeHost))) {
             return null;
         }
 
