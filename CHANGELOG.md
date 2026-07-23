@@ -11,6 +11,33 @@ Pravidla: [`.claude/skills/versioning/SKILL.md`](.claude/skills/versioning/SKILL
 
 > CHANGELOG vede milníky (minor/major). Detail patchů je v `git log`.
 
+## [0.18.0] – 2026-07-23
+
+**Fáze 1 / vlna 1.9 — deferred billing: roční interval + upgrade/downgrade tarifu.** Nájemce platí předplatné měsíčně nebo ročně a mění tarif base↔premium přes hostovaný Stripe Billing Portal; proraci i roční fakturu Stripe zúčtuje a my na `invoice.paid` vystavíme český daňový doklad. 1016 testů.
+
+### Ceník a interval
+
+- Nová netenantová tabulka `plan_prices` (plan × interval → Stripe price id + částka v haléřích). `plans.stripe_price_id` zrušen, data přesunuta na `interval=month`.
+- Enum `BillingInterval` (Month/Year). `SubscriptionGateway::startCheckout(Tenant, Plan, BillingInterval)` resolvne Stripe price z `plan_prices`.
+- Obrazovka předplatného má přepínač měsíc/rok (accessible radio), `SubscriptionController::show` posílá obě ceny.
+- `tenants.billing_interval` — trackován z aktivní subscription.
+
+### Doklad (idempotence per Stripe invoice id)
+
+- `platform_invoices.stripe_invoice_id` (unique) — idempotence dokladu se přesunula z per-období na per Stripe invoice id, takže proration i roční faktura dostane vlastní doklad.
+- `SubscriptionCharge` +`stripeInvoiceId`,+`grossTotal`; `PlatformInvoiceWriter` bere částku z faktury, ne z `plan->price_month`.
+- `StripeWebhookHandler::onInvoicePaid` přepsán: částka (`amount_paid`) i tarif/interval (line `price.id` → `plan_prices`) z faktury; guard `amount_paid==0` (downgrade kredit) → žádný doklad; výběr správného řádku proration faktury (`chargeLineFor`).
+
+### Změna tarifu (Portal-driven)
+
+- Nový webhook handler `customer.subscription.updated`: mapuje nové `price.id` → plan+interval → `TenantPlanSwitcher`.
+- `TenantPlanSwitcher` — repoint `plan_id`/`billing_interval` + rekonciliace modulů proti živě zapnuté sadě (order-independent vůči pořadí webhooků, idempotentní). Deaktivuje jen tarifní moduly (core nikdy), aktivuje jen dostupné (globálně kill-switchnutý přeskočí).
+
+### Deploy / follow-up
+
+- Stripe Billing Portal nakonfigurovat (switch plans, proration), 4 Price objekty a jejich id do `plan_prices`, povolit event `customer.subscription.updated` (viz „Před spuštěním" v CLAUDE.md).
+- Trade-off: rekonciliace běží při každém `subscription.updated`, ručně vypnutý tarifní modul se obnoví (per-tenant ruční vypnutí není MVP workflow).
+
 ## [0.17.0] – 2026-07-22
 
 **Fáze 1 / vlna 1.8 — Stripe subscription billing.** Nájemci teď reálně platí platformě za předplatné: Stripe Billing řídí opakovaný fakturační cyklus a dunning, my reagujeme webhooky. Uzavírá háček z vlny 1.7 (synchronní charge-success-then-issue-fail). 993 testů (+27 od 966 na konci vlny 1.7).
