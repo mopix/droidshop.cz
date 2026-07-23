@@ -91,7 +91,7 @@ class StripeWebhookHandler
             return; // downgrade credit / no money moved → no Czech tax document
         }
 
-        $line = $invoice->lines->data[0] ?? null;
+        $line = $this->chargeLineFor($invoice);
         $period = $line->period ?? null;
         $from = $period ? Carbon::createFromTimestamp($period->start) : now()->startOfMonth();
         $to = $period ? Carbon::createFromTimestamp($period->end) : now()->endOfMonth();
@@ -161,5 +161,36 @@ class StripeWebhookHandler
     private function tenantByCustomer(string $customerId): ?Tenant
     {
         return Tenant::where('stripe_customer_id', $customerId)->first();
+    }
+
+    /**
+     * Picks the invoice line that plan/period should be derived from.
+     *
+     * A proration invoice carries multiple lines in unstable order — typically
+     * a credit line (old price, negative amount) alongside the real charge
+     * line (new price, positive amount). Blindly trusting `data[0]` (I1, final
+     * review wave 1.9) can pick the credit line and derive the wrong plan/period.
+     *
+     * Preference order: the first line whose price resolves to a known
+     * PlanPrice AND has a positive amount; then the first line whose price
+     * resolves to a known PlanPrice at all; then simply `data[0]`.
+     */
+    private function chargeLineFor(object $invoice): ?object
+    {
+        $lines = $invoice->lines->data ?? [];
+
+        $resolvable = array_values(array_filter(
+            $lines,
+            fn (object $line) => isset($line->price->id)
+                && PlanPrice::where('stripe_price_id', $line->price->id)->exists()
+        ));
+
+        foreach ($resolvable as $line) {
+            if (($line->amount ?? 0) > 0) {
+                return $line;
+            }
+        }
+
+        return $resolvable[0] ?? ($lines[0] ?? null);
     }
 }

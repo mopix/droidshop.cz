@@ -15,6 +15,7 @@ use App\Models\Plan;
 use App\Models\PlanPrice;
 use App\Models\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Stripe\Event;
 use Tests\TestCase;
 
@@ -121,6 +122,40 @@ class StripeWebhookHandlerTest extends TestCase
         $this->assertSame('in_proration', $invoice->stripe_invoice_id);
     }
 
+    public function test_invoice_paid_derives_plan_and_period_from_the_charge_line_not_data_zero(): void
+    {
+        // Regression for I1: a proration invoice carries a credit line (old
+        // price, negative amount) alongside the real charge line (new price,
+        // positive amount), in unstable order. `data[0]` must not be trusted
+        // blindly — the premium/positive line must win, for BOTH plan and period.
+        $base = Plan::factory()->create(['price_month' => 49900]);
+        PlanPrice::create(['plan_id' => $base->id, 'interval' => 'month', 'stripe_price_id' => 'price_base_m', 'price_amount' => 49900, 'currency' => 'CZK']);
+        $premium = Plan::factory()->premium()->create(['price_month' => 99900]);
+        PlanPrice::create(['plan_id' => $premium->id, 'interval' => 'month', 'stripe_price_id' => 'price_prem_m', 'price_amount' => 99900, 'currency' => 'CZK']);
+
+        $tenant = Tenant::factory()->create([
+            'plan_id' => $base->id, 'billing_name' => 'Acme',
+            'status' => TenantStatus::Trial, 'stripe_customer_id' => 'cus_x',
+        ]);
+
+        app(StripeWebhookHandler::class)->handle($this->stripeEvent('invoice.paid', [
+            'id' => 'in_proration_order', 'customer' => 'cus_x', 'amount_paid' => 50000,
+            'lines' => ['data' => [
+                // Credit line first, unresolvable/negative — must be skipped.
+                ['period' => ['start' => 1748736000, 'end' => 1751328000], 'price' => ['id' => 'price_base_m'], 'amount' => -49900],
+                // Real charge line second — must be the one that wins.
+                ['period' => ['start' => 1751328000, 'end' => 1753920000], 'price' => ['id' => 'price_prem_m'], 'amount' => 99900],
+            ]],
+        ], 'evt_proration_order'));
+
+        $tenant->refresh();
+        $this->assertSame($premium->id, $tenant->plan_id);
+        $this->assertSame(
+            Carbon::createFromTimestamp(1753920000)->toDateTimeString(),
+            Carbon::parse($tenant->trial_ends_at)->toDateTimeString()
+        );
+    }
+
     public function test_zero_amount_invoice_issues_no_document(): void
     {
         $plan = Plan::factory()->create();
@@ -223,6 +258,31 @@ class StripeWebhookHandlerTest extends TestCase
         $tenant->refresh();
         $this->assertSame($premium->id, $tenant->plan_id);
         $this->assertTrue(app(ModuleRegistry::class)->isEnabled($tenant, $premiumOnlyKey));
+    }
+
+    public function test_subscription_updated_activates_premium_modules_even_when_invoice_paid_won_the_race(): void
+    {
+        // Regression for C1: onInvoicePaid forceFills plan_id but never
+        // touches modules; reproduce that race directly (rather than via
+        // onInvoicePaid, which needs a full billing profile) and confirm
+        // the later subscription.updated still reconciles modules correctly.
+        [$base, $premium, $baseKey, $premiumOnlyKey] = $this->seedPlans();
+        PlanPrice::create(['plan_id' => $premium->id, 'interval' => 'month', 'stripe_price_id' => 'price_prem_m', 'price_amount' => 99900, 'currency' => 'CZK']);
+
+        $tenant = Tenant::factory()->create(['plan_id' => $base->id, 'stripe_customer_id' => 'cus_x']);
+        app(ModuleRegistry::class)->activate($tenant, $baseKey);
+
+        // invoice.paid arrived first and already repointed plan_id, without
+        // activating any premium module.
+        $tenant->forceFill(['plan_id' => $premium->id])->save();
+
+        app(StripeWebhookHandler::class)->handle($this->stripeEvent('customer.subscription.updated', [
+            'customer' => 'cus_x',
+            'items' => ['data' => [['price' => ['id' => 'price_prem_m']]]],
+        ], 'evt_race'));
+
+        $this->assertTrue(app(ModuleRegistry::class)->isEnabled($tenant->fresh(), $premiumOnlyKey));
+        $this->assertTrue(app(ModuleRegistry::class)->isEnabled($tenant->fresh(), $baseKey));
     }
 
     public function test_subscription_updated_for_unknown_price_is_a_no_op(): void

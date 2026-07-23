@@ -6,12 +6,21 @@ use App\Core\Billing\Enums\BillingInterval;
 use App\Core\Modules\ModuleRegistry;
 use App\Models\Plan;
 use App\Models\Tenant;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Applies a plan/interval change observed from Stripe (customer.subscription.updated)
  * onto our domain: repoints tenant.plan_id and reconciles the tenant's module set to
  * exactly the new plan's grant — activate what the new plan adds, deactivate what only
- * the old plan had. Idempotent: re-running with the same plan is a no-op on modules.
+ * a plan (any plan) had but the new one doesn't.
+ *
+ * Reconciliation is computed against the tenant's ACTUALLY enabled modules, not
+ * against a "did plan_id change" flag (C1, final review wave 1.9): Stripe does not
+ * guarantee webhook delivery order. `invoice.paid` can forceFill plan_id before
+ * `customer.subscription.updated` runs this switcher, or this can be called twice
+ * with the same target plan — either way, comparing live enabled state to the new
+ * plan's grant keeps the outcome correct and makes repeat calls naturally
+ * idempotent (same plan + already-matching modules → both diffs empty → no-ops).
  */
 class TenantPlanSwitcher
 {
@@ -19,9 +28,6 @@ class TenantPlanSwitcher
 
     public function switchTo(Tenant $tenant, Plan $newPlan, BillingInterval $interval): void
     {
-        $oldPlan = $tenant->plan;
-        $planChanged = $oldPlan?->id !== $newPlan->id;
-
         // Repoint the plan FIRST: ModuleRegistry::activate() guards that a module
         // belongs to the tenant's plan, so the new plan must be current before we
         // activate its modules.
@@ -30,24 +36,23 @@ class TenantPlanSwitcher
             'billing_interval' => $interval->value,
         ])->save();
 
-        if (! $planChanged) {
-            return;
-        }
-
-        // Drop the cached `plan` relation (loaded above as $oldPlan): without
-        // this, ModuleRegistry::activate()'s plan guard would read the old
-        // plan back off this same $tenant instance and refuse every module
-        // the new plan actually grants.
+        // Drop the cached `plan` relation: without this, ModuleRegistry::activate()'s
+        // plan guard could read a stale plan back off this same $tenant instance and
+        // refuse a module the new plan actually grants.
         $tenant->unsetRelation('plan');
 
         $newKeys = $newPlan->modules()->pluck('module_key')->all();
-        $oldKeys = $oldPlan ? $oldPlan->modules()->pluck('module_key')->all() : [];
+        $enabledKeys = $this->registry->enabledFor($tenant)->keys()->all();
 
-        foreach ($newKeys as $key) {
+        // Every module key ANY plan can grant. Excludes core modules (never in
+        // plan_modules) — critical so deactivation never targets a core module.
+        $planCatalogKeys = DB::table('plan_modules')->distinct()->pluck('module_key')->all();
+
+        foreach (array_diff($newKeys, $enabledKeys) as $key) {
             $this->registry->activate($tenant, $key);
         }
 
-        foreach (array_diff($oldKeys, $newKeys) as $key) {
+        foreach (array_intersect($enabledKeys, array_diff($planCatalogKeys, $newKeys)) as $key) {
             $this->registry->deactivate($tenant, $key);
         }
     }

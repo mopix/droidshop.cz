@@ -13,7 +13,7 @@ return new class extends Migration
             $table->id();
             $table->foreignId('plan_id')->constrained()->cascadeOnDelete();
             $table->string('interval'); // month | year
-            $table->string('stripe_price_id')->nullable();
+            $table->string('stripe_price_id')->nullable()->unique();
             $table->unsignedBigInteger('price_amount'); // haléře, gross
             $table->char('currency', 3)->default('CZK');
             $table->timestamps();

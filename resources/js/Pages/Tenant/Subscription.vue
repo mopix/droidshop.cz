@@ -19,10 +19,6 @@ const interval = ref<'month' | 'year'>('month')
 
 const money = (h: number) => (h / 100).toLocaleString('cs-CZ', { style: 'currency', currency: 'CZK' })
 
-function priceFor(i: 'month' | 'year'): number | null {
-  return props.prices.find(p => p.interval === i)?.priceAmount ?? null
-}
-
 function post(url: string, body: Record<string, unknown> = {}) {
   processing.value = true
   router.post(url, body, { onFinish: () => (processing.value = false) })
@@ -89,7 +85,7 @@ function post(url: string, body: Record<string, unknown> = {}) {
               />
               <span class="text-gray-900">{{ option.interval === 'month' ? 'Měsíčně' : 'Ročně' }}</span>
             </span>
-            <span class="font-medium text-gray-900">{{ money(priceFor(option.interval) ?? option.priceAmount) }}</span>
+            <span class="font-medium text-gray-900">{{ money(option.priceAmount) }}</span>
           </label>
         </div>
       </fieldset>
