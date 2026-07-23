@@ -3,6 +3,7 @@
 namespace App\Http\Middleware;
 
 use App\Core\Auth\TenantPermissions;
+use App\Core\Enums\TenantStatus;
 use App\Core\Modules\NavigationBuilder;
 use App\Core\Platform\Impersonation;
 use App\Core\Tenancy\TenantContext;
@@ -59,6 +60,20 @@ class HandleInertiaRequests extends Middleware
             // this safely reads false there too — the banner only renders
             // inside AdminLayout, which platform pages never use.
             'billingProfileComplete' => fn () => app(TenantContext::class)->current()?->billing_name !== null,
+
+            // Drives the trial banner in the tenant admin layout. Null once
+            // the shop is no longer on a trial (or has no trial end date),
+            // so the banner has a single condition to check alongside
+            // `subscriptionActive` below.
+            'trialDaysLeft' => fn () => ($t = app(TenantContext::class)->current())
+                && $t->status === TenantStatus::Trial && $t->trial_ends_at
+                    ? max(0, (int) now()->diffInDays($t->trial_ends_at, false))
+                    : null,
+
+            // A subscription id means Stripe (or the null gateway) already
+            // activated billing, so the trial banner has nothing left to
+            // nag about even if `trialDaysLeft` were still set.
+            'subscriptionActive' => fn () => (bool) app(TenantContext::class)->current()?->stripe_subscription_id,
 
             // Drives the "you are impersonating" banner so a superadmin never
             // forgets they are acting as someone else.

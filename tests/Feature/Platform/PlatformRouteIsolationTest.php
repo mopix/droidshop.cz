@@ -53,8 +53,10 @@ class PlatformRouteIsolationTest extends TestCase
     public function test_every_management_route_sits_behind_the_guard_and_two_factor(): void
     {
         // Login, logout and the 2FA screens are the way in; everything else has
-        // to be behind both gates.
-        $wayIn = ['platform.login', 'platform.logout', 'platform.2fa.setup', 'platform.2fa.challenge'];
+        // to be behind both gates. The Stripe webhook is also unauthenticated by
+        // design — Stripe has no session — its authenticity is the signature
+        // header, verified in the controller itself.
+        $wayIn = ['platform.login', 'platform.logout', 'platform.2fa.setup', 'platform.2fa.challenge', 'platform.stripe.webhook'];
 
         foreach ($this->platformRoutes() as $route) {
             if (in_array($route->getName(), $wayIn, true)) {

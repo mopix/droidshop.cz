@@ -4,7 +4,6 @@ namespace Tests\Feature\Billing;
 
 use App\Core\Billing\Contracts\SubscriptionGateway;
 use App\Core\Billing\NullSubscriptionGateway;
-use App\Core\Billing\Support\SubscriptionCharge;
 use App\Models\Plan;
 use App\Models\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -20,17 +19,22 @@ class NullSubscriptionGatewayTest extends TestCase
         $this->assertInstanceOf(NullSubscriptionGateway::class, app(SubscriptionGateway::class));
     }
 
-    public function test_null_charge_succeeds(): void
+    public function test_null_gateway_returns_a_usable_checkout_url_and_portal_url(): void
     {
-        $tenant = Tenant::factory()->create();
+        config()->set('billing.subscription.driver', 'null');
+        $gateway = app(SubscriptionGateway::class);
+        $this->assertInstanceOf(NullSubscriptionGateway::class, $gateway);
+
+        $tenant = Tenant::factory()->create(['billing_name' => 'Test s.r.o.']);
         $plan = Plan::create(['key' => 'base', 'name' => 'Z', 'price_month' => 49900, 'price_year' => 499000,
             'level' => 'base', 'is_public' => true, 'limits' => ['products' => 1, 'storage_mb' => 1, 'emails_month' => 1]]);
 
-        $result = app(SubscriptionGateway::class)->charge(
-            new SubscriptionCharge($tenant, $plan, now()->startOfMonth(), now()->endOfMonth())
-        );
+        $checkoutUrl = $gateway->startCheckout($tenant, $plan);
+        $this->assertIsString($checkoutUrl);
+        $this->assertNotSame('', $checkoutUrl);
 
-        $this->assertTrue($result->success);
-        $this->assertNotNull($result->reference);
+        $portalUrl = $gateway->billingPortalUrl($tenant);
+        $this->assertIsString($portalUrl);
+        $this->assertNotSame('', $portalUrl);
     }
 }

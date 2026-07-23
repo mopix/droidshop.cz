@@ -20,6 +20,7 @@
         "nwidart/laravel-modules": "^13.0",
         "pragmarx/google2fa": "^9.0",
         "spatie/laravel-multitenancy": "^4.1",
+        "stripe/stripe-php": "^21.0",
         "tightenco/ziggy": "^2.0"
     },
     "require-dev": {

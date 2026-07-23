@@ -125,4 +125,38 @@ class SweepTenantLifecycleTest extends TestCase
             return $mail->hasTo($owner->email);
         });
     }
+
+    public function test_stripe_managed_tenant_not_suspended_despite_expired_date(): void
+    {
+        Mail::fake();
+        $tenant = Tenant::factory()->create([
+            'status' => TenantStatus::PastDue,
+            'trial_ends_at' => now()->subDays(30),
+            'stripe_subscription_id' => 'sub_test_123',
+        ]);
+
+        $this->artisan('billing:sweep-lifecycle')->assertSuccessful();
+
+        // Stripe-managed tenant should NOT be suspended; lifecycle is driven by webhooks
+        $this->assertSame(TenantStatus::PastDue, $tenant->fresh()->status);
+        Mail::assertNotSent(ShopSuspendedMail::class);
+    }
+
+    public function test_pure_trial_tenant_still_swept(): void
+    {
+        Mail::fake();
+        $tenant = Tenant::factory()->create([
+            'status' => TenantStatus::Trial,
+            'trial_ends_at' => now()->subDay(),
+            'stripe_subscription_id' => null,
+        ]);
+        $owner = User::factory()->create();
+        $tenant->users()->attach($owner, ['role' => 'owner', 'joined_at' => now()]);
+
+        $this->artisan('billing:sweep-lifecycle')->assertSuccessful();
+
+        // Pure-trial tenants (no Stripe subscription) should still be swept
+        $this->assertSame(TenantStatus::PastDue, $tenant->fresh()->status);
+        Mail::assertSent(TrialExpiredMail::class);
+    }
 }

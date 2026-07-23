@@ -39,6 +39,10 @@ const impersonating = computed(
 
 const billingProfileComplete = computed(() => page.props.billingProfileComplete as boolean)
 
+const trialDaysLeft = computed(() => page.props.trialDaysLeft as number | null)
+
+const subscriptionActive = computed(() => page.props.subscriptionActive as boolean)
+
 // Ziggy's route() helper is a global template property only, so URLs are
 // resolved in the template and handed to these actions.
 const logout = (url: string) => router.post(url)
@@ -89,6 +93,21 @@ const stopImpersonating = (url: string) => router.post(url)
         fakturační údaje
       </Link>
       , jinak nelze vystavit fakturu ani aktivovat předplatné.
+    </div>
+
+    <!-- role="status": informational countdown, not an error — same
+         reasoning as the billing-profile banner above. Hidden once a
+         subscription is active even if trialDaysLeft is still set, so the
+         two banners never talk past each other. -->
+    <div
+      v-if="trialDaysLeft !== null && !subscriptionActive"
+      role="status"
+      class="bg-blue-50 px-4 py-3 text-center text-sm text-blue-900"
+    >
+      Zkušební období: zbývá {{ trialDaysLeft }} dní.
+      <Link :href="route('admin.subscription')" class="font-semibold underline hover:no-underline">
+        Aktivovat předplatné
+      </Link>
     </div>
 
     <!-- Light bar, deliberately unlike the platform console's dark one: the

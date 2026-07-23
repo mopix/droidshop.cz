@@ -3,18 +3,23 @@
 namespace App\Core\Billing;
 
 use App\Core\Billing\Contracts\SubscriptionGateway;
-use App\Core\Billing\Support\ChargeResult;
-use App\Core\Billing\Support\SubscriptionCharge;
-use Illuminate\Support\Str;
+use App\Models\Plan;
+use App\Models\Tenant;
 
 /**
- * No real money moves. Represents "the tenant would be charged" so onboarding
- * and admin flows can be exercised end to end without a payment gateway.
+ * No real money moves. Checkout points at a local dev route that simulates a
+ * successful subscription so onboarding and tests exercise the whole flow
+ * without Stripe. Portal is a placeholder.
  */
 class NullSubscriptionGateway implements SubscriptionGateway
 {
-    public function charge(SubscriptionCharge $charge): ChargeResult
+    public function startCheckout(Tenant $tenant, Plan $plan): string
     {
-        return ChargeResult::success('null-'.Str::uuid());
+        return route('admin.subscription.dev-complete', absolute: false);
+    }
+
+    public function billingPortalUrl(Tenant $tenant): string
+    {
+        return route('admin.subscription', absolute: false);
     }
 }

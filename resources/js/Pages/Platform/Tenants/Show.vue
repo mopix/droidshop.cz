@@ -19,6 +19,9 @@ type Tenant = {
   plan_id: number | null
   plan: { id: number; key: string; name: string } | null
   trial_ends_at: string | null
+  paid_through: string | null
+  stripe_customer_id: string | null
+  stripe_subscription_id: string | null
   suspended_at: string | null
   deletion_requested_at: string | null
   billing_name: string | null
@@ -191,26 +194,6 @@ const submitPlan = (url: string) => {
     preserveScroll: true,
     onSuccess: () => {
       planDialog.value = false
-    },
-  })
-}
-
-/* --------------------------------------------------------- subscription activation */
-
-// Statuses the server rejects up front (pending_deletion, deleted): offering
-// the button there would only earn a 422, so it stays hidden instead.
-const canActivateSubscription = computed(
-  () => !['pending_deletion', 'deleted'].includes(props.tenant.status),
-)
-
-const subscriptionForm = useForm({})
-const subscriptionDialog = ref(false)
-
-const submitSubscriptionActivation = (url: string) => {
-  subscriptionForm.post(url, {
-    preserveScroll: true,
-    onSuccess: () => {
-      subscriptionDialog.value = false
     },
   })
 }
@@ -442,17 +425,35 @@ const limitStateLabel = (limit: LimitUsage): string =>
           </p>
         </div>
 
-        <InputError class="mt-4" :message="subscriptionForm.errors.subscription" />
+      </section>
 
-        <div v-if="canActivateSubscription" class="mt-3 flex flex-wrap gap-3">
-          <button
-            type="button"
-            class="inline-flex items-center rounded-md border border-transparent bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-2"
-            @click="subscriptionForm.clearErrors(); subscriptionDialog = true"
-          >
-            Aktivovat předplatné
-          </button>
-        </div>
+      <!-- Subscription (read-only: activation is self-service via Stripe) -->
+      <section
+        class="rounded-lg border border-gray-200 bg-white p-5 shadow-sm"
+        aria-labelledby="subscription-heading"
+      >
+        <h2 id="subscription-heading" class="text-base font-semibold text-gray-900">
+          Předplatné
+        </h2>
+
+        <dl class="mt-4 space-y-2 text-sm">
+          <div class="flex justify-between">
+            <dt class="text-gray-600">Stav</dt>
+            <dd class="text-gray-900">{{ tenant.status_label }}</dd>
+          </div>
+          <div class="flex justify-between">
+            <dt class="text-gray-600">Stripe subscription</dt>
+            <dd class="font-mono text-gray-900">{{ tenant.stripe_subscription_id ?? '—' }}</dd>
+          </div>
+          <div class="flex justify-between">
+            <dt class="text-gray-600">Placeno do</dt>
+            <dd class="text-gray-900">{{ tenant.paid_through ?? '—' }}</dd>
+          </div>
+        </dl>
+
+        <p class="mt-3 text-xs text-gray-500">
+          Aktivaci si řídí nájemce sám přes Stripe. Ruční aktivace byla zrušena.
+        </p>
       </section>
 
       <!-- Plan -->
@@ -691,18 +692,6 @@ const limitStateLabel = (limit: LimitUsage): string =>
 
       <InputError class="mt-1" :message="statusForm.errors.status" />
     </ConfirmDialog>
-
-    <!-- Subscription activation -->
-    <ConfirmDialog
-      :show="subscriptionDialog"
-      title="Aktivovat předplatné"
-      message="Provede se naúčtování a vystaví se faktura tomuto nájemci. Akci nelze vzít zpět."
-      confirm-label="Aktivovat předplatné"
-      danger
-      :processing="subscriptionForm.processing"
-      @cancel="subscriptionDialog = false"
-      @confirm="submitSubscriptionActivation(route('platform.tenants.subscription.activate', tenant.uuid))"
-    />
 
     <!-- Plan change -->
     <ConfirmDialog

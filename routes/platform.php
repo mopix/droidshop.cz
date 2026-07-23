@@ -7,6 +7,8 @@ use App\Http\Controllers\Platform\ModuleController;
 use App\Http\Controllers\Platform\PlatformInvoiceDownloadController;
 use App\Http\Controllers\Platform\TenantController;
 use App\Http\Controllers\Platform\TenantModuleController;
+use App\Http\Controllers\StripeWebhookController;
+use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
@@ -16,6 +18,11 @@ use Inertia\Inertia;
  * whoever requires this file, so session and CSRF are already in place.
  */
 Route::middleware('platform.host')->group(function () {
+
+    // Stripe S2S webhook — no auth/session, authenticity via signature.
+    Route::post('/superadmin/stripe/webhook', StripeWebhookController::class)
+        ->withoutMiddleware(VerifyCsrfToken::class)
+        ->name('platform.stripe.webhook');
 
     Route::middleware('guest:platform')->group(function () {
         Route::get('/superadmin/login', [LoginController::class, 'show'])->name('platform.login');
@@ -49,9 +56,6 @@ Route::middleware('platform.host')->group(function () {
 
         Route::patch('/superadmin/tenanti/{tenant}/tarif', [TenantController::class, 'updatePlan'])
             ->name('platform.tenants.plan');
-
-        Route::post('/superadmin/tenanti/{tenant}/predplatne/aktivovat', [TenantController::class, 'activateSubscription'])
-            ->name('platform.tenants.subscription.activate');
 
         Route::get('/superadmin/tenanti/{tenant}/dopad-tarifu', [TenantController::class, 'planImpact'])
             ->name('platform.tenants.plan-impact');

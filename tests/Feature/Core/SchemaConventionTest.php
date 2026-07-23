@@ -56,6 +56,11 @@ class SchemaConventionTest extends TestCase
         'platform_invoices',
         'platform_sequences',
 
+        // Stripe webhook idempotency log (wave 1.8). Non-tenant on purpose:
+        // Stripe sends events to our platform gateway, which handles them
+        // globally before delegating to the tenant's subscription logic.
+        'stripe_events',
+
         // VAT rates are law, not shop configuration. A tenant_id here would
         // invite a shop to invent its own rates (spec §6.2).
         'tax_rates',

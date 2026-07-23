@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Tenant;
 
+use App\Core\Enums\TenantStatus;
 use App\Models\Domain;
 use App\Models\Module;
 use App\Models\Tenant;
@@ -58,5 +59,42 @@ class AdminHomeTest extends TestCase
             ->get('http://shop.'.config('tenancy.platform_domain').'/admin');
 
         $response->assertRedirect(route('admin.billing.edit'));
+    }
+
+    public function test_suspended_tenant_can_still_read_the_admin(): void
+    {
+        [$tenant, $owner] = $this->ownerOnHost();
+        $tenant->forceFill(['status' => TenantStatus::Suspended])->save();
+
+        $response = $this->actingAs($owner)
+            ->get('http://shop.'.config('tenancy.platform_domain').'/admin');
+
+        // A redirect to billing (or products) — not a 503 — proves read access survives.
+        $this->assertNotSame(503, $response->getStatusCode());
+    }
+
+    public function test_suspended_tenant_cannot_mutate_the_admin(): void
+    {
+        [$tenant, $owner] = $this->ownerOnHost();
+        $tenant->forceFill(['status' => TenantStatus::Suspended])->save();
+
+        $response = $this->actingAs($owner)
+            ->patch('http://shop.'.config('tenancy.platform_domain').'/admin/nastaveni/fakturace', [
+                'billing_name' => 'Acme s.r.o.',
+            ]);
+
+        $response->assertStatus(503);
+    }
+
+    public function test_active_tenant_can_still_mutate_the_admin(): void
+    {
+        [, $owner] = $this->ownerOnHost();
+
+        $response = $this->actingAs($owner)
+            ->patch('http://shop.'.config('tenancy.platform_domain').'/admin/nastaveni/fakturace', [
+                'billing_name' => 'Acme s.r.o.',
+            ]);
+
+        $this->assertNotSame(503, $response->getStatusCode());
     }
 }
