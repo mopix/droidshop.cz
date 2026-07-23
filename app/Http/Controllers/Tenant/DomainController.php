@@ -6,6 +6,7 @@ use App\Core\Domains\DomainCertProbe;
 use App\Core\Domains\DomainVerifier;
 use App\Core\Enums\DomainType;
 use App\Core\Enums\SslStatus;
+use App\Core\Services\AuditLog;
 use App\Core\Tenancy\DomainTenantFinder;
 use App\Core\Tenancy\TenantContext;
 use App\Http\Controllers\Controller;
@@ -32,6 +33,7 @@ class DomainController extends Controller
         private readonly DomainVerifier $verifier,
         private readonly DomainCertProbe $probe,
         private readonly DomainTenantFinder $finder,
+        private readonly AuditLog $audit,
     ) {}
 
     public function edit(): Response
@@ -69,7 +71,7 @@ class DomainController extends Controller
         $tenant = $this->context->current();
 
         try {
-            Domain::create([
+            $domain = Domain::create([
                 'tenant_id' => $tenant->id,
                 'domain' => $request->validated('domain'),
                 'type' => DomainType::Custom,
@@ -81,6 +83,10 @@ class DomainController extends Controller
         } catch (UniqueConstraintViolationException) {
             return back()->withErrors(['domain' => 'Tuto doménu už používá jiný e-shop.']);
         }
+
+        $this->context->runAs($tenant, function () use ($domain): void {
+            $this->audit->log('domain.added', $domain, ['domain' => $domain->domain]);
+        });
 
         return back()->with('success', 'Doména přidána. Nastavte DNS záznamy a poté klikněte na Ověřit.');
     }
@@ -145,7 +151,16 @@ class DomainController extends Controller
             $this->finder->forget($subdomainHost);
         }
 
+        // Captured before delete(): the audit meta must survive the row's
+        // removal, and logging against an already-deleted model would also
+        // leave a dangling subject_id.
+        $removedHost = $domain->domain;
+
         $domain->delete();
+
+        $this->context->runAs($tenant, function () use ($removedHost): void {
+            $this->audit->log('domain.removed', null, ['domain' => $removedHost]);
+        });
 
         return back()->with('success', 'Doména odebrána.');
     }

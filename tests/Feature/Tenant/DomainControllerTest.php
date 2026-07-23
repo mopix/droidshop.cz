@@ -71,6 +71,12 @@ class DomainControllerTest extends TestCase
         $this->assertNull($custom->verified_at);
         $this->assertNotNull($custom->challenge_token);
         $this->assertSame(40, strlen($custom->challenge_token));
+
+        $this->assertDatabaseHas('audit_log', [
+            'action' => 'domain.added',
+            'tenant_id' => $tenant->id,
+            'subject_id' => $custom->id,
+        ]);
     }
 
     public function test_store_rejects_a_platform_subdomain(): void
@@ -176,6 +182,11 @@ class DomainControllerTest extends TestCase
         $this->assertNull(Domain::find($custom->id));
         $subdomain = Domain::where('tenant_id', $tenant->id)->where('type', 'subdomain')->first();
         $this->assertTrue($subdomain->is_primary);
+
+        $this->assertDatabaseHas('audit_log', [
+            'action' => 'domain.removed',
+            'tenant_id' => $tenant->id,
+        ]);
     }
 
     public function test_guest_cannot_access(): void
