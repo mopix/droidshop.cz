@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Billing;
 
+use App\Models\Tenant;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Schema;
@@ -37,5 +38,12 @@ class StripeSchemaTest extends TestCase
             'type' => 'invoice.paid',
             'processed_at' => now(),
         ]);
+    }
+
+    public function test_tenant_stores_billing_interval(): void
+    {
+        $tenant = Tenant::factory()->create();
+        $tenant->forceFill(['billing_interval' => 'year'])->save();
+        $this->assertSame('year', $tenant->fresh()->billing_interval);
     }
 }
