@@ -23,12 +23,23 @@ class Domain extends Model
             'ssl_status' => SslStatus::class,
             'is_primary' => 'boolean',
             'verified_at' => 'datetime',
+            'last_checked_at' => 'datetime',
         ];
     }
 
     public function tenant(): BelongsTo
     {
         return $this->belongsTo(Tenant::class);
+    }
+
+    public function isCustom(): bool
+    {
+        return $this->type === DomainType::Custom;
+    }
+
+    public function isVerified(): bool
+    {
+        return $this->verified_at !== null;
     }
 
     /**

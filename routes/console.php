@@ -9,3 +9,4 @@ Artisan::command('inspire', function () {
 })->purpose('Display an inspiring quote');
 
 Schedule::command('billing:sweep-lifecycle')->dailyAt('03:00');
+Schedule::command('domains:sweep-pending')->hourly();

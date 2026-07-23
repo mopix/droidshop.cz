@@ -1,10 +1,12 @@
 <?php
 
 use App\Core\Routing\RedirectResponder;
+use App\Http\Middleware\AllowLocalOnly;
 use App\Http\Middleware\CheckTenantStatus;
 use App\Http\Middleware\EnsurePlatformTwoFactor;
 use App\Http\Middleware\EnsureTenantMember;
 use App\Http\Middleware\HandleInertiaRequests;
+use App\Http\Middleware\RedirectToCanonicalHost;
 use App\Http\Middleware\RequirePlatformHost;
 use App\Http\Middleware\ResolveHost;
 use App\Http\Middleware\SetTenantContext;
@@ -34,6 +36,13 @@ $app = Application::configure(basePath: dirname(__DIR__))
             // there is no module to check here.
             Route::middleware(['web', 'tenant.member'])
                 ->group(base_path('routes/tenant.php'));
+
+            // Caddy's on-demand TLS ask endpoint (wave 2.1). Deliberately
+            // outside the `web` group: no session, no CSRF, no
+            // ResolveHost/SetTenantContext — this is machine-to-machine
+            // traffic from the edge process, gated to localhost instead.
+            Route::middleware('internal.local')
+                ->group(base_path('routes/internal.php'));
         },
     )
     ->withMiddleware(function (Middleware $middleware): void {
@@ -44,6 +53,11 @@ $app = Application::configure(basePath: dirname(__DIR__))
             ResolveHost::class,
             CheckTenantStatus::class,
             SetTenantContext::class,
+            // Needs Tenant::current() from SetTenantContext, and must run
+            // before any controller so a non-canonical host never touches
+            // the database on the tenant's behalf. Wave 2.1 task 7 — not
+            // safe to cache under a future page-cache key (host-dependent).
+            RedirectToCanonicalHost::class,
         ]);
 
         $middleware->web(append: [
@@ -55,6 +69,7 @@ $app = Application::configure(basePath: dirname(__DIR__))
             'platform.host' => RequirePlatformHost::class,
             'platform.2fa' => EnsurePlatformTwoFactor::class,
             'tenant.member' => EnsureTenantMember::class,
+            'internal.local' => AllowLocalOnly::class,
         ]);
 
         // This one closure backs every guest redirect in the app — Laravel's
