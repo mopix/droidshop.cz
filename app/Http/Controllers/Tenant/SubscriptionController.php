@@ -34,6 +34,12 @@ class SubscriptionController extends Controller
             'paidThrough' => $tenant->trial_ends_at?->toDateString(),
             'hasSubscription' => filled($tenant->stripe_subscription_id),
             'billingProfileComplete' => filled($tenant->billing_name),
+            'prices' => $tenant->plan
+                ? $tenant->plan->prices->map(fn ($p) => [
+                    'interval' => $p->interval,
+                    'priceAmount' => (int) $p->price_amount,
+                ])->values()
+                : [],
         ]);
     }
 
