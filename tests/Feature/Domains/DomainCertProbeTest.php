@@ -20,9 +20,11 @@ use Tests\TestCase;
  * certificate itself is issued lazily by the edge on first HTTPS hit, so
  * something has to come back and confirm it happened.
  *
- * Scope: this only flips ssl_status pending -> issued|error. The canonical
- * host swap (custom domain becomes the primary/canonical host once its cert
- * is live) is task 7 and is deliberately not touched here.
+ * Scope: this flips ssl_status pending -> issued|error, and — since task 7 —
+ * a successful transition to issued also swaps the tenant's canonical host
+ * to this domain (App\Core\Domains\CanonicalDomain::promote()). The swap
+ * logic itself (idempotence, multi-domain demotion, audit) is covered by
+ * CanonicalDomainTest; this file only asserts the probe wires it correctly.
  */
 class DomainCertProbeTest extends TestCase
 {
@@ -62,6 +64,24 @@ class DomainCertProbeTest extends TestCase
         $this->assertSame(SslStatus::Issued, $domain->ssl_status);
         $this->assertNull($domain->verification_error);
         $this->assertNotNull($domain->last_checked_at);
+    }
+
+    public function test_successful_probe_promotes_the_custom_domain_to_canonical(): void
+    {
+        $domain = $this->verifiedDomain();
+        $subdomain = Domain::factory()->for($domain->tenant)->create([
+            'domain' => 'shop.'.config('tenancy.platform_domain', 'droidshop'),
+            'is_primary' => true,
+        ]);
+
+        Http::fake([
+            'https://shop.example.cz/up' => Http::response('', 200),
+        ]);
+
+        $this->probe->probe($domain);
+
+        $this->assertTrue($domain->fresh()->is_primary);
+        $this->assertFalse($subdomain->fresh()->is_primary);
     }
 
     public function test_failed_probe_below_max_attempts_stays_pending_and_schedules_retry(): void

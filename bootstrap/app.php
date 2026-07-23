@@ -6,6 +6,7 @@ use App\Http\Middleware\CheckTenantStatus;
 use App\Http\Middleware\EnsurePlatformTwoFactor;
 use App\Http\Middleware\EnsureTenantMember;
 use App\Http\Middleware\HandleInertiaRequests;
+use App\Http\Middleware\RedirectToCanonicalHost;
 use App\Http\Middleware\RequirePlatformHost;
 use App\Http\Middleware\ResolveHost;
 use App\Http\Middleware\SetTenantContext;
@@ -52,6 +53,11 @@ $app = Application::configure(basePath: dirname(__DIR__))
             ResolveHost::class,
             CheckTenantStatus::class,
             SetTenantContext::class,
+            // Needs Tenant::current() from SetTenantContext, and must run
+            // before any controller so a non-canonical host never touches
+            // the database on the tenant's behalf. Wave 2.1 task 7 — not
+            // safe to cache under a future page-cache key (host-dependent).
+            RedirectToCanonicalHost::class,
         ]);
 
         $middleware->web(append: [

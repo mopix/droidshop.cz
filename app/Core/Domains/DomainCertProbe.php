@@ -21,9 +21,9 @@ use Illuminate\Support\Facades\Http;
  * a plain HTTPS GET either succeeds (the handshake used a real cert) or it
  * doesn't, and that is the only signal this needs.
  *
- * Scope: this only flips ssl_status pending -> issued|error. The canonical
- * host swap (making the custom domain the primary host once its cert is
- * live) is task 7's to add at the seam marked below.
+ * Scope: this flips ssl_status pending -> issued|error, and on a successful
+ * transition also hands the domain to CanonicalDomain::promote() (task 7),
+ * which makes it the tenant's primary host.
  */
 class DomainCertProbe
 {
@@ -31,6 +31,7 @@ class DomainCertProbe
         private readonly DomainTenantFinder $finder,
         private readonly TenantContext $context,
         private readonly AuditLog $audit,
+        private readonly CanonicalDomain $canonical,
     ) {}
 
     public function probe(Domain $domain, int $attempt = 1): void
@@ -54,8 +55,7 @@ class DomainCertProbe
 
             $this->finder->forget($domain->domain);
 
-            // TODO(task7): canonical host swap — once the cert is live,
-            // repoint the tenant's canonical/primary host to this domain.
+            $this->canonical->promote($domain);
 
             return;
         }
