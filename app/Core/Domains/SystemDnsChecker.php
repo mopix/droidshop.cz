@@ -20,10 +20,13 @@ class SystemDnsChecker implements DnsChecker
             return [];
         }
 
-        return array_values(array_filter(array_map(
-            static fn (array $record): ?string => $record['txt'] ?? null,
-            $records,
-        )));
+        return array_values(array_filter(
+            array_map(
+                static fn (array $record): ?string => $record['txt'] ?? null,
+                $records,
+            ),
+            static fn (?string $value): bool => $value !== null,
+        ));
     }
 
     public function cname(string $host): ?string
@@ -51,9 +54,12 @@ class SystemDnsChecker implements DnsChecker
             return [];
         }
 
-        return array_values(array_filter(array_map(
-            static fn (array $record): ?string => $record['ip'] ?? null,
-            $records,
-        )));
+        return array_values(array_filter(
+            array_map(
+                static fn (array $record): ?string => $record['ip'] ?? null,
+                $records,
+            ),
+            static fn (?string $value): bool => $value !== null,
+        ));
     }
 }
