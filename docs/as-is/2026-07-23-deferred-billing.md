@@ -63,3 +63,14 @@ Chybí / neověřeno:
 - **`invoice.paid` vs admin-override tarifu** — žádný test, že ručně nastavený plán přežije nesouvisející paid webhook. Řešit, až přibudou admin plan-change flow racující s webhooky.
 - **`ModuleRegistry::guardPlan` fragilita** — čte živou relaci `$tenant->plan`; kterýkoli volající, co zmutuje `plan_id` na už-načteném tenantovi, musí `unsetRelation('plan')` (řeší `TenantPlanSwitcher`). Kandidát na tvrdší kontrakt.
 - **`billing_interval` reuse `trial_ends_at`** jako paid-through nezměněn (háček 1.8 platí dál).
+
+### Final review (opus, whole-branch) + opravy
+
+Whole-branch review našel a opravil (commity `39815ca`, `18675df`):
+- **C1 (Critical):** při doručení `invoice.paid` před `subscription.updated` zůstaly moduly nerekonciliované (switcher se short-circuitnul na `planChanged=false`). Oprava: `TenantPlanSwitcher` rekonciluje proti živě zapnuté sadě, ne proti příznaku změny `plan_id` (order-independent, idempotentní). Test simuluje špatné pořadí.
+- **I1 (Important):** `onInvoicePaid` bral `lines.data[0]`, ale proration faktura má víc řádků v negarantovaném pořadí (kredit + poplatek). Oprava: `chargeLineFor` vybere řádek s resolvovatelným `PlanPrice` a kladnou částkou; tarif i období z téhož řádku.
+- **M1:** `plan_prices.stripe_price_id` dostal unique index.
+- **Risk B (re-review):** globálně kill-switchnutý modul stále v tarifu → `activate()` throw uvnitř webhook transakce → rollback claimu → Stripe retry navždy. Oprava: `activate` se protíná s `ModuleRegistry::available()`, kill-switchnutý modul přeskočen.
+- **Trade-off (Risk A, zdokumentován v CLAUDE.md Rozhodnutí):** rekonciliace běží při každém `subscription.updated`, takže ručně vypnutý tarifní modul se obnoví; per-tenant ruční vypnutí tarifního modulu není MVP workflow. Globální kill-switch respektován.
+
+**Follow-up:** un-kill globálně vypnutého modulu neretroaktivně reaktivuje tenantům, jejichž tarif ho udílí (žádná reaktivační cesta). Redundantní `PlanPrice` dotaz per invoice line (I1) — kandidát na batch.
