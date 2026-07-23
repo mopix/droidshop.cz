@@ -6,6 +6,7 @@ use App\Core\Billing\Models\StripeEvent;
 use App\Core\Billing\Support\SubscriptionCharge;
 use App\Core\Enums\TenantStatus;
 use App\Core\Tenancy\TenantContext;
+use App\Models\PlanPrice;
 use App\Models\Tenant;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Carbon;
@@ -78,26 +79,41 @@ class StripeWebhookHandler
     private function onInvoicePaid(object $invoice): void
     {
         $tenant = $this->tenantByCustomer($invoice->customer);
-        if ($tenant === null || $tenant->plan === null) {
+        if ($tenant === null) {
             return;
         }
 
-        $period = $invoice->lines->data[0]->period ?? null;
+        $amount = (int) ($invoice->amount_paid ?? 0);
+        if ($amount === 0) {
+            return; // downgrade credit / no money moved → no Czech tax document
+        }
+
+        $line = $invoice->lines->data[0] ?? null;
+        $period = $line->period ?? null;
         $from = $period ? Carbon::createFromTimestamp($period->start) : now()->startOfMonth();
         $to = $period ? Carbon::createFromTimestamp($period->end) : now()->endOfMonth();
 
-        $this->context->runAs($tenant, function () use ($tenant, $invoice, $from, $to): void {
-            // Issue our tax document (idempotent per Stripe invoice id), then
-            // activate and extend paid-through. Order matters only for audit
-            // context. Amount source and zero-amount guard are task 6.
-            $stripeInvoiceId = (string) ($invoice->id ?? '');
-            $grossTotal = (int) ($invoice->amount_paid ?? $tenant->plan->price_month);
-            $this->writer->issue(new SubscriptionCharge($tenant, $tenant->plan, $from, $to, $stripeInvoiceId, $grossTotal));
+        // Plan and interval from the invoice's price id — authoritative, not the
+        // possibly-stale tenant->plan (subscription.updated may not have arrived).
+        $priceId = $line->price->id ?? null;
+        $price = $priceId ? PlanPrice::where('stripe_price_id', $priceId)->first() : null;
+        $plan = $price?->plan ?? $tenant->plan;
+        if ($plan === null) {
+            return;
+        }
+
+        $this->context->runAs($tenant, function () use ($tenant, $plan, $price, $from, $to, $invoice, $amount): void {
+            $this->writer->issue(new SubscriptionCharge($tenant, $plan, $from, $to, (string) $invoice->id, $amount));
 
             if ($tenant->status !== TenantStatus::Active) {
                 $tenant->changeStatus(TenantStatus::Active, 'stripe invoice paid');
             }
-            $tenant->forceFill(['trial_ends_at' => $to])->save();
+
+            $tenant->forceFill([
+                'trial_ends_at' => $to,
+                'plan_id' => $plan->id,
+                'billing_interval' => $price?->interval ?? $tenant->billing_interval,
+            ])->save();
         });
     }
 

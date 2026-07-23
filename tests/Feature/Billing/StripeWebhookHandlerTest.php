@@ -8,6 +8,7 @@ use App\Core\Billing\Models\StripeEvent;
 use App\Core\Billing\StripeWebhookHandler;
 use App\Core\Enums\TenantStatus;
 use App\Models\Plan;
+use App\Models\PlanPrice;
 use App\Models\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Stripe\Event;
@@ -44,6 +45,7 @@ class StripeWebhookHandlerTest extends TestCase
     public function test_issues_our_invoice_and_activates_on_invoice_paid(): void
     {
         $plan = Plan::factory()->create(['price_month' => 49900]);
+        PlanPrice::create(['plan_id' => $plan->id, 'interval' => 'month', 'stripe_price_id' => 'price_m', 'price_amount' => 49900, 'currency' => 'CZK']);
         $tenant = Tenant::factory()->create([
             'plan_id' => $plan->id,
             'billing_name' => 'Acme',
@@ -53,9 +55,11 @@ class StripeWebhookHandlerTest extends TestCase
         ]);
 
         app(StripeWebhookHandler::class)->handle($this->stripeEvent('invoice.paid', [
+            'id' => 'in_1',
             'customer' => 'cus_x',
             'subscription' => 'sub_x',
-            'lines' => ['data' => [['period' => ['start' => 1751328000, 'end' => 1753920000]]]],
+            'amount_paid' => 49900,
+            'lines' => ['data' => [['period' => ['start' => 1751328000, 'end' => 1753920000], 'price' => ['id' => 'price_m']]]],
         ]));
 
         $tenant->refresh();
@@ -66,13 +70,16 @@ class StripeWebhookHandlerTest extends TestCase
     public function test_is_idempotent_per_stripe_event_id(): void
     {
         $plan = Plan::factory()->create(['price_month' => 49900]);
+        PlanPrice::create(['plan_id' => $plan->id, 'interval' => 'month', 'stripe_price_id' => 'price_m', 'price_amount' => 49900, 'currency' => 'CZK']);
         $tenant = Tenant::factory()->create([
             'plan_id' => $plan->id, 'billing_name' => 'Acme',
             'stripe_customer_id' => 'cus_x', 'stripe_subscription_id' => 'sub_x',
         ]);
         $object = [
+            'id' => 'in_1',
             'customer' => 'cus_x', 'subscription' => 'sub_x',
-            'lines' => ['data' => [['period' => ['start' => 1751328000, 'end' => 1753920000]]]],
+            'amount_paid' => 49900,
+            'lines' => ['data' => [['period' => ['start' => 1751328000, 'end' => 1753920000], 'price' => ['id' => 'price_m']]]],
         ];
 
         app(StripeWebhookHandler::class)->handle($this->stripeEvent('invoice.paid', $object, 'evt_dup'));
@@ -80,6 +87,39 @@ class StripeWebhookHandlerTest extends TestCase
 
         $this->assertSame(1, PlatformInvoice::where('billed_tenant_id', $tenant->id)->count());
         $this->assertSame(1, StripeEvent::where('event_id', 'evt_dup')->count());
+    }
+
+    public function test_invoice_amount_drives_our_document_not_the_plan_price(): void
+    {
+        $plan = Plan::factory()->create(['price_month' => 49900]);
+        PlanPrice::create(['plan_id' => $plan->id, 'interval' => 'month', 'stripe_price_id' => 'price_m', 'price_amount' => 49900, 'currency' => 'CZK']);
+        $tenant = Tenant::factory()->create([
+            'plan_id' => $plan->id, 'billing_name' => 'Acme',
+            'stripe_customer_id' => 'cus_x', 'status' => TenantStatus::Trial,
+        ]);
+
+        app(StripeWebhookHandler::class)->handle($this->stripeEvent('invoice.paid', [
+            'id' => 'in_proration', 'customer' => 'cus_x', 'amount_paid' => 15000,
+            'lines' => ['data' => [['period' => ['start' => 1751328000, 'end' => 1753920000], 'price' => ['id' => 'price_m']]]],
+        ], 'evt_pr'));
+
+        $invoice = PlatformInvoice::where('billed_tenant_id', $tenant->id)->first();
+        $this->assertSame(15000, (int) $invoice->total);
+        $this->assertSame('in_proration', $invoice->stripe_invoice_id);
+    }
+
+    public function test_zero_amount_invoice_issues_no_document(): void
+    {
+        $plan = Plan::factory()->create();
+        PlanPrice::create(['plan_id' => $plan->id, 'interval' => 'month', 'stripe_price_id' => 'price_m', 'price_amount' => 49900, 'currency' => 'CZK']);
+        $tenant = Tenant::factory()->create(['plan_id' => $plan->id, 'billing_name' => 'Acme', 'stripe_customer_id' => 'cus_x']);
+
+        app(StripeWebhookHandler::class)->handle($this->stripeEvent('invoice.paid', [
+            'id' => 'in_zero', 'customer' => 'cus_x', 'amount_paid' => 0,
+            'lines' => ['data' => [['period' => ['start' => 1751328000, 'end' => 1753920000], 'price' => ['id' => 'price_m']]]],
+        ], 'evt_zero'));
+
+        $this->assertSame(0, PlatformInvoice::where('billed_tenant_id', $tenant->id)->count());
     }
 
     public function test_moves_tenant_to_past_due_on_payment_failure(): void
@@ -110,6 +150,7 @@ class StripeWebhookHandlerTest extends TestCase
     public function test_idempotency_claim_is_atomic_with_processing_and_a_dropped_retry_still_succeeds(): void
     {
         $plan = Plan::factory()->create(['price_month' => 49900]);
+        PlanPrice::create(['plan_id' => $plan->id, 'interval' => 'month', 'stripe_price_id' => 'price_m', 'price_amount' => 49900, 'currency' => 'CZK']);
         $tenant = Tenant::factory()->create([
             'plan_id' => $plan->id,
             'billing_name' => '',
@@ -118,8 +159,10 @@ class StripeWebhookHandlerTest extends TestCase
             'stripe_subscription_id' => 'sub_x',
         ]);
         $object = [
+            'id' => 'in_1',
             'customer' => 'cus_x', 'subscription' => 'sub_x',
-            'lines' => ['data' => [['period' => ['start' => 1751328000, 'end' => 1753920000]]]],
+            'amount_paid' => 49900,
+            'lines' => ['data' => [['period' => ['start' => 1751328000, 'end' => 1753920000], 'price' => ['id' => 'price_m']]]],
         ];
 
         try {
