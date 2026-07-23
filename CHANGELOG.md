@@ -11,6 +11,33 @@ Pravidla: [`.claude/skills/versioning/SKILL.md`](.claude/skills/versioning/SKILL
 
 > CHANGELOG vede milníky (minor/major). Detail patchů je v `git log`.
 
+## [0.19.0] – 2026-07-23
+
+**Fáze 2 / vlna 2.1 — vlastní domény nájemců + automatické TLS (Caddy on-demand).** Nájemce provozuje e-shop na vlastní doméně s automaticky vydaným certifikátem; platforma ověří vlastnictví přes DNS, teprve pak autorizuje emisi a začne doménu servírovat; po vydání certu se custom doména stane kanonickou a subdoména 301 přesměruje na ni. 1096 testů.
+
+### Ověření vlastnictví + resolce
+
+- Kontrakt `DnsChecker` (`SystemDnsChecker`/`dns_get_record`, testovací `FakeDnsChecker`) — DNS za abstrakcí kvůli deterministickým testům.
+- `DomainVerifier` — jediná autorita nad `verified_at`: TXT challenge token na `_droidshop-challenge.<doména>` **a** routing (CNAME dot-anchored na `edge_host` NEBO A obsahuje `server_ip`).
+- `DomainTenantFinder` gating — neověřená `type=custom` doména se neresolvuje na tenanta; `forget(host)` na každé změně stavu je load-bearing.
+- Migrace: `domains` +`challenge_token`/`verification_error`/`last_checked_at`. `config/platform.php` (server_ip, edge_host, challenge_prefix, cert_probe_max_attempts, pending_ttl_hours, dns_backoff_minutes, tls_check_ttl, tls_check_token).
+
+### Emise TLS + kanonizace
+
+- Ask endpoint `GET /internal/tls-check` (Caddy on-demand se ptá před emisí) — 200 jen pro verified+`type=Custom`+`allowsStorefront()`. Autentizace **shared-secret token** (`hash_equals`, fail-closed) + `AllowLocalOnly` jako obrana do hloubky.
+- `DomainCertProbe` — HTTPS probe `/up` 200 → `ssl_status=issued` atomicky s `CanonicalDomain::promote` (custom→primární) v jedné transakci; bounded retry přes tenant-aware job, sync-guard.
+- `RedirectToCanonicalHost` — 301 subdoména→custom pro storefront GET/HEAD (admin/soubory/onboarding/impersonace vyloučeny, Location z DB, vždy https).
+
+### Lifecycle + admin
+
+- Command `domains:sweep-pending` (hodinově): DNS chyby auto-retry, expirace >`pending_ttl_hours` → error jednou, cert chyby terminální.
+- Admin `/admin/nastaveni/domena` — přidat/ověřit/smazat, DNS instrukce s tokenem, stavový badge, audit (`domain.added`/`removed`/`cert_recheck`), limit 1 custom doména/tenant.
+
+### Deploy / follow-up
+
+- Caddy `on_demand_tls { ask http://127.0.0.1:<port>/internal/tls-check?token=<PLATFORM_TLS_CHECK_TOKEN> }`; Caddyfile **zamítni veřejný `/internal/*`**; on-demand jen custom, subdomény wildcard DNS-01.
+- `edge.droidshop.cz` A → VPS IP; `.env`: `PLATFORM_SERVER_IP`/`PLATFORM_EDGE_HOST`/`PLATFORM_TLS_CHECK_TOKEN`; cron `schedule:run`. Runbook: `docs/as-is/2026-07-23-custom-domains.md`.
+
 ## [0.18.0] – 2026-07-23
 
 **Fáze 1 / vlna 1.9 — deferred billing: roční interval + upgrade/downgrade tarifu.** Nájemce platí předplatné měsíčně nebo ročně a mění tarif base↔premium přes hostovaný Stripe Billing Portal; proraci i roční fakturu Stripe zúčtuje a my na `invoice.paid` vystavíme český daňový doklad. 1016 testů.
