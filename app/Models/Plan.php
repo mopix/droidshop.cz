@@ -36,11 +36,25 @@ class Plan extends Model
             ->withPivot('limits');
     }
 
+    public function prices(): HasMany
+    {
+        return $this->hasMany(PlanPrice::class);
+    }
+
     /**
      * Limit value for a key, or null when the plan does not cap it.
      */
     public function limit(string $key): ?int
     {
         return $this->limits[$key] ?? null;
+    }
+
+    /**
+     * Stripe price row for a billing interval, or null when the plan does not
+     * offer it. Accepts the raw interval string (BillingInterval->value in Task 2).
+     */
+    public function priceFor(string $interval): ?PlanPrice
+    {
+        return $this->prices()->where('interval', $interval)->first();
     }
 }

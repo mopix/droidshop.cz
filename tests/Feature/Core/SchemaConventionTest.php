@@ -40,6 +40,10 @@ class SchemaConventionTest extends TestCase
         'tenants',
         'plans',
 
+        // Platform price catalog (wave 1.9): plan × interval Stripe prices. Not tenant
+        // data — same class as `plans`.
+        'plan_prices',
+
         // Module registry: what is deployed and what each plan includes.
         // Which tenant has a module enabled lives in tenant_modules, which
         // does carry tenant_id and is therefore checked like any other table.
