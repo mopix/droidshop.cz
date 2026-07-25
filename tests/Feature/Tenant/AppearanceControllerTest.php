@@ -102,6 +102,37 @@ class AppearanceControllerTest extends TestCase
         $this->assertTrue($exists);
     }
 
+    public function test_owner_can_upload_an_ico_favicon(): void
+    {
+        // .ico is the conventional favicon format but is not in Laravel's
+        // `image` rule mime whitelist — favicon uses an explicit
+        // extension/mime list instead (unlike logo), so this must succeed,
+        // not 422.
+        Storage::fake(FileStorage::PUBLIC_DISK);
+
+        [$tenant, $owner] = $this->ownerOnHost();
+
+        $this->actingAs($owner)
+            ->post($this->host().'/admin/nastaveni/vzhled', [
+                'primary_color' => '#0f766e',
+                'accent_color' => '#2563eb',
+                'favicon' => UploadedFile::fake()->create('favicon.ico', 10, 'image/x-icon'),
+            ])
+            ->assertSessionDoesntHaveErrors('favicon')
+            ->assertRedirect();
+
+        $theme = TenantTheme::where('tenant_id', $tenant->id)->first();
+
+        $this->assertNotNull($theme->favicon_path);
+
+        $exists = app(TenantContext::class)->runAs(
+            $tenant,
+            fn () => app(FileStorage::class)->exists($theme->favicon_path, private: false)
+        );
+
+        $this->assertTrue($exists);
+    }
+
     public function test_rejects_an_invalid_hex_color(): void
     {
         [, $owner] = $this->ownerOnHost();

@@ -20,7 +20,10 @@ class UpdateAppearanceRequest extends FormRequest
             'primary_color' => ['required', 'regex:/^#[0-9a-fA-F]{6}$/D'],
             'accent_color' => ['required', 'regex:/^#[0-9a-fA-F]{6}$/D'],
             'logo' => ['nullable', 'image', 'max:512'],
-            'favicon' => ['nullable', 'image', 'max:128'],
+            // Laravel's `image` rule mime whitelist does not include .ico —
+            // the conventional favicon format — so favicon uses an explicit
+            // extension/mime whitelist instead, unlike logo.
+            'favicon' => ['nullable', 'mimes:png,ico,svg,jpg,jpeg,webp', 'max:128'],
         ];
     }
 
@@ -36,7 +39,7 @@ class UpdateAppearanceRequest extends FormRequest
             'accent_color.regex' => 'Barva musí být hex kód, např. #0f766e.',
             'logo.image' => 'Logo musí být obrázek.',
             'logo.max' => 'Logo je příliš velké (max 512 kB).',
-            'favicon.image' => 'Favicon musí být obrázek.',
+            'favicon.mimes' => 'Favicon musí být obrázek (PNG, ICO, SVG, JPG nebo WEBP).',
             'favicon.max' => 'Favicon je příliš velký (max 128 kB).',
         ];
     }
