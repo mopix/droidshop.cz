@@ -13,7 +13,6 @@ use App\Models\Tenant;
 use App\Models\User;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
-use Modules\Storefront\Support\DefaultHomepage;
 
 /**
  * The single source of truth for standing up a tenant (spec §6.0): tenant row,
@@ -70,7 +69,7 @@ class TenantProvisioner
             // Resolved at runtime, not constructor-injected: core must not know
             // module classes by type, and `storefront` is a core module that is
             // always active, so this is safe to resolve unconditionally here.
-            app(DefaultHomepage::class)->seed($tenant);
+            app('Modules\\Storefront\\Support\\DefaultHomepage')->seed($tenant);
 
             $this->context->runAs($tenant, fn () => $this->audit->log('tenant.provisioned', $tenant, ['host' => $host]));
 
