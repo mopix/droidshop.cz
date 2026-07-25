@@ -24,17 +24,17 @@
 <body class="min-h-screen bg-white text-slate-900 antialiased">
     {{-- WCAG 2.4.1: keyboard users must be able to jump the navigation. --}}
     <a href="#obsah"
-       class="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded focus:bg-slate-900 focus:px-4 focus:py-2 focus:text-white">
+       class="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-lg focus:bg-brand focus:px-4 focus:py-2 focus:text-brand-contrast">
         Přeskočit na obsah
     </a>
 
-    <header class="border-b border-slate-200">
+    <header class="border-b border-slate-200 bg-white">
         <div class="mx-auto flex max-w-6xl flex-wrap items-center gap-4 px-4 py-4">
             <a href="/" class="flex items-center">
                 @if ($theme->logoUrl)
                     <img src="{{ $theme->logoUrl }}" alt="{{ $shopName }}" class="h-8 w-auto">
                 @else
-                    <span class="text-lg font-semibold tracking-tight">{{ $shopName }}</span>
+                    <span class="text-lg font-semibold tracking-tight text-slate-900">{{ $shopName }}</span>
                 @endif
             </a>
 
@@ -42,9 +42,9 @@
                 <label for="hledani" class="sr-only">Hledat v e-shopu</label>
                 <div class="flex gap-2">
                     <input id="hledani" name="q" type="search" value="{{ request()->query('q') }}"
-                           class="w-full rounded border border-slate-300 px-3 py-2 sm:w-64"
+                           class="field-input mt-0 w-full sm:w-64"
                            placeholder="Hledat…">
-                    <button type="submit" class="rounded bg-slate-900 px-4 py-2 text-white">Hledat</button>
+                    <button type="submit" class="btn btn-primary">Hledat</button>
                 </div>
             </form>
 
@@ -56,26 +56,34 @@
                     a shared cache (spec §15.6). The mini-cart island fetches
                     its own count from GET /api/kosik/souhrn instead.
                 --}}
-                <a href="{{ route('storefront.checkout.show') }}" class="text-sm hover:underline">Košík</a>
+                <a href="{{ route('storefront.checkout.show') }}"
+                   class="text-sm font-medium text-slate-700 hover:text-brand hover:underline">Košík</a>
             @endif
 
             @if ($customerAreaEnabled)
-                <nav aria-label="Účet zákazníka" class="text-sm">
+                <nav aria-label="Účet zákazníka" class="text-sm font-medium">
                     @if ($signedInCustomer)
-                        <a href="{{ route('storefront.customers.account') }}" class="hover:underline">Můj účet</a>
+                        <a href="{{ route('storefront.customers.account') }}"
+                           class="text-slate-700 hover:text-brand hover:underline">Můj účet</a>
                     @else
-                        <a href="{{ route('storefront.customers.login') }}" class="hover:underline">Přihlásit se</a>
+                        <a href="{{ route('storefront.customers.login') }}"
+                           class="text-slate-700 hover:text-brand hover:underline">Přihlásit se</a>
                     @endif
                 </nav>
             @endif
         </div>
 
         @if ($navCategories->isNotEmpty())
-            <nav aria-label="Kategorie" class="border-t border-slate-100">
-                <ul class="mx-auto flex max-w-6xl flex-wrap gap-4 px-4 py-2 text-sm">
+            <nav aria-label="Kategorie" class="border-t border-slate-100 bg-slate-50">
+                <ul class="mx-auto flex max-w-6xl flex-wrap gap-1 px-4 py-1 text-sm">
                     @foreach ($navCategories as $category)
                         <li>
-                            <a href="{{ $category->url() }}" class="hover:underline">{{ $category->name }}</a>
+                            {{-- Hover state pairs colour with an underline so
+                                 it does not rely on colour alone (WCAG 1.4.1). --}}
+                            <a href="{{ $category->url() }}"
+                               class="inline-block rounded-lg px-3 py-2 font-medium text-slate-600 hover:text-brand hover:underline">
+                                {{ $category->name }}
+                            </a>
                         </li>
                     @endforeach
                 </ul>
@@ -87,8 +95,8 @@
         @yield('content')
     </main>
 
-    <footer class="mt-16 border-t border-slate-200">
-        <div class="mx-auto max-w-6xl px-4 py-8 text-sm text-slate-600">
+    <footer class="mt-16 border-t border-slate-200 bg-slate-50">
+        <div class="mx-auto max-w-6xl px-4 py-8 text-sm text-slate-500">
             &copy; {{ date('Y') }} {{ $shopName }}
         </div>
     </footer>

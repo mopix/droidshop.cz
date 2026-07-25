@@ -1,6 +1,6 @@
 @props(['products'])
 
-<ul class="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
+<ul class="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
     @foreach ($products as $product)
         <li>
             <x-storefront::product-card :product="$product" />
