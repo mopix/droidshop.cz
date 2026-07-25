@@ -11,6 +11,29 @@ Pravidla: [`.claude/skills/versioning/SKILL.md`](.claude/skills/versioning/SKILL
 
 > CHANGELOG vede milníky (minor/major). Detail patchů je v `git log`.
 
+## [0.20.0] – 2026-07-25
+
+**Fáze 2 / vlna 2.2 — šablona storefrontu + branding nájemce.** Storefront dostal jednu čistou prodejnou šablonu místo holé a nájemce si e-shop přebranduje (logo, favicon, primární + akcentní barva). Konzistentní vzhled přes všechny veřejné stránky, pořád Blade SSR bez JS. 1140 testů.
+
+### Šablona
+- Designový systém: Tailwind brand tokeny (`brand`/`brand-contrast`/`accent`) mapované na CSS proměnné, komponentní vrstva v `resources/css/storefront.css` (`.btn`/`.card`/`.field-*`/`.badge`/`.prose-shop`), čistý/minimalistický styl.
+- Přebarveny všechny storefront views: chrome + komponenty, home, detail produktu, kategorie, hledání, chyby, košík, pokladna, děkovná, účet zákazníka, auth, statická stránka. Žádný nový JS na storefrontu, nákup dál projde bez JavaScriptu.
+
+### Branding nájemce
+- Tabulka `tenant_theme` (1:1 s tenantem): `logo_path`, `favicon_path`, `primary_color`, `accent_color`. `TenantTheme` model s defaulty.
+- `ThemeResolver` → `ThemeData` DTO, injektováno do layoutu přes existující view composer; brand barvy jako inline `<style>` CSS proměnné v `<head>` (per-tenant, cache-safe).
+- `Contrast` helper (WCAG relative luminance) dopočítá čitelnou barvu textu na brand pozadí.
+
+### Admin „Vzhled"
+- `/admin/nastaveni/vzhled` (core tenant route): color pickery + hex, live varování kontrastu, upload/mazání loga (max 512 kB) a favicon (`png,ico`, max 128 kB). Nav odkaz „Vzhled".
+
+### Bezpečnost
+- CSS-injection guard: `ThemeResolver::sanitizeHex` (`/^#[0-9a-fA-F]{6}$/D`) odmítne ne-hex barvu → default, ještě než vstoupí do inline `<style>`; stejný `/D` regex i na admin vstupu.
+- Favicon jen `png,ico` (ne SVG) — SVG servírované jako `image/svg+xml` je stored-XSS vektor. Tenant izolace barev, upload safety (extension z MIME, tenant-prefixed path), write-freeze na suspended.
+
+### Odloženo
+- Bloková homepage / page builder = vlna 2.3. Další šablony (marketingová, technická) = `docs/future/2026-07-25-dalsi-storefront-sablony.md`. Statické stránky (VOP/GDPR) do shop layoutu = pre-launch/legal vlna.
+
 ## [0.19.0] – 2026-07-23
 
 **Fáze 2 / vlna 2.1 — vlastní domény nájemců + automatické TLS (Caddy on-demand).** Nájemce provozuje e-shop na vlastní doméně s automaticky vydaným certifikátem; platforma ověří vlastnictví přes DNS, teprve pak autorizuje emisi a začne doménu servírovat; po vydání certu se custom doména stane kanonickou a subdoména 301 přesměruje na ni. 1096 testů.

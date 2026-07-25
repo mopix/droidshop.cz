@@ -54,6 +54,11 @@ class Tenant extends SpatieTenant
         return $this->hasOne(Domain::class)->where('is_primary', true);
     }
 
+    public function theme(): HasOne
+    {
+        return $this->hasOne(TenantTheme::class);
+    }
+
     public function users(): BelongsToMany
     {
         return $this->belongsToMany(User::class, 'tenant_users')

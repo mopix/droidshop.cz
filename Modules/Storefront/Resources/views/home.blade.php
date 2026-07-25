@@ -1,15 +1,18 @@
 @extends('storefront::layouts.shop')
 
 @section('content')
-    <h1 class="text-2xl font-semibold">{{ $shopName }}</h1>
+    <section class="border-b border-slate-100 pb-10">
+        <h1 class="text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">{{ $shopName }}</h1>
+        <p class="mt-3 max-w-2xl text-slate-600">Vítejte v našem e-shopu. Podívejte se na aktuální nabídku.</p>
+    </section>
 
     @if ($categories->isNotEmpty())
-        <section class="mt-8" aria-labelledby="nadpis-kategorie">
-            <h2 id="nadpis-kategorie" class="mb-4 text-lg font-semibold">Kategorie</h2>
+        <section class="mt-10" aria-labelledby="nadpis-kategorie">
+            <h2 id="nadpis-kategorie" class="mb-4 text-lg font-semibold text-slate-900">Kategorie</h2>
             <ul class="flex flex-wrap gap-3">
                 @foreach ($categories as $category)
                     <li>
-                        <a href="{{ $category->url() }}" class="rounded border border-slate-200 px-4 py-2 hover:bg-slate-50">
+                        <a href="{{ $category->url() }}" class="btn btn-outline">
                             {{ $category->name }}
                         </a>
                     </li>
@@ -18,13 +21,25 @@
         </section>
     @endif
 
-    <section class="mt-10" aria-labelledby="nadpis-novinky">
-        <h2 id="nadpis-novinky" class="mb-4 text-lg font-semibold">Novinky</h2>
+    <section class="mt-12" aria-labelledby="nadpis-novinky">
+        <div class="flex flex-wrap items-center justify-between gap-4">
+            <h2 id="nadpis-novinky" class="text-lg font-semibold text-slate-900">Novinky</h2>
+
+            {{-- Catalogue is category-based (no single "all products" page),
+                 so the way into the full catalogue is the first category. --}}
+            @if ($categories->isNotEmpty())
+                <a href="{{ $categories->first()->url() }}" class="text-sm font-medium text-brand hover:underline">
+                    Celá nabídka →
+                </a>
+            @endif
+        </div>
 
         @if ($products->isEmpty())
-            <p class="text-slate-600">Nabídka se právě připravuje.</p>
+            <p class="mt-4 text-slate-600">Nabídka se právě připravuje.</p>
         @else
-            <x-storefront::product-grid :products="$products" />
+            <div class="mt-6">
+                <x-storefront::product-grid :products="$products" />
+            </div>
         @endif
     </section>
 @endsection

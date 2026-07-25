@@ -4,6 +4,7 @@ namespace Modules\Storefront\Providers;
 
 use App\Core\Storefront\Contracts\StorefrontHome;
 use App\Core\Tenancy\TenantContext;
+use App\Core\Theme\ThemeResolver;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\View;
 use Illuminate\Support\ServiceProvider;
@@ -79,6 +80,7 @@ class ModuleProvider extends ServiceProvider
                 // the next (spec §15.6). A count belongs to the mini-cart
                 // island (CartSummaryController), not this composer.
                 'cartEnabled' => $shopModules->has('checkout'),
+                'theme' => app(ThemeResolver::class)->forCurrentTenant(),
             ]);
         });
     }

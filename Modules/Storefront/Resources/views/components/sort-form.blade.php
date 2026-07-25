@@ -9,8 +9,8 @@
     @endforeach
 
     <div>
-        <label for="razeni" class="block text-sm text-slate-600">Řadit</label>
-        <select id="razeni" name="razeni" class="rounded border border-slate-300 px-3 py-2">
+        <label for="razeni" class="field-label">Řadit</label>
+        <select id="razeni" name="razeni" class="field-input">
             <option value="nejnovejsi" @selected($query->sort === 'nejnovejsi')>Nejnovější</option>
             <option value="cena-asc" @selected($query->sort === 'cena-asc')>Nejlevnější</option>
             <option value="cena-desc" @selected($query->sort === 'cena-desc')>Nejdražší</option>
@@ -20,9 +20,9 @@
 
     <div class="flex items-center gap-2">
         <input id="skladem" name="skladem" type="checkbox" value="1" @checked($query->inStockOnly)
-               class="h-4 w-4 rounded border-slate-300">
-        <label for="skladem">Pouze skladem</label>
+               class="h-4 w-4 rounded border-slate-300 text-brand focus:ring-brand">
+        <label for="skladem" class="text-sm text-slate-700">Pouze skladem</label>
     </div>
 
-    <button type="submit" class="rounded border border-slate-300 px-4 py-2">Použít</button>
+    <button type="submit" class="btn btn-outline">Použít</button>
 </form>

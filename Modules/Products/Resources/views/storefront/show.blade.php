@@ -7,7 +7,7 @@
         ['label' => $product->name, 'url' => $product->url()],
     ]))" />
 
-    <div class="grid gap-8 lg:grid-cols-2">
+    <div class="grid gap-10 lg:grid-cols-2">
         {{-- Gallery: the main image is rendered by the server; the thumbnails
              only swap it once JavaScript is there. Without JS the customer
              still sees every image. --}}
@@ -18,18 +18,22 @@
                 <img data-gallery-main
                      src="{{ app(\App\Core\Storage\FileStorage::class)->publicUrl($main->path) }}"
                      alt="{{ $main->alt ?: $product->name }}"
-                     class="w-full rounded border border-slate-200 object-cover">
+                     class="aspect-square w-full rounded-xl border border-slate-200 object-cover">
+            @else
+                {{-- Decorative placeholder: empty alt keeps it out of the
+                     accessibility tree instead of announcing "no image". --}}
+                <div class="aspect-square w-full rounded-xl bg-slate-100" aria-hidden="true"></div>
             @endif
 
             @if ($images->count() > 1)
-                <ul class="mt-3 flex flex-wrap gap-3">
+                <ul class="mt-4 flex flex-wrap gap-3">
                     @foreach ($images as $image)
                         @php $url = app(\App\Core\Storage\FileStorage::class)->publicUrl($image->path); @endphp
                         <li>
                             <a href="{{ $url }}" data-gallery-thumb="{{ $url }}"
-                               class="block rounded border border-slate-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-900">
+                               class="block overflow-hidden rounded-lg border border-slate-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2">
                                 <img src="{{ $url }}" alt="{{ $image->alt ?: $product->name }}"
-                                     class="h-20 w-20 rounded object-cover" loading="lazy">
+                                     class="h-20 w-20 object-cover" loading="lazy">
                             </a>
                         </li>
                     @endforeach
@@ -38,18 +42,18 @@
         </div>
 
         <div>
-            <h1 class="text-2xl font-semibold">{{ $product->name }}</h1>
+            <h1 class="text-3xl font-semibold tracking-tight text-slate-900">{{ $product->name }}</h1>
 
             @if ($product->sku)
                 <p class="mt-1 text-sm text-slate-500">Kód: {{ $product->sku }}</p>
             @endif
 
             @if ($product->short_description)
-                <p class="mt-4">{{ $product->short_description }}</p>
+                <p class="mt-4 text-slate-600">{{ $product->short_description }}</p>
             @endif
 
             <p class="mt-6">
-                <span class="text-3xl font-semibold">{{ $product->price->format() }}</span>
+                <span class="text-3xl font-semibold text-slate-900">{{ $product->price->format() }}</span>
                 <span class="block text-sm text-slate-500">
                     s DPH · bez DPH {{ $product->netPrice()->format() }}
                 </span>
@@ -57,9 +61,9 @@
 
             <p class="mt-4">
                 @if ($product->isAvailable())
-                    <span class="rounded bg-emerald-50 px-3 py-1 text-emerald-800">Skladem</span>
+                    <span class="badge bg-emerald-100 text-emerald-800">Skladem</span>
                 @else
-                    <span class="rounded bg-amber-50 px-3 py-1 text-amber-800">Vyprodáno</span>
+                    <span class="badge bg-amber-100 text-amber-800">Vyprodáno</span>
                 @endif
             </p>
 
@@ -71,26 +75,26 @@
                     (no reload), but it must never be the only way it works
                     (.claude/rules/storefront-rendering.md).
                 --}}
-                <form method="POST" action="{{ route('storefront.checkout.add') }}" class="mt-6 flex items-end gap-3">
+                <form method="POST" action="{{ route('storefront.checkout.add') }}" class="mt-8 flex items-end gap-3">
                     @csrf
                     <input type="hidden" name="product_id" value="{{ $product->id }}">
 
                     <div>
-                        <label for="mnozstvi" class="block text-sm text-slate-600">Množství</label>
+                        <label for="mnozstvi" class="field-label">Množství</label>
                         <input id="mnozstvi" name="quantity" type="number" value="1" min="1" max="99"
-                               inputmode="numeric" class="mt-1 w-20 rounded border border-slate-300 px-2 py-2">
+                               inputmode="numeric" class="field-input w-20">
                     </div>
 
-                    <button type="submit" class="rounded bg-slate-900 px-6 py-2 text-white">
+                    <button type="submit" class="btn btn-primary">
                         Přidat do košíku
                     </button>
                 </form>
             @elseif ($cartEnabled)
-                <p class="mt-6 text-sm text-slate-600">
+                <p class="mt-8 text-sm text-slate-600">
                     Produkt je momentálně vyprodaný. Pro dotaz nás kontaktujte.
                 </p>
             @else
-                <p class="mt-6 text-sm text-slate-600">
+                <p class="mt-8 text-sm text-slate-600">
                     Objednávky spustíme brzy. Pro dotaz k produktu nás kontaktujte.
                 </p>
             @endif
@@ -98,10 +102,12 @@
     </div>
 
     @if ($product->description)
-        <section class="prose mt-12 max-w-none" aria-labelledby="nadpis-popis">
-            <h2 id="nadpis-popis">Popis</h2>
-            {{-- Sanitised on write (HtmlSanitizer), rendered as stored. --}}
-            {!! $product->description !!}
+        <section class="prose-shop mt-14 border-t border-slate-100 pt-10" aria-labelledby="nadpis-popis">
+            <h2 id="nadpis-popis" class="text-lg font-semibold text-slate-900">Popis</h2>
+            <div class="mt-4">
+                {{-- Sanitised on write (HtmlSanitizer), rendered as stored. --}}
+                {!! $product->description !!}
+            </div>
         </section>
     @endif
 @endsection
