@@ -96,7 +96,7 @@
     </main>
 
     <footer class="mt-16 border-t border-slate-200 bg-slate-50">
-        <div class="mx-auto max-w-6xl px-4 py-8 text-sm text-slate-500">
+        <div class="mx-auto max-w-6xl px-4 py-8 text-sm text-slate-600">
             &copy; {{ date('Y') }} {{ $shopName }}
         </div>
     </footer>

@@ -4,7 +4,7 @@
     $trail = collect($items)->values();
 @endphp
 
-<nav aria-label="Drobečková navigace" class="mb-6 text-sm text-slate-500">
+<nav aria-label="Drobečková navigace" class="mb-6 text-sm text-slate-600">
     <ol class="flex flex-wrap items-center gap-2">
         @foreach ($trail as $index => $item)
             <li class="flex items-center gap-2">
