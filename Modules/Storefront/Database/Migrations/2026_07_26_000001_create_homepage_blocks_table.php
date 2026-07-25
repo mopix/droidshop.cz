@@ -10,7 +10,7 @@ return new class extends Migration
     {
         Schema::create('homepage_blocks', function (Blueprint $table) {
             $table->id();
-            $table->unsignedBigInteger('tenant_id')->index();
+            $table->foreignId('tenant_id')->constrained()->cascadeOnDelete();
             $table->unsignedInteger('position')->default(0);
             $table->string('type', 32);
             $table->json('payload');
