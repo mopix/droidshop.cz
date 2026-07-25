@@ -63,4 +63,27 @@ class HomepageSeedTest extends TestCase
 
         $this->assertSame(3, $count);
     }
+
+    public function test_backfills_only_tenants_without_blocks(): void
+    {
+        $fresh = Tenant::factory()->create();
+        $edited = Tenant::factory()->create();
+
+        $context = app(TenantContext::class);
+
+        // $edited already has 1 custom block.
+        $context->runAs($edited, fn () => HomepageBlock::create([
+            'position' => 0,
+            'type' => BlockType::Text,
+            'payload' => ['html' => 'custom'],
+            'visible' => true,
+        ]));
+
+        $seeder = app(DefaultHomepage::class);
+        $seeder->seed($fresh);
+        $seeder->seed($edited);
+
+        $this->assertSame(3, $context->runAs($fresh, fn () => HomepageBlock::count()));
+        $this->assertSame(1, $context->runAs($edited, fn () => HomepageBlock::count()));
+    }
 }
