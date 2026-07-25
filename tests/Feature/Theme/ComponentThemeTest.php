@@ -10,6 +10,7 @@ use Modules\Categories\Models\Category;
 use Modules\Categories\Services\CategoryTree;
 use Modules\Products\Models\Product;
 use Modules\Products\Services\ProductWriter;
+use Modules\Storefront\Support\DefaultHomepage;
 use Tests\Concerns\ActivatesModules;
 use Tests\TestCase;
 
@@ -46,6 +47,10 @@ class ComponentThemeTest extends TestCase
         foreach (['categories', 'products', 'storefront'] as $module) {
             $this->activateModule($this->tenant, $module);
         }
+
+        // Real tenants get their homepage blocks from TenantProvisioner
+        // (DefaultHomepage); this tenant is built directly by the factory.
+        app(DefaultHomepage::class)->seed($this->tenant);
     }
 
     private function makeProduct(array $attributes = [], ?Category $category = null): Product
@@ -134,17 +139,19 @@ class ComponentThemeTest extends TestCase
         $this->assertMatchesRegularExpression('/24\s?990/u', $html);
     }
 
-    public function test_homepage_is_a_clean_default_not_a_page_builder(): void
+    public function test_homepage_renders_the_seeded_default_blocks_with_the_design_system(): void
     {
         $category = $this->makeCategory(['slug' => 'notebooky']);
         $this->makeProduct(['slug' => 'notebook-acme-14'], $category);
 
         $html = $this->get('http://shop1.droidshop/')->assertOk()->getContent();
 
-        // A simple intro plus a link into the catalogue — no configurable
-        // block markup (that is wave 2.3), just the shop name and a CTA.
+        // Wave 2.3: the homepage is block-based (hero, product row, category
+        // grid). Design system classes still land on the rendered blocks.
         $this->assertStringContainsString('Shop One', $html);
-        $this->assertStringContainsString('Celá nabídka', $html);
+        $this->assertStringContainsString('Novinky', $html);
+        $this->assertStringContainsString('Notebooky', $html);
+        $this->assertStringContainsString('btn', $html);
     }
 
     public function test_product_detail_uses_the_primary_button_and_prose_class(): void

@@ -11,6 +11,7 @@ use Modules\Categories\Models\Category;
 use Modules\Categories\Services\CategoryTree;
 use Modules\Products\Models\Product;
 use Modules\Products\Services\ProductWriter;
+use Modules\Storefront\Support\DefaultHomepage;
 use Tests\Concerns\ActivatesModules;
 use Tests\TestCase;
 
@@ -49,6 +50,12 @@ class StorefrontCatalogTest extends TestCase
             $this->activateModule($this->tenantA, $module);
             $this->activateModule($this->tenantB, $module);
         }
+
+        // Real tenants get their homepage blocks from TenantProvisioner
+        // (DefaultHomepage). These tenants are built directly by the factory,
+        // so the homepage would otherwise be block-less.
+        app(DefaultHomepage::class)->seed($this->tenantA);
+        app(DefaultHomepage::class)->seed($this->tenantB);
     }
 
     private function inShop(Tenant $tenant, callable $callback): mixed
