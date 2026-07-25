@@ -30,8 +30,8 @@ class ThemeResolver
             ? null
             : TenantTheme::query()->firstWhere('tenant_id', $tenant->id);
 
-        $primary = $theme?->primaryColor() ?? TenantTheme::DEFAULT_PRIMARY;
-        $accent = $theme?->accentColor() ?? TenantTheme::DEFAULT_ACCENT;
+        $primary = $this->sanitizeHex($theme?->primaryColor(), TenantTheme::DEFAULT_PRIMARY);
+        $accent = $this->sanitizeHex($theme?->accentColor(), TenantTheme::DEFAULT_ACCENT);
 
         return new ThemeData(
             primary: $primary,
@@ -40,5 +40,24 @@ class ThemeResolver
             logoUrl: $theme?->logo_path ? $this->files->publicUrl($theme->logo_path) : null,
             faviconUrl: $theme?->favicon_path ? $this->files->publicUrl($theme->favicon_path) : null,
         );
+    }
+
+    /**
+     * Defense-in-depth choke point: whatever lands in the layout's inline
+     * <style> block must always be a plain hex color, regardless of what is
+     * in the database or what a future admin write path allows through.
+     * Blade's {{ }} only HTML-escapes — it does not neutralize CSS syntax
+     * characters (`;`, `{`, `}`, `(`, `)`, `@`), so a stored value like
+     * `#0f766e; } body{background:url(...)}` would otherwise break out of
+     * the custom-property declaration and inject arbitrary CSS into a
+     * page-cached response.
+     */
+    private function sanitizeHex(?string $value, string $default): string
+    {
+        if ($value !== null && preg_match('/^#[0-9a-fA-F]{6}$/', $value) === 1) {
+            return $value;
+        }
+
+        return $default;
     }
 }

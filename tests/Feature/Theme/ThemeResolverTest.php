@@ -60,4 +60,51 @@ class ThemeResolverTest extends TestCase
         $this->assertNotEmpty($theme->logoUrl);
         $this->assertSame($expectedLogoUrl, $theme->logoUrl);
     }
+
+    public function test_malicious_primary_color_is_rejected_and_falls_back_to_default(): void
+    {
+        $tenant = Tenant::factory()->create();
+
+        // The primary_color column is only 9 chars wide, but the sanitizer
+        // must reject any non-hex value regardless of length — this is
+        // enough to prove a value carrying CSS syntax (";", "{", "}") never
+        // reaches the resolver's output, which is inlined into a <style>
+        // block without further escaping.
+        TenantTheme::create([
+            'tenant_id' => $tenant->id,
+            'primary_color' => '#0f766e;',
+        ]);
+
+        $theme = $this->context->runAs($tenant, fn () => app(ThemeResolver::class)->forCurrentTenant());
+
+        $this->assertSame(TenantTheme::DEFAULT_PRIMARY, $theme->primary);
+    }
+
+    public function test_valid_hex_primary_color_is_not_rejected(): void
+    {
+        $tenant = Tenant::factory()->create();
+
+        TenantTheme::create([
+            'tenant_id' => $tenant->id,
+            'primary_color' => '#0f766e',
+        ]);
+
+        $theme = $this->context->runAs($tenant, fn () => app(ThemeResolver::class)->forCurrentTenant());
+
+        $this->assertSame('#0f766e', $theme->primary);
+    }
+
+    public function test_uppercase_valid_hex_primary_color_is_accepted(): void
+    {
+        $tenant = Tenant::factory()->create();
+
+        TenantTheme::create([
+            'tenant_id' => $tenant->id,
+            'primary_color' => '#ABCDEF',
+        ]);
+
+        $theme = $this->context->runAs($tenant, fn () => app(ThemeResolver::class)->forCurrentTenant());
+
+        $this->assertSame('#ABCDEF', $theme->primary);
+    }
 }
