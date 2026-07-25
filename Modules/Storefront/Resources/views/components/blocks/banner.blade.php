@@ -2,7 +2,7 @@
     @if (!empty($image_path))
         @php($bannerUrl = app(\App\Core\Storage\FileStorage::class)->publicUrl($image_path))
         @if (!empty($url))
-            <a href="{{ $url }}">
+            <a href="{{ $url }}" @if(empty($alt)) aria-label="Bannerový odkaz" @endif>
                 <img src="{{ $bannerUrl }}" alt="{{ $alt ?? '' }}" loading="lazy" class="w-full rounded-lg">
             </a>
         @else

@@ -138,6 +138,38 @@ class HomepageBlocksRenderTest extends TestCase
         $this->assertLessThan(strpos($html, 'Druhy blok'), strpos($html, 'Prvni blok'));
     }
 
+    public function test_banner_with_image_and_url_wraps_img_in_an_accessible_link(): void
+    {
+        $this->seedBlocks([
+            ['type' => BlockType::Banner, 'payload' => [
+                'image_path' => 'banners/leto.jpg',
+                'url' => '/kategorie/leto',
+                'alt' => '',
+            ]],
+        ]);
+
+        $html = $this->get('http://blockshop.droidshop/')->assertOk()->getContent();
+
+        $this->assertMatchesRegularExpression('/<a[^>]*href="\/kategorie\/leto"[^>]*aria-label="[^"]+"[^>]*>\s*<img[^>]*>/s', $html);
+    }
+
+    public function test_banner_with_image_and_no_url_renders_img_without_a_link(): void
+    {
+        $this->seedBlocks([
+            ['type' => BlockType::Banner, 'payload' => [
+                'image_path' => 'banners/leto.jpg',
+                'url' => null,
+                'alt' => 'Letní kolekce',
+            ]],
+        ]);
+
+        $response = $this->get('http://blockshop.droidshop/')->assertOk();
+        $html = $response->getContent();
+
+        $response->assertSee('Letní kolekce', false);
+        $this->assertDoesNotMatchRegularExpression('/<a[^>]*>\s*<img[^>]*banners\/leto\.jpg/s', $html);
+    }
+
     public function test_empty_homepage_still_answers_ok(): void
     {
         $this->get('http://blockshop.droidshop/')
