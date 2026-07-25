@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Tenant\AdminHomeController;
+use App\Http\Controllers\Tenant\AppearanceController;
 use App\Http\Controllers\Tenant\BillingProfileController;
 use App\Http\Controllers\Tenant\DomainController;
 use App\Http\Controllers\Tenant\SubscriptionController;
@@ -15,6 +16,11 @@ Route::get('/admin', AdminHomeController::class)->name('admin.home');
 
 Route::get('/admin/nastaveni/fakturace', [BillingProfileController::class, 'edit'])->name('admin.billing.edit');
 Route::patch('/admin/nastaveni/fakturace', [BillingProfileController::class, 'update'])->name('admin.billing.update');
+
+Route::get('/admin/nastaveni/vzhled', [AppearanceController::class, 'edit'])->name('admin.appearance.edit');
+Route::post('/admin/nastaveni/vzhled', [AppearanceController::class, 'update'])->name('admin.appearance.update');
+Route::delete('/admin/nastaveni/vzhled/logo', [AppearanceController::class, 'destroyLogo'])->name('admin.appearance.logo.destroy');
+Route::delete('/admin/nastaveni/vzhled/favicon', [AppearanceController::class, 'destroyFavicon'])->name('admin.appearance.favicon.destroy');
 
 Route::get('/admin/nastaveni/domena', [DomainController::class, 'edit'])->name('admin.domain.edit');
 Route::post('/admin/nastaveni/domena', [DomainController::class, 'store'])->name('admin.domain.store');
