@@ -119,4 +119,72 @@ class ComponentThemeTest extends TestCase
 
         $this->assertStringContainsString('field-input', $html);
     }
+
+    public function test_homepage_applies_the_design_system_to_the_product_grid(): void
+    {
+        $this->makeProduct(['name' => 'Notebook Acme 14', 'slug' => 'notebook-acme-14', 'price' => 24_990_00]);
+
+        $html = $this->get('http://shop1.droidshop/')->assertOk()->getContent();
+
+        $this->assertStringContainsString('card', $html);
+        $this->assertStringContainsString('btn', $html);
+
+        // Storefront rule: content survives the restyle.
+        $this->assertStringContainsString('Notebook Acme 14', $html);
+        $this->assertMatchesRegularExpression('/24\s?990/u', $html);
+    }
+
+    public function test_homepage_is_a_clean_default_not_a_page_builder(): void
+    {
+        $category = $this->makeCategory(['slug' => 'notebooky']);
+        $this->makeProduct(['slug' => 'notebook-acme-14'], $category);
+
+        $html = $this->get('http://shop1.droidshop/')->assertOk()->getContent();
+
+        // A simple intro plus a link into the catalogue — no configurable
+        // block markup (that is wave 2.3), just the shop name and a CTA.
+        $this->assertStringContainsString('Shop One', $html);
+        $this->assertStringContainsString('Celá nabídka', $html);
+    }
+
+    public function test_product_detail_uses_the_primary_button_and_prose_class(): void
+    {
+        $this->activateModule($this->tenant, 'checkout');
+
+        $category = $this->makeCategory(['slug' => 'notebooky']);
+        $this->makeProduct([
+            'slug' => 'notebook-acme-14',
+            'description' => '<p>Skvělý notebook pro práci i hry.</p>',
+        ], $category);
+
+        $html = $this->get('http://shop1.droidshop/produkt/notebook-acme-14')->assertOk()->getContent();
+
+        $this->assertStringContainsString('btn-primary', $html);
+        $this->assertStringContainsString('prose-shop', $html);
+
+        // Storefront rule: name, price and description stay in the raw HTML,
+        // and "add to cart" is a plain form that works without JavaScript.
+        $this->assertStringContainsString('Notebook Acme 14', $html);
+        $this->assertMatchesRegularExpression('/24\s?990/u', $html);
+        $this->assertStringContainsString('Skvělý notebook pro práci i hry.', $html);
+        $this->assertStringContainsString('<form method="POST" action="http://shop1.droidshop/kosik"', $html);
+    }
+
+    public function test_search_results_use_the_design_system_grid(): void
+    {
+        $this->makeProduct(['name' => 'Notebook Acme 14', 'slug' => 'notebook-acme-14']);
+
+        $html = $this->get('http://shop1.droidshop/hledani?q=acme')->assertOk()->getContent();
+
+        $this->assertStringContainsString('card', $html);
+        $this->assertStringContainsString('Notebook Acme 14', $html);
+    }
+
+    public function test_not_found_page_uses_the_design_system(): void
+    {
+        $html = $this->get('http://shop1.droidshop/neexistuje')->assertNotFound()->getContent();
+
+        $this->assertStringContainsString('btn-primary', $html);
+        $this->assertStringContainsString('Stránka nenalezena', $html);
+    }
 }

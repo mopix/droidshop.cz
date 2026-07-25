@@ -7,12 +7,12 @@
         ->prepend(['label' => 'Úvod', 'url' => '/'])
         ->all()" />
 
-    <h1 class="text-2xl font-semibold">{{ $category->name }}</h1>
+    <h1 class="text-2xl font-semibold text-slate-900 sm:text-3xl">{{ $category->name }}</h1>
 
     @if ($category->description_above)
         {{-- Sanitised on write by HtmlSanitizer; sanitising again here would
              mean the policy lives in two places. --}}
-        <div class="prose mt-4 max-w-none">{!! $category->description_above !!}</div>
+        <div class="prose-shop mt-4">{!! $category->description_above !!}</div>
     @endif
 
     @if ($children->isNotEmpty())
@@ -20,7 +20,7 @@
             <ul class="flex flex-wrap gap-3">
                 @foreach ($children as $child)
                     <li>
-                        <a href="{{ $child->url() }}" class="rounded border border-slate-200 px-4 py-2 hover:bg-slate-50">
+                        <a href="{{ $child->url() }}" class="btn btn-outline">
                             {{ $child->name }}
                         </a>
                     </li>
@@ -44,7 +44,7 @@
     </div>
 
     @if ($category->description_below)
-        <div class="prose mt-10 max-w-none">{!! $category->description_below !!}</div>
+        <div class="prose-shop mt-10 border-t border-slate-100 pt-8">{!! $category->description_below !!}</div>
     @endif
 @endsection
 
