@@ -51,4 +51,20 @@ class BlockUrlTest extends TestCase
     {
         $this->assertFalse(BlockUrl::isSafe('not-a-path:evil'));
     }
+
+    public function test_protocol_relative_url_is_rejected(): void
+    {
+        $this->assertFalse(BlockUrl::isSafe('//evil.com'));
+    }
+
+    public function test_backslash_trick_url_is_rejected(): void
+    {
+        $this->assertFalse(BlockUrl::isSafe('/\evil.com'));
+        $this->assertFalse(BlockUrl::isSafe('/\\\\evil.com'));
+    }
+
+    public function test_normal_internal_path_is_still_safe(): void
+    {
+        $this->assertTrue(BlockUrl::isSafe('/kategorie/boty'));
+    }
 }

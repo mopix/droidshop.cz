@@ -18,7 +18,10 @@ class BlockUrl
         }
 
         if (str_starts_with($url, '/')) {
-            return true; // interní relativní cesta
+            // `//evil.com` je protocol-relative (prohlížeč vyřeší jako https://evil.com)
+            // a `/\evil.com` zneužívá WHATWG normalizaci zpětného lomítka na lomítko —
+            // obojí začíná `/`, ale míří mimo tenanta.
+            return ! str_starts_with($url, '//') && ! str_contains($url, '\\');
         }
 
         return (bool) preg_match('#^https?://#i', $url);
