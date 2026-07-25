@@ -17,8 +17,8 @@ class UpdateAppearanceRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'primary_color' => ['required', 'regex:/^#[0-9a-fA-F]{6}$/'],
-            'accent_color' => ['required', 'regex:/^#[0-9a-fA-F]{6}$/'],
+            'primary_color' => ['required', 'regex:/^#[0-9a-fA-F]{6}$/D'],
+            'accent_color' => ['required', 'regex:/^#[0-9a-fA-F]{6}$/D'],
             'logo' => ['nullable', 'image', 'max:512'],
             'favicon' => ['nullable', 'image', 'max:128'],
         ];

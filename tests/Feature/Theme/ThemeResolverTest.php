@@ -80,6 +80,23 @@ class ThemeResolverTest extends TestCase
         $this->assertSame(TenantTheme::DEFAULT_PRIMARY, $theme->primary);
     }
 
+    public function test_primary_color_with_trailing_newline_is_rejected_and_falls_back_to_default(): void
+    {
+        // PCRE `$` matches before a trailing newline unless the `D` modifier
+        // is set — without it, "#0f766e\n" would slip past sanitizeHex() and
+        // land inside the <style> block unescaped.
+        $tenant = Tenant::factory()->create();
+
+        TenantTheme::create([
+            'tenant_id' => $tenant->id,
+            'primary_color' => "#0f766e\n",
+        ]);
+
+        $theme = $this->context->runAs($tenant, fn () => app(ThemeResolver::class)->forCurrentTenant());
+
+        $this->assertSame(TenantTheme::DEFAULT_PRIMARY, $theme->primary);
+    }
+
     public function test_valid_hex_primary_color_is_not_rejected(): void
     {
         $tenant = Tenant::factory()->create();

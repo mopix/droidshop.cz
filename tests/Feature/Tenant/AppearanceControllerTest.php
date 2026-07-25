@@ -9,6 +9,7 @@ use App\Models\Domain;
 use App\Models\Tenant;
 use App\Models\TenantTheme;
 use App\Models\User;
+use Illuminate\Foundation\Http\Middleware\TrimStrings;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
@@ -111,6 +112,26 @@ class AppearanceControllerTest extends TestCase
         $this->actingAs($owner)
             ->post($this->host().'/admin/nastaveni/vzhled', [
                 'primary_color' => 'red',
+                'accent_color' => '#2563eb',
+            ])
+            ->assertSessionHasErrors('primary_color');
+    }
+
+    public function test_rejects_a_hex_color_with_a_trailing_newline(): void
+    {
+        // PCRE `$` matches before a trailing newline unless the `D` modifier
+        // is set — without it, "#0f766e\n" would slip past the regex rule.
+        // TrimStrings (default web middleware) would otherwise strip the
+        // newline before validation ever sees it, masking the bug this test
+        // is for — disabled here so the FormRequest's own regex is what's
+        // actually under test.
+        $this->withoutMiddleware(TrimStrings::class);
+
+        [, $owner] = $this->ownerOnHost();
+
+        $this->actingAs($owner)
+            ->post($this->host().'/admin/nastaveni/vzhled', [
+                'primary_color' => "#0f766e\n",
                 'accent_color' => '#2563eb',
             ])
             ->assertSessionHasErrors('primary_color');

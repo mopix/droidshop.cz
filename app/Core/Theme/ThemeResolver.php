@@ -54,7 +54,7 @@ class ThemeResolver
      */
     private function sanitizeHex(?string $value, string $default): string
     {
-        if ($value !== null && preg_match('/^#[0-9a-fA-F]{6}$/', $value) === 1) {
+        if ($value !== null && preg_match('/^#[0-9a-fA-F]{6}$/D', $value) === 1) {
             return $value;
         }
 
