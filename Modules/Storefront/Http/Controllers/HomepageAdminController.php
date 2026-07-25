@@ -66,6 +66,13 @@ class HomepageAdminController
         // block's html before it ever reaches the database.
         $payload = $request->cleanPayload($block->type, $this->sanitizer);
 
+        // image_path is server-authoritative and must never come from the
+        // request body: a no-file PATCH could otherwise smuggle an arbitrary
+        // payload.image_path string straight into storage. Drop whatever the
+        // client sent, then re-derive it below either from a genuine upload
+        // or from the block's previously stored value.
+        unset($payload['image_path']);
+
         if ($request->hasFile('image')) {
             // image_path is always derived here from the uploaded file, never
             // accepted as a client-supplied string in the payload — otherwise
@@ -75,6 +82,10 @@ class HomepageAdminController
             $path = "homepage/{$block->id}.{$extension}";
             $this->files->putPublic($path, file_get_contents($request->file('image')->getRealPath()));
             $payload['image_path'] = $path;
+        } elseif (array_key_exists('image_path', $block->payload ?? [])) {
+            // No new upload — keep the block's existing server-stored image
+            // untouched instead of leaving it forged or wiped.
+            $payload['image_path'] = $block->payload['image_path'];
         }
 
         $block->update([

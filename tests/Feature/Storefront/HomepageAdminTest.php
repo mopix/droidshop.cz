@@ -3,10 +3,13 @@
 namespace Tests\Feature\Storefront;
 
 use App\Core\Enums\TenantStatus;
+use App\Core\Storage\FileStorage;
 use App\Core\Tenancy\TenantContext;
 use App\Models\Tenant;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 use Modules\Storefront\Enums\BlockType;
 use Modules\Storefront\Models\HomepageBlock;
 use Tests\Concerns\ActivatesModules;
@@ -170,5 +173,64 @@ class HomepageAdminTest extends TestCase
         $this->actingAs($owner)
             ->post($this->url($tenant, '/blok'), ['type' => 'text'])
             ->assertSessionHasErrors('type');
+    }
+
+    public function test_an_uploaded_image_overrides_a_spoofed_payload_image_path(): void
+    {
+        Storage::fake(FileStorage::PUBLIC_DISK);
+
+        [$tenant, $owner] = $this->makeShopWithOwner('shop1');
+
+        $banner = $this->block($tenant, BlockType::Banner, [
+            'url' => null, 'image_path' => null, 'alt' => '',
+        ]);
+
+        $this->actingAs($owner)
+            ->patch($this->url($tenant, '/blok/'.$banner->id), [
+                'payload' => ['url' => null, 'alt' => 'x', 'image_path' => 'forged/evil.png'],
+                'image' => UploadedFile::fake()->image('b.png'),
+            ])
+            ->assertRedirect();
+
+        $payload = $this->freshPayload($tenant, $banner);
+
+        $this->assertSame("homepage/{$banner->id}.png", $payload['image_path']);
+        $this->assertNotSame('forged/evil.png', $payload['image_path']);
+    }
+
+    public function test_a_spoofed_payload_image_path_without_a_file_upload_is_ignored(): void
+    {
+        [$tenant, $owner] = $this->makeShopWithOwner('shop1');
+
+        $banner = $this->block($tenant, BlockType::Banner, [
+            'url' => null, 'image_path' => 'homepage/existing.png', 'alt' => '',
+        ]);
+
+        $this->actingAs($owner)
+            ->patch($this->url($tenant, '/blok/'.$banner->id), [
+                'payload' => ['url' => null, 'alt' => 'x', 'image_path' => 'forged/evil.png'],
+            ])
+            ->assertRedirect();
+
+        $payload = $this->freshPayload($tenant, $banner);
+
+        $this->assertSame('homepage/existing.png', $payload['image_path']);
+        $this->assertNotSame('forged/evil.png', $payload['image_path']);
+    }
+
+    public function test_an_svg_image_upload_is_rejected(): void
+    {
+        [$tenant, $owner] = $this->makeShopWithOwner('shop1');
+
+        $banner = $this->block($tenant, BlockType::Banner, [
+            'url' => null, 'image_path' => null, 'alt' => '',
+        ]);
+
+        $this->actingAs($owner)
+            ->patch($this->url($tenant, '/blok/'.$banner->id), [
+                'payload' => ['url' => null, 'alt' => 'x'],
+                'image' => UploadedFile::fake()->create('x.svg', 10, 'image/svg+xml'),
+            ])
+            ->assertSessionHasErrors('image');
     }
 }
