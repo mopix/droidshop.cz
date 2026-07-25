@@ -6,6 +6,17 @@
 
     <x-storefront::seo-meta :seo="$seo" :shop-name="$shopName" />
 
+    <style>
+        :root {
+            --brand-primary: {{ $theme->primary }};
+            --brand-primary-contrast: {{ $theme->primaryContrast }};
+            --brand-accent: {{ $theme->accent }};
+        }
+    </style>
+    @if ($theme->faviconUrl)
+        <link rel="icon" href="{{ $theme->faviconUrl }}">
+    @endif
+
     @stack('head')
 
     @vite(['resources/css/storefront.css', 'resources/js/storefront.js'])
@@ -19,7 +30,13 @@
 
     <header class="border-b border-slate-200">
         <div class="mx-auto flex max-w-6xl flex-wrap items-center gap-4 px-4 py-4">
-            <a href="/" class="text-lg font-semibold tracking-tight">{{ $shopName }}</a>
+            <a href="/" class="flex items-center">
+                @if ($theme->logoUrl)
+                    <img src="{{ $theme->logoUrl }}" alt="{{ $shopName }}" class="h-8 w-auto">
+                @else
+                    <span class="text-lg font-semibold tracking-tight">{{ $shopName }}</span>
+                @endif
+            </a>
 
             <form action="/hledani" method="get" role="search" class="order-last w-full sm:order-none sm:ml-auto sm:w-auto">
                 <label for="hledani" class="sr-only">Hledat v e-shopu</label>
