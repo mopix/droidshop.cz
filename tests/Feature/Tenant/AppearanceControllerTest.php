@@ -133,6 +133,26 @@ class AppearanceControllerTest extends TestCase
         $this->assertTrue($exists);
     }
 
+    public function test_rejects_an_svg_favicon(): void
+    {
+        // SVG is deliberately excluded from the favicon whitelist: files on
+        // this disk are served as static assets with Content-Type
+        // image/svg+xml, and an SVG can embed <script> — allowing it would
+        // be stored XSS reachable by any tenant admin. Same reasoning as
+        // ProductImageService::ALLOWED_MIMES (raster-only, no svg).
+        Storage::fake(FileStorage::PUBLIC_DISK);
+
+        [, $owner] = $this->ownerOnHost();
+
+        $this->actingAs($owner)
+            ->post($this->host().'/admin/nastaveni/vzhled', [
+                'primary_color' => '#0f766e',
+                'accent_color' => '#2563eb',
+                'favicon' => UploadedFile::fake()->create('x.svg', 5, 'image/svg+xml'),
+            ])
+            ->assertSessionHasErrors('favicon');
+    }
+
     public function test_rejects_an_invalid_hex_color(): void
     {
         [, $owner] = $this->ownerOnHost();

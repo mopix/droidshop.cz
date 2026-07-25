@@ -22,8 +22,13 @@ class UpdateAppearanceRequest extends FormRequest
             'logo' => ['nullable', 'image', 'max:512'],
             // Laravel's `image` rule mime whitelist does not include .ico —
             // the conventional favicon format — so favicon uses an explicit
-            // extension/mime whitelist instead, unlike logo.
-            'favicon' => ['nullable', 'mimes:png,ico,svg,jpg,jpeg,webp', 'max:128'],
+            // extension/mime whitelist instead, unlike logo. Deliberately
+            // excludes svg: files on this disk are served as static assets
+            // with Content-Type image/svg+xml, and an SVG is active content
+            // (can embed <script>) — allowing it would reopen the stored-XSS
+            // vector product images are already raster-only to close
+            // (ProductImageService::ALLOWED_MIMES has no svg either).
+            'favicon' => ['nullable', 'mimes:png,ico', 'max:128'],
         ];
     }
 
@@ -39,7 +44,7 @@ class UpdateAppearanceRequest extends FormRequest
             'accent_color.regex' => 'Barva musí být hex kód, např. #0f766e.',
             'logo.image' => 'Logo musí být obrázek.',
             'logo.max' => 'Logo je příliš velké (max 512 kB).',
-            'favicon.mimes' => 'Favicon musí být obrázek (PNG, ICO, SVG, JPG nebo WEBP).',
+            'favicon.mimes' => 'Favicon musí být obrázek (PNG nebo ICO).',
             'favicon.max' => 'Favicon je příliš velký (max 128 kB).',
         ];
     }
