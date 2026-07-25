@@ -164,6 +164,15 @@ const stopImpersonating = (url: string) => router.post(url)
               Doména
             </Link>
           </li>
+          <li>
+            <Link
+              :href="route('admin.appearance.edit')"
+              :aria-current="route().current('admin.appearance.edit') ? 'page' : undefined"
+              class="block rounded-md px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-900 aria-[current=page]:bg-gray-900 aria-[current=page]:text-white"
+            >
+              Vzhled
+            </Link>
+          </li>
           <li v-for="entry in tenant?.nav ?? []" :key="entry.route">
             <Link
               :href="route(entry.route)"

@@ -49,10 +49,7 @@ class AppearanceControllerTest extends TestCase
 
         $this->actingAs($owner)
             ->get($this->host().'/admin/nastaveni/vzhled')
-            // shouldExist=false: the Vue page (Tenant/Appearance.vue) is a
-            // later task (9); this test asserts the controller's Inertia
-            // contract, not the frontend file's existence.
-            ->assertInertia(fn (Assert $p) => $p->component('Tenant/Appearance', false)
+            ->assertInertia(fn (Assert $p) => $p->component('Tenant/Appearance')
                 ->where('appearance.primary_color', TenantTheme::DEFAULT_PRIMARY)
                 ->where('appearance.accent_color', TenantTheme::DEFAULT_ACCENT)
                 ->where('appearance.logo_url', null)
