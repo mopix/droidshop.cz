@@ -29,6 +29,7 @@ class UpdateAppearanceRequest extends FormRequest
             // vector product images are already raster-only to close
             // (ProductImageService::ALLOWED_MIMES has no svg either).
             'favicon' => ['nullable', 'mimes:png,ico', 'max:128'],
+            'variant_display' => ['required', 'in:radio,select'],
         ];
     }
 
@@ -46,6 +47,7 @@ class UpdateAppearanceRequest extends FormRequest
             'logo.max' => 'Logo je příliš velké (max 512 kB).',
             'favicon.mimes' => 'Favicon musí být obrázek (PNG nebo ICO).',
             'favicon.max' => 'Favicon je příliš velký (max 128 kB).',
+            'variant_display.in' => 'Vyberte přepínače, nebo rozbalovací seznam.',
         ];
     }
 }

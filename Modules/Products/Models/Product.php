@@ -8,6 +8,7 @@ use App\Core\Money\MoneyCast;
 use App\Core\Storage\FileStorage;
 use App\Core\Tax\TaxRates;
 use App\Core\Tenancy\BelongsToTenant;
+use App\Core\Theme\VariantDisplay;
 use App\Models\TaxRate;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
@@ -276,9 +277,10 @@ class Product extends Model implements CatalogProduct
 
     public function catalogVariantDisplay(): string
     {
-        // Product override wins; otherwise the shop-wide default. App\Core\
-        // Theme\VariantDisplay (Task 5) will replace the hardcoded fallback
-        // below with a resolver that reads the tenant's storefront setting.
-        return $this->variant_display ?? 'radio';
+        if ($this->variant_display !== null) {
+            return VariantDisplay::sanitize($this->variant_display);
+        }
+
+        return app(VariantDisplay::class)->forCurrentTenant();
     }
 }
