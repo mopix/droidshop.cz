@@ -259,6 +259,34 @@ class OrderPlacer implements OrderPlacement
             $quantity = (int) $item->quantity;
             $variantId = (int) ($item->variant_id ?? 0) ?: null;
 
+            // Fetched first (not after the price check, as recomputeLines
+            // itself used to): a vanished product and a variant-less line on
+            // a now-varianted product are both refused before any price
+            // comparison, for the same reason the vanished-variant check
+            // below is.
+            $product = $this->catalog->findById($productId);
+
+            if (! $product instanceof CatalogProduct) {
+                // The product left the catalogue between adding it and
+                // submitting. It cannot be fulfilled, so it is unavailable in
+                // the same sense as running out — the controller already knows
+                // how to turn this into a message (AK 3 path).
+                throw InsufficientStock::for($productId, $quantity);
+            }
+
+            // cart_items.variant_id collapsed to null (the sentinel 0) either
+            // because the line was added before this product had any
+            // variants, or a crafted POST never named one. Once the product
+            // has variants, products.price/stock are not the pricing/stock
+            // authority (Product::catalogHasVariants()) — letting this line
+            // through would price it at the base price and take stock from a
+            // column the shop no longer tracks. The same refusal a vanished
+            // variant already gets below, checked before any price
+            // comparison for the same reason that check is.
+            if ($variantId === null && $product->catalogHasVariants()) {
+                throw InsufficientStock::for($productId, $quantity);
+            }
+
             // Resolved BEFORE any price comparison, deliberately: once a
             // variant is deactivated, ProductCatalog::price() silently falls
             // back to the product's own base price (see
@@ -297,16 +325,6 @@ class OrderPlacer implements OrderPlacement
                 // what the catalogue now charges — both handed to the caller
                 // so it can say exactly what moved (AK 4).
                 throw PriceChanged::forProduct($productId, $snapshot, $currentPrice);
-            }
-
-            $product = $this->catalog->findById($productId);
-
-            if (! $product instanceof CatalogProduct) {
-                // The product left the catalogue between adding it and
-                // submitting. It cannot be fulfilled, so it is unavailable in
-                // the same sense as running out — the controller already knows
-                // how to turn this into a message (AK 3 path).
-                throw InsufficientStock::for($productId, $quantity);
             }
 
             $lines[] = [

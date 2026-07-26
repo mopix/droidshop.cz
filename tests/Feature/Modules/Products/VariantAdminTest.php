@@ -345,6 +345,105 @@ class VariantAdminTest extends TestCase
             ->assertNotFound();
     }
 
+    // --- duplicate axis/value names are a field error, not a 500 (review
+    // IMPORTANT: the migration's unique(product_id,name) / (option_id,value)
+    // indexes had no matching validation rule, so a merchant typing the same
+    // axis or value twice got an unhandled UniqueConstraintViolationException).
+    // ------------------------------------------------------------------------
+
+    public function test_adding_a_duplicate_axis_name_is_rejected_with_a_field_error(): void
+    {
+        $product = $this->product();
+
+        $this->context->runAs($this->tenant, fn () => ProductOption::create([
+            'product_id' => $product->id, 'name' => 'Velikost', 'position' => 0,
+        ]));
+
+        $this->actingAs($this->owner)
+            ->post($this->url('/'.$product->slug.'/varianty/osy'), ['name' => 'Velikost'])
+            ->assertSessionHasErrors('name');
+
+        $this->context->runAs($this->tenant, function () {
+            $this->assertSame(1, ProductOption::query()->count());
+        });
+    }
+
+    public function test_renaming_an_axis_to_another_axes_name_is_rejected(): void
+    {
+        $product = $this->product();
+
+        [$first, $second] = $this->context->runAs($this->tenant, fn () => [
+            ProductOption::create(['product_id' => $product->id, 'name' => 'Velikost', 'position' => 0]),
+            ProductOption::create(['product_id' => $product->id, 'name' => 'Barva', 'position' => 1]),
+        ]);
+
+        $this->actingAs($this->owner)
+            ->patch($this->url('/'.$product->slug."/varianty/osy/{$second->id}"), ['name' => 'Velikost'])
+            ->assertSessionHasErrors('name');
+
+        $this->context->runAs($this->tenant, function () use ($first, $second) {
+            $this->assertSame('Velikost', $first->fresh()->name);
+            $this->assertSame('Barva', $second->fresh()->name);
+        });
+    }
+
+    /**
+     * The unique rule must ignore() the option's own row, or a plain
+     * "save without changing the name" (or renaming with different
+     * casing/whitespace kept the same) would reject itself.
+     */
+    public function test_renaming_an_axis_to_its_own_current_name_is_allowed(): void
+    {
+        $product = $this->product();
+
+        $option = $this->context->runAs($this->tenant, fn () => ProductOption::create([
+            'product_id' => $product->id, 'name' => 'Velikost', 'position' => 0,
+        ]));
+
+        $this->actingAs($this->owner)
+            ->patch($this->url('/'.$product->slug."/varianty/osy/{$option->id}"), ['name' => 'Velikost'])
+            ->assertSessionDoesntHaveErrors('name');
+    }
+
+    public function test_adding_a_duplicate_value_to_an_axis_is_rejected_with_a_field_error(): void
+    {
+        $product = $this->product();
+
+        $option = $this->context->runAs($this->tenant, fn () => ProductOption::create([
+            'product_id' => $product->id, 'name' => 'Velikost', 'position' => 0,
+        ]));
+        $this->context->runAs($this->tenant, fn () => $option->values()->create(['value' => 'M', 'position' => 0]));
+
+        $this->actingAs($this->owner)
+            ->post($this->url('/'.$product->slug."/varianty/osy/{$option->id}/hodnoty"), ['value' => 'M'])
+            ->assertSessionHasErrors('value');
+
+        $this->context->runAs($this->tenant, function () use ($option) {
+            $this->assertSame(1, ProductOptionValue::query()->where('option_id', $option->id)->count());
+        });
+    }
+
+    /**
+     * The same value name on a DIFFERENT axis of the same product must stay
+     * allowed — the unique index is scoped to (option_id, value), not the
+     * whole product, so "M" under both "Velikost" and some other axis is
+     * legitimate.
+     */
+    public function test_the_same_value_name_is_allowed_on_a_different_axis(): void
+    {
+        $product = $this->product();
+
+        [$size, $other] = $this->context->runAs($this->tenant, fn () => [
+            ProductOption::create(['product_id' => $product->id, 'name' => 'Velikost', 'position' => 0]),
+            ProductOption::create(['product_id' => $product->id, 'name' => 'Sada', 'position' => 1]),
+        ]);
+        $this->context->runAs($this->tenant, fn () => $size->values()->create(['value' => 'M', 'position' => 0]));
+
+        $this->actingAs($this->owner)
+            ->post($this->url('/'.$product->slug."/varianty/osy/{$other->id}/hodnoty"), ['value' => 'M'])
+            ->assertSessionDoesntHaveErrors('value');
+    }
+
     public function test_the_variant_price_must_be_a_non_negative_integer_or_empty(): void
     {
         $product = $this->product();

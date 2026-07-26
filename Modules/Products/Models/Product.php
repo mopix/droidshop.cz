@@ -229,9 +229,21 @@ class Product extends Model implements CatalogProduct
         return $this->weight_g;
     }
 
+    /**
+     * For a product with variants, "available" means at least one variant
+     * is — the product's own stock columns are not the authority once
+     * variants exist (spec: variants own stock, the product's is a fallback
+     * only for a variant-less product). Mirrors show.blade.php's inline
+     * computation, which is why that view now calls this instead of
+     * repeating it (review fix: the two must never disagree).
+     */
     public function catalogIsAvailable(int $quantity = 1): bool
     {
-        return $this->isAvailable($quantity);
+        if (! $this->catalogHasVariants()) {
+            return $this->isAvailable($quantity);
+        }
+
+        return $this->variants->contains(fn (ProductVariant $variant) => $variant->isAvailable($quantity));
     }
 
     public function catalogShortDescription(): ?string
@@ -256,23 +268,62 @@ class Product extends Model implements CatalogProduct
         return $this->url();
     }
 
+    /**
+     * Whether this product carries variants at all — ANY row, active or
+     * not (review fix: filtering to active here let a product whose last
+     * variant went inactive silently revert to being sold at the base
+     * price with no stock accounting; see OrderPlacer::recomputeLines()
+     * and CartPricer::price(), which refuse a variant-less line on a
+     * product that answers true here).
+     *
+     * Reads $this->variants (the relation, not variants()) so a caller that
+     * eager-loaded it (EloquentProductCatalog::paginate()/latest()/search())
+     * pays no extra query per row, and a caller that did not still gets it
+     * cached after the first access instead of re-queried by every other
+     * catalog*() method below.
+     */
     public function catalogHasVariants(): bool
     {
-        return $this->variants()->where('active', true)->exists();
+        return $this->variants->isNotEmpty();
     }
 
+    /**
+     * The "od" price: cheapest variant that is actually buyable right now,
+     * falling back to the cheapest active-but-sold-out one when nothing is
+     * available, falling back to the product's own price when there is no
+     * active variant at all (the same case catalogHasVariants() still
+     * reports true for — a shop that deactivated every variant shows
+     * "Vyprodáno" via catalogIsAvailable(), not this product's own price
+     * disguised as an "od" figure).
+     */
     public function catalogPriceFrom(): Money
     {
-        $prices = $this->variants()
-            ->where('active', true)
-            ->get()
-            ->map(fn (ProductVariant $variant) => $variant->effectivePrice());
+        $variants = $this->variants;
 
-        if ($prices->isEmpty()) {
+        if ($variants->isEmpty()) {
             return $this->price;
         }
 
-        return $prices->sort(fn (Money $a, Money $b) => $a->amount <=> $b->amount)->first();
+        $active = $variants->filter(fn (ProductVariant $variant) => $variant->active);
+
+        if ($active->isEmpty()) {
+            return $this->price;
+        }
+
+        $available = $active->filter(fn (ProductVariant $variant) => $variant->isAvailable());
+        $pool = $available->isNotEmpty() ? $available : $active;
+
+        // These variants are this product's own — set the inverse relation
+        // directly rather than let effectivePrice() lazy-load the parent
+        // once per null-priced variant (a listing renders this per card).
+        foreach ($pool as $variant) {
+            $variant->setRelation('product', $this);
+        }
+
+        return $pool
+            ->map(fn (ProductVariant $variant) => $variant->effectivePrice())
+            ->sort(fn (Money $a, Money $b) => $a->amount <=> $b->amount)
+            ->first();
     }
 
     public function catalogVariantDisplay(): string

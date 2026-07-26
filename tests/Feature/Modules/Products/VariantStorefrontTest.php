@@ -254,4 +254,94 @@ class VariantStorefrontTest extends TestCase
         $response->assertSee('"529.00"', escape: false);
         $response->assertSee('"449.00"', escape: false);
     }
+
+    /**
+     * @return array{product: Product, size: ProductOption, color: ProductOption, m: int, red: int, variant: int}
+     */
+    private function shirtWithTwoAxes(): array
+    {
+        return $this->context->runAs($this->tenant, function () {
+            $taxRate = app(TaxRates::class)->default();
+
+            $product = app(ProductWriter::class)->create([
+                'name' => 'Tričko Duo',
+                'slug' => 'tricko-duo',
+                'price' => 59900,
+                'status' => Product::STATUS_ACTIVE,
+                'tax_rate_id' => $taxRate->id,
+            ]);
+
+            $size = ProductOption::create(['product_id' => $product->id, 'name' => 'Velikost', 'position' => 0]);
+            $color = ProductOption::create(['product_id' => $product->id, 'name' => 'Barva', 'position' => 1]);
+
+            $m = $size->values()->create(['value' => 'M', 'position' => 0]);
+            $red = $color->values()->create(['value' => 'Červená', 'position' => 0]);
+
+            $variant = ProductVariant::create([
+                'product_id' => $product->id,
+                'position' => 0,
+                'stock_tracked' => true,
+                'stock_qty' => 4,
+            ]);
+            $variant->optionValues()->attach([$m->id, $red->id]);
+
+            return [
+                'product' => $product,
+                'size' => $size,
+                'color' => $color,
+                'm' => $m->id,
+                'red' => $red->id,
+                'variant' => $variant->id,
+            ];
+        });
+    }
+
+    /**
+     * Review CRITICAL: every radio shared one `name="option_value_id[]"`
+     * regardless of axis. HTML groups radios by form + name, not by
+     * <fieldset>, so a real browser collapses two axes into one
+     * mutually-exclusive group — checking "červená" would silently uncheck
+     * "M". A two-axis product was unbuyable even though every server-side
+     * test used a single-axis fixture and never noticed. The field must be
+     * keyed per axis: option_value_id[<axis id>].
+     */
+    public function test_a_two_axis_product_emits_a_distinct_radio_name_per_axis(): void
+    {
+        $data = $this->shirtWithTwoAxes();
+
+        $response = $this->get($this->url('/produkt/tricko-duo'));
+
+        $response->assertOk();
+        $response->assertSee('name="option_value_id['.$data['size']->id.']"', escape: false);
+        $response->assertSee('name="option_value_id['.$data['color']->id.']"', escape: false);
+    }
+
+    /**
+     * The same fix, exercised end to end: a POST shaped exactly like what
+     * the per-axis radio markup now submits (one array key per axis id)
+     * must resolve to the one variant naming both selected values and land
+     * it in the cart — not just at the resolveVariant() service layer
+     * (VariantResolutionTest), but through the real HTTP add-to-cart path.
+     */
+    public function test_posting_a_full_two_axis_selection_adds_the_right_variant_without_javascript(): void
+    {
+        $data = $this->shirtWithTwoAxes();
+
+        $response = $this->post($this->url('/kosik'), [
+            'product_id' => $data['product']->id,
+            'quantity' => 1,
+            'option_value_id' => [
+                $data['size']->id => $data['m'],
+                $data['color']->id => $data['red'],
+            ],
+        ]);
+
+        $response->assertRedirect();
+
+        $this->context->runAs($this->tenant, function () use ($data) {
+            $item = CartItem::query()->firstOrFail();
+
+            $this->assertSame($data['variant'], (int) $item->variant_id);
+        });
+    }
 }

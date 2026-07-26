@@ -72,10 +72,22 @@ class ProductVariant extends Model implements CatalogVariant
 
     /**
      * The variant's own price, or the product's when it has none.
+     *
+     * loadMissing(), not a bare $this->product: a caller iterating a
+     * collection of variants for the same product (Product::catalogPriceFrom(),
+     * a category listing rendering many cards) can set the inverse relation
+     * once up front, and this then costs nothing per variant instead of one
+     * query per null-priced variant.
      */
     public function effectivePrice(): Money
     {
-        return $this->price ?? $this->product->price;
+        if ($this->price !== null) {
+            return $this->price;
+        }
+
+        $this->loadMissing('product');
+
+        return $this->product->price;
     }
 
     public function isAvailable(int $quantity = 1): bool

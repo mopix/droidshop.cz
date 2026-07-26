@@ -122,4 +122,71 @@ class VariantCatalogTest extends TestCase
             $this->assertSame(49900, $catalog->price($product->id)->amount);
         });
     }
+
+    /**
+     * Review IMPORTANT: catalogHasVariants() used to filter to active rows,
+     * so a shop that deactivated every variant of a product (end of season)
+     * silently reverted it to selling at the base price with no stock
+     * accounting — CartPricer/OrderPlacer only refuse a variant-less line
+     * when catalogHasVariants() says the product has variants. It must
+     * answer true for ANY variant row; catalogPriceFrom() and
+     * catalogIsAvailable() are what fall back to "no active variant" /
+     * "Vyprodáno" respectively.
+     */
+    public function test_a_product_with_only_inactive_variants_still_reports_has_variants(): void
+    {
+        $tenant = Tenant::factory()->create();
+        [$product, $variantM, $variantL] = $this->shirt($tenant, priceM: 52900, priceL: 44900);
+
+        $this->context->runAs($tenant, function () use ($product, $variantM, $variantL) {
+            ProductVariant::query()->whereIn('id', [$variantM->id, $variantL->id])->update(['active' => false]);
+
+            $fresh = $product->fresh();
+
+            $this->assertTrue($fresh->catalogHasVariants());
+            // No active variant left to name: falls back to the product's
+            // own price rather than naming a deactivated combination.
+            $this->assertSame(49900, $fresh->catalogPriceFrom()->amount);
+            $this->assertFalse($fresh->catalogIsAvailable());
+        });
+    }
+
+    /**
+     * Review IMPORTANT: catalogPriceFrom() used to pick the cheapest
+     * *active* variant regardless of stock, so an "od" listing price could
+     * name a variant that is currently sold out. It must prefer the
+     * cheapest *available* one.
+     */
+    public function test_the_from_price_prefers_an_available_variant_over_a_cheaper_sold_out_one(): void
+    {
+        $tenant = Tenant::factory()->create();
+        [$product, $variantM, $variantL] = $this->shirt($tenant, priceM: 52900, priceL: 44900);
+
+        $this->context->runAs($tenant, function () use ($product, $variantM, $variantL) {
+            // L is cheaper but sold out; M is pricier but in stock.
+            $variantL->update(['stock_tracked' => true, 'stock_qty' => 0]);
+            $variantM->update(['stock_tracked' => true, 'stock_qty' => 3]);
+
+            $this->assertSame(52900, $product->fresh()->catalogPriceFrom()->amount);
+        });
+    }
+
+    /**
+     * When nothing is currently available, the "od" price still names the
+     * cheapest active combination rather than falling all the way through
+     * to the product's own price — a real (if sold-out) variant is a more
+     * honest answer than a figure the shop never charges anyone.
+     */
+    public function test_the_from_price_falls_back_to_the_cheapest_active_variant_when_none_are_available(): void
+    {
+        $tenant = Tenant::factory()->create();
+        [$product, $variantM, $variantL] = $this->shirt($tenant, priceM: 52900, priceL: 44900);
+
+        $this->context->runAs($tenant, function () use ($product, $variantM, $variantL) {
+            $variantM->update(['stock_tracked' => true, 'stock_qty' => 0]);
+            $variantL->update(['stock_tracked' => true, 'stock_qty' => 0]);
+
+            $this->assertSame(44900, $product->fresh()->catalogPriceFrom()->amount);
+        });
+    }
 }

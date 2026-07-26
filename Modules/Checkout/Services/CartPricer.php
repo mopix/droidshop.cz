@@ -54,11 +54,18 @@ final class CartPricer
                 ? null
                 : $this->catalog->findVariantById($productId, $variantId);
 
-            // A line that names a variant which no longer resolves (removed or
+            // A line with no variant on a product that now has variants is
+            // unavailable for the same reason OrderPlacer::recomputeLines()
+            // refuses to place it: the line was added before the product had
+            // variants (or crafted to skip picking one), and products.price/
+            // stock are no longer the authority once variants exist. A line
+            // that names a variant which no longer resolves (removed or
             // deactivated) is unavailable for the same reason a withdrawn
-            // product is: nothing can ship it. It still renders so the shopper
-            // can take it out.
-            if ($product === null || ($variantId !== null && $variant === null)) {
+            // product is: nothing can ship it. Either way it still renders so
+            // the shopper can take it out.
+            $missingRequiredVariant = $product !== null && $variantId === null && $product->catalogHasVariants();
+
+            if ($product === null || ($variantId !== null && $variant === null) || $missingRequiredVariant) {
                 $lines[] = new PricedCartLine(
                     itemId: (int) $item->id,
                     productId: $productId,

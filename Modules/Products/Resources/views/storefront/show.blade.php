@@ -62,9 +62,11 @@
                 // price to net just as well as the product's own — the
                 // conversion lives on TaxRate, never on Money itself.
                 $displayNetPrice = $product->rate()->net($displayPrice);
-                $isAvailable = $hasVariants
-                    ? $variants->contains(fn ($v) => $v->catalogVariantIsAvailable())
-                    : $product->isAvailable();
+                // The contract method, not an inline recomputation: the
+                // category/search listing badge (product-card.blade.php)
+                // reads catalogIsAvailable() too, and the two must never
+                // disagree about the same product (review fix).
+                $isAvailable = $product->catalogIsAvailable();
             @endphp
 
             <p class="mt-6">

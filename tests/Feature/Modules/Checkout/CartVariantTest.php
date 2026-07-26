@@ -168,4 +168,48 @@ class CartVariantTest extends TestCase
             $this->assertSame(0, $priced->itemsTotal->amount);
         });
     }
+
+    /**
+     * Review IMPORTANT (path B): a shopper adds a product while it has no
+     * variants (cart_items.variant_id collapses to the 0 sentinel); the
+     * tenant then adds variants with their own price/stock. The stale line
+     * must show as unavailable, not silently price at the product's base
+     * figure — products.price/stock stop being the authority the moment
+     * catalogHasVariants() is true.
+     */
+    public function test_a_line_added_before_variants_existed_is_unavailable_once_the_product_gets_variants(): void
+    {
+        $product = $this->context->runAs($this->tenant, function () {
+            $taxRate = app(TaxRates::class)->default();
+
+            return app(ProductWriter::class)->create([
+                'name' => 'Klávesnice Acme',
+                'price' => 99900,
+                'status' => Product::STATUS_ACTIVE,
+                'tax_rate_id' => $taxRate->id,
+            ]);
+        });
+
+        $cart = $this->context->runAs($this->tenant, function () use ($product) {
+            $carts = app(CartRepository::class);
+            $cart = $carts->forToken(null);
+            $carts->addItem($cart, $product->id, 1);
+
+            return $cart;
+        });
+
+        $this->context->runAs($this->tenant, function () use ($product) {
+            $size = ProductOption::create(['product_id' => $product->id, 'name' => 'Barva', 'position' => 0]);
+            $value = $size->values()->create(['value' => 'Černá', 'position' => 0]);
+            $variant = ProductVariant::create(['product_id' => $product->id, 'position' => 0, 'price' => 109900]);
+            $variant->optionValues()->attach($value->id);
+        });
+
+        $this->context->runAs($this->tenant, function () use ($cart) {
+            $priced = app(CartPricer::class)->price($cart);
+
+            $this->assertFalse($priced->lines[0]->available);
+            $this->assertSame(0, $priced->itemsTotal->amount);
+        });
+    }
 }

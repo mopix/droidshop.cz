@@ -203,6 +203,47 @@ class OrderVariantTest extends TestCase
         $this->place($cart, 'test-deactivated-'.$data['variant']->id);
     }
 
+    /**
+     * Review IMPORTANT (path B): a cart line added while the product had no
+     * variants yet (variant_id collapsed to the 0 sentinel, so
+     * cartItems()->variant_id reads null here) must not be allowed to place
+     * once the product has grown variants — products.price/stock are no
+     * longer the pricing/stock authority at that point, and letting it
+     * through would sell at the base price with zero stock accounting.
+     */
+    public function test_a_line_added_before_variants_existed_refuses_placement_once_the_product_gets_variants(): void
+    {
+        $product = $this->context->runAs($this->tenant, function () {
+            $taxRate = app(TaxRates::class)->default();
+
+            return app(ProductWriter::class)->create([
+                'name' => 'Klávesnice Acme',
+                'price' => 99900,
+                'status' => Product::STATUS_ACTIVE,
+                'tax_rate_id' => $taxRate->id,
+            ]);
+        });
+
+        $cart = $this->context->runAs($this->tenant, function () use ($product) {
+            $carts = app(CartRepository::class);
+            $cart = $carts->forToken(null);
+            $carts->addItem($cart, $product->id, 1);
+
+            return $cart;
+        });
+
+        $this->context->runAs($this->tenant, function () use ($product) {
+            $size = ProductOption::create(['product_id' => $product->id, 'name' => 'Barva', 'position' => 0]);
+            $value = $size->values()->create(['value' => 'Černá', 'position' => 0]);
+            $variant = ProductVariant::create(['product_id' => $product->id, 'position' => 0, 'price' => 109900]);
+            $variant->optionValues()->attach($value->id);
+        });
+
+        $this->expectException(InsufficientStock::class);
+
+        $this->place($cart, 'test-null-variant-now-varianted');
+    }
+
     public function test_cancelling_an_order_returns_stock_to_the_variant(): void
     {
         $data = $this->shirt(stock: 5);

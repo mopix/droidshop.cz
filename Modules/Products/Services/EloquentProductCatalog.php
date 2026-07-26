@@ -40,7 +40,10 @@ class EloquentProductCatalog implements ProductCatalog
      */
     public function search(string $term, int $limit = 20): Collection
     {
-        return $this->applySearch(Product::query()->published(), $term)
+        // 'variants' eager loaded for the same reason paginate() loads it
+        // below: product-card.blade.php calls catalogHasVariants() and
+        // catalogPriceFrom() per row, which read the variants relation.
+        return $this->applySearch(Product::query()->published()->with('variants'), $term)
             ->limit($limit)
             ->get();
     }
@@ -52,7 +55,7 @@ class EloquentProductCatalog implements ProductCatalog
     {
         return Product::query()
             ->published()
-            ->with('images')
+            ->with(['images', 'variants'])
             ->latest('id')
             ->limit($limit)
             ->get();
@@ -65,8 +68,12 @@ class EloquentProductCatalog implements ProductCatalog
     {
         // Eager loaded up front: a listing renders an image and a VAT-inclusive
         // price per row, and without this the page costs two queries per
-        // product.
-        $builder = Product::query()->published()->with(['images', 'taxRate']);
+        // product. 'variants' joins the same reasoning — product-card.blade.php
+        // calls catalogHasVariants()/catalogPriceFrom() per row, and both read
+        // Product::$variants (the relation property, not variants()), so an
+        // eager-loaded collection here is what keeps that from costing an
+        // extra query (an EXISTS plus a SELECT) per card on the page.
+        $builder = Product::query()->published()->with(['images', 'taxRate', 'variants']);
 
         if ($query->categoryIds !== []) {
             $builder->whereHas(
@@ -320,7 +327,12 @@ class EloquentProductCatalog implements ProductCatalog
      */
     public function variantsFor(int $productId): Collection
     {
-        return $this->variantQuery($productId)->with('optionValues.option')->orderBy('position')->get();
+        // 'product' eager loaded so a null-priced variant's effectivePrice()
+        // does not lazy-load the parent once per variant — the product
+        // detail page calls catalogVariantPrice() on every row of this
+        // collection twice over (the picker's embedded matrix and the
+        // JSON-LD Offer list).
+        return $this->variantQuery($productId)->with(['optionValues.option', 'product'])->orderBy('position')->get();
     }
 
     /**
