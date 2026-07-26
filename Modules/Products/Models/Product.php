@@ -254,4 +254,31 @@ class Product extends Model implements CatalogProduct
     {
         return $this->url();
     }
+
+    public function catalogHasVariants(): bool
+    {
+        return $this->variants()->where('active', true)->exists();
+    }
+
+    public function catalogPriceFrom(): Money
+    {
+        $prices = $this->variants()
+            ->where('active', true)
+            ->get()
+            ->map(fn (ProductVariant $variant) => $variant->effectivePrice());
+
+        if ($prices->isEmpty()) {
+            return $this->price;
+        }
+
+        return $prices->sort(fn (Money $a, Money $b) => $a->amount <=> $b->amount)->first();
+    }
+
+    public function catalogVariantDisplay(): string
+    {
+        // Product override wins; otherwise the shop-wide default. App\Core\
+        // Theme\VariantDisplay (Task 5) will replace the hardcoded fallback
+        // below with a resolver that reads the tenant's storefront setting.
+        return $this->variant_display ?? 'radio';
+    }
 }

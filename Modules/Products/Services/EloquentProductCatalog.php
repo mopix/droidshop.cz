@@ -3,6 +3,7 @@
 namespace Modules\Products\Services;
 
 use App\Core\Catalog\Contracts\CatalogProduct;
+use App\Core\Catalog\Contracts\CatalogVariant;
 use App\Core\Catalog\Contracts\ProductCatalog;
 use App\Core\Catalog\Exceptions\InsufficientStock;
 use App\Core\Catalog\ProductQuery;
@@ -12,6 +13,8 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Modules\Products\Models\Product;
+use Modules\Products\Models\ProductOptionValue;
+use Modules\Products\Models\ProductVariant;
 use Modules\Products\Support\SearchText;
 
 /**
@@ -141,8 +144,12 @@ class EloquentProductCatalog implements ProductCatalog
      * Read-modify-write would let two checkouts that land on the last item at
      * the same moment both succeed. The condition is in the WHERE clause so
      * the database decides, and a zero-row result means someone else won.
+     *
+     * $variantId is accepted here to keep the signature stable for callers
+     * that already pass it; taking stock from product_variants.stock_qty
+     * instead of the product's own column is a follow-up task.
      */
-    public function decrementStock(int $productId, int $quantity): void
+    public function decrementStock(int $productId, int $quantity, ?int $variantId = null): void
     {
         $product = Product::query()->whereKey($productId)->firstOrFail();
 
@@ -171,8 +178,10 @@ class EloquentProductCatalog implements ProductCatalog
      *
      * A single UPDATE, same as the decrement, so the pair reads consistently
      * even though there is no contention to protect against on the way up.
+     *
+     * $variantId: see decrementStock's note — variant stock is a follow-up.
      */
-    public function incrementStock(int $productId, int $quantity): void
+    public function incrementStock(int $productId, int $quantity, ?int $variantId = null): void
     {
         $product = Product::query()->whereKey($productId)->firstOrFail();
 
@@ -188,13 +197,77 @@ class EloquentProductCatalog implements ProductCatalog
     /**
      * @param  array<string, mixed>  $context
      */
-    public function price(int $productId, array $context = []): Money
+    public function price(int $productId, array $context = [], ?int $variantId = null): Money
     {
         $product = Product::query()->whereKey($productId)->firstOrFail();
+
+        if ($variantId !== null) {
+            $variant = $this->variantQuery($productId)->whereKey($variantId)->first();
+
+            // A variant id that does not belong to this product is not a
+            // discount opportunity — fall back to the product's own price
+            // rather than pricing something the caller did not ask for.
+            if ($variant !== null) {
+                return $variant->effectivePrice();
+            }
+        }
 
         // The PriceModifier chain (customer groups, quantity discounts,
         // coupons) hangs here. Empty today, but the seam exists so those
         // modules never have to reach into the products table.
         return $product->price;
+    }
+
+    public function resolveVariant(int $productId, array $optionValueIds): ?CatalogVariant
+    {
+        $ids = array_values(array_unique(array_map('intval', $optionValueIds)));
+
+        if ($ids === []) {
+            return null;
+        }
+
+        // Every posted value must belong to an axis of THIS product; the
+        // count check then makes sure the caller named exactly one value per
+        // axis — a partial selection resolves to nothing, never to "the
+        // first matching variant".
+        $valid = ProductOptionValue::query()
+            ->whereIn('id', $ids)
+            ->whereHas('option', fn ($q) => $q->where('product_id', $productId))
+            ->pluck('id')
+            ->all();
+
+        if (count($valid) !== count($ids)) {
+            return null;
+        }
+
+        return $this->variantQuery($productId)
+            ->whereHas('optionValues', fn ($q) => $q->whereIn('product_option_values.id', $ids), '=', count($ids))
+            ->withCount('optionValues')
+            ->get()
+            ->first(fn (ProductVariant $variant) => $variant->option_values_count === count($ids));
+    }
+
+    public function findVariantById(int $productId, int $variantId): ?CatalogVariant
+    {
+        return $this->variantQuery($productId)->whereKey($variantId)->first();
+    }
+
+    /**
+     * @return Collection<int, CatalogVariant>
+     */
+    public function variantsFor(int $productId): Collection
+    {
+        return $this->variantQuery($productId)->with('optionValues.option')->orderBy('position')->get();
+    }
+
+    /**
+     * @return Builder<ProductVariant>
+     */
+    private function variantQuery(int $productId): Builder
+    {
+        // Active only, and always narrowed to the product: this is the one
+        // place a variant is looked up, so the two conditions cannot be
+        // forgotten at a call site.
+        return ProductVariant::query()->where('product_id', $productId)->where('active', true);
     }
 }

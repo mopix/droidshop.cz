@@ -2,6 +2,7 @@
 
 namespace Modules\Products\Models;
 
+use App\Core\Catalog\Contracts\CatalogVariant;
 use App\Core\Money\Money;
 use App\Core\Money\MoneyCast;
 use App\Core\Tenancy\BelongsToTenant;
@@ -17,7 +18,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
  * would mean two answers to "how many are left", and the wrong one would be
  * the one someone reads.
  */
-class ProductVariant extends Model
+class ProductVariant extends Model implements CatalogVariant
 {
     use BelongsToTenant;
 
@@ -88,5 +89,35 @@ class ProductVariant extends Model
         }
 
         return $this->stock_qty >= $quantity;
+    }
+
+    public function catalogVariantSku(): ?string
+    {
+        return $this->sku;
+    }
+
+    public function catalogVariantLabel(): string
+    {
+        return $this->label();
+    }
+
+    public function catalogVariantPrice(): Money
+    {
+        return $this->effectivePrice();
+    }
+
+    public function catalogVariantIsAvailable(int $quantity = 1): bool
+    {
+        return $this->isAvailable($quantity);
+    }
+
+    /**
+     * @return array<int, int>
+     */
+    public function catalogVariantSelection(): array
+    {
+        return $this->optionValues
+            ->mapWithKeys(fn (ProductOptionValue $value) => [(int) $value->option_id => (int) $value->id])
+            ->all();
     }
 }

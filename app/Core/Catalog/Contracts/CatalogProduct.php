@@ -54,4 +54,18 @@ interface CatalogProduct
     public function catalogUrl(): string;
 
     public function catalogIsAvailable(int $quantity = 1): bool;
+
+    public function catalogHasVariants(): bool;
+
+    /**
+     * The lowest price a customer can pay for this product — the "od" figure
+     * in a listing. Equal to catalogPrice() when there are no variants.
+     */
+    public function catalogPriceFrom(): Money;
+
+    /**
+     * 'radio' | 'select' — already resolved through the product's own
+     * override down to the shop-wide default, so a view never has to.
+     */
+    public function catalogVariantDisplay(): string;
 }
