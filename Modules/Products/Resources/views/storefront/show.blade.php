@@ -57,6 +57,11 @@
                 $selectedVariant = $hasVariants ? $variants->first(fn ($v) => $v->catalogVariantIsAvailable()) : null;
                 $preselected = $selectedVariant?->catalogVariantSelection() ?? [];
                 $displayPrice = $selectedVariant?->catalogVariantPrice() ?? $product->price;
+                // Same tax_rate_id either way (a variant never carries its own
+                // VAT rate), so Product::rate() converts a variant's gross
+                // price to net just as well as the product's own — the
+                // conversion lives on TaxRate, never on Money itself.
+                $displayNetPrice = $product->rate()->net($displayPrice);
                 $isAvailable = $hasVariants
                     ? $variants->contains(fn ($v) => $v->catalogVariantIsAvailable())
                     : $product->isAvailable();
@@ -64,7 +69,9 @@
 
             <p class="mt-6">
                 <span class="text-3xl font-semibold text-slate-900" data-variant-price>{{ $displayPrice->format() }}</span>
-                <span class="block text-sm text-slate-500">s DPH</span>
+                <span class="block text-sm text-slate-500">
+                    s DPH · bez DPH {{ $displayNetPrice->format() }}
+                </span>
             </p>
 
             <p class="mt-4">

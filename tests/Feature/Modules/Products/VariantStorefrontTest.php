@@ -103,6 +103,30 @@ class VariantStorefrontTest extends TestCase
         $response->assertSee('name="option_value_id[', escape: false);
     }
 
+    public function test_the_detail_page_still_shows_the_net_price_for_a_product_without_variants(): void
+    {
+        $product = $this->context->runAs($this->tenant, function () {
+            $taxRate = app(TaxRates::class)->default();
+
+            return app(ProductWriter::class)->create([
+                'name' => 'Klávesnice Acme',
+                'slug' => 'klavesnice-acme',
+                'price' => 99900,
+                'status' => Product::STATUS_ACTIVE,
+                'tax_rate_id' => $taxRate->id,
+            ]);
+        });
+
+        $response = $this->get($this->url('/produkt/klavesnice-acme'));
+
+        $response->assertOk();
+        // The variant picker changed the price block; a product with no
+        // variants at all must still render exactly as it always did,
+        // including the net price line — this must never silently vanish.
+        $response->assertSee('bez DPH', escape: false);
+        $response->assertSee($product->netPrice()->format(), escape: false);
+    }
+
     public function test_a_radio_shop_renders_radios_and_a_select_shop_renders_a_dropdown(): void
     {
         $this->shirt();
@@ -116,7 +140,11 @@ class VariantStorefrontTest extends TestCase
 
         $response = $this->get($this->url('/produkt/tricko-acme'));
         $response->assertSee('<select', escape: false);
-        $response->assertDontSee('name="option_value_id[]" type="radio"', escape: false);
+        // A select-mode shop must not also render the radio markup — this
+        // has to check the real substring the radio branch emits (not some
+        // combination that can never appear regardless of which branch
+        // rendered), otherwise the assertion can never fail.
+        $response->assertDontSee('type="radio"', escape: false);
     }
 
     public function test_posting_option_values_adds_the_right_variant_without_javascript(): void
