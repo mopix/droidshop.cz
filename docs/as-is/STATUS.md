@@ -1,6 +1,6 @@
 # As-is status — DroidShop.cz
 
-Poslední aktualizace: **2026-07-25** · Verze: **0.19.x** (vlna 2.2)
+Poslední aktualizace: **2026-07-26** · Verze: **0.20.x** (vlna 2.3)
 
 ## Oblasti
 
@@ -40,6 +40,7 @@ Poslední aktualizace: **2026-07-25** · Verze: **0.19.x** (vlna 2.2)
 | Platformní billing — roční interval + upgrade/downgrade tarifu | **hotovo** | §9, §13 | [detail](2026-07-23-deferred-billing.md); `plan_prices` (plan×interval), výběr intervalu v checkoutu, změna tarifu přes Billing Portal + `TenantPlanSwitcher` (rekonciliace modulů), idempotence dokladu per Stripe invoice id, `invoice.paid` bere částku/tarif z faktury; Portal konfigurace + 4 Price ids = deploy |
 | Fakturační profil nájemce | **hotovo** | §16.6 | jádrová obrazovka `/admin/nastaveni/fakturace`, banner, dodavatel pro docs + odběratel pro platformní fakturu |
 | Šablona storefrontu + branding nájemce | **hotovo** | vlna 2.2 | [detail](2026-07-25-storefront-theme.md); jedna čistá šablona, přebarvení všech storefront stránek, `tenant_theme` (logo/favicon/barvy → CSS proměnné, cache-safe), admin „Vzhled" s kontrolou kontrastu; bloková homepage = 2.3, další šablony = future |
+| Bloková homepage (page builder) | **hotovo** | vlna 2.3 | [detail](2026-07-26-blokova-homepage.md); 5 typů bloků (`hero`/`product_row`/`category_grid`/`text`/`banner`), `homepage_blocks` v modulu storefront, render Blade SSR bez JS, editor Inertia `admin.storefront.homepage.*`, seed `DefaultHomepage` (provisioner+backfill), URL guard + raster-only + sanitizace, WCAG 2.2 AA audit |
 | Vlastní domény nájemců + automatické TLS | **hotovo** | vlna 2.1 | [detail](2026-07-23-custom-domains.md); DNS ověření (TXT+routing) `DomainVerifier`, gating neověřených v resolveru, Caddy ask endpoint `/internal/tls-check` (token+verified-only), cert probe → issued, canonical swap + 301 subdoména→custom, `domains:sweep-pending`, admin obrazovka; infra (Caddyfile, edge DNS, `PLATFORM_TLS_CHECK_TOKEN`) = deploy runbook |
 | Tarify / trial / billing | **hotovo** | §3.1 | tabulka `plans` + přiřazení z UI, trial + lifecycle + platformní faktura + reálné inkaso přes Stripe hotové; roční interval a upgrade/downgrade tarifu odloženo |
 | Playwright E2E | není | CLAUDE.md | blokováno omezením certifikátu, viz níže |
