@@ -323,7 +323,11 @@ class OrderEditor
             if ($returnStock) {
                 foreach ($order->items()->get() as $item) {
                     if ($item->product_id !== null) {
-                        $this->catalog->incrementStock($item->product_id, $item->quantity);
+                        $this->catalog->incrementStock(
+                            (int) $item->product_id,
+                            $item->quantity,
+                            $item->variant_id ? (int) $item->variant_id : null,
+                        );
                     }
                 }
             }

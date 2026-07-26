@@ -131,7 +131,7 @@ class OrderPlacer implements OrderPlacement
             //    unit gets InsufficientStock, which propagates out and rolls
             //    the whole transaction back.
             foreach ($lines as $line) {
-                $this->catalog->decrementStock($line['product_id'], $line['quantity']);
+                $this->catalog->decrementStock($line['product_id'], $line['quantity'], $line['variant_id']);
             }
 
             // 5. Totals and the VAT recap, all server-side.
@@ -173,6 +173,8 @@ class OrderPlacer implements OrderPlacement
             foreach ($lines as $line) {
                 $order->items()->create([
                     'product_id' => $line['product_id'],
+                    'variant_id' => $line['variant_id'],
+                    'variant_label' => $line['variant_label'],
                     'name' => $line['name'],
                     'sku' => $line['sku'],
                     'unit_price' => $line['unit_price'],
@@ -246,7 +248,7 @@ class OrderPlacer implements OrderPlacement
     /**
      * Recomputes each cart line from the catalogue, rejecting a moved price.
      *
-     * @return list<array{product_id:int,name:string,sku:?string,unit_price:Money,tax_rate:float,quantity:int,line_total:Money}>
+     * @return list<array{product_id:int,variant_id:?int,variant_label:?string,name:string,sku:?string,unit_price:Money,tax_rate:float,quantity:int,line_total:Money}>
      */
     private function recomputeLines(PlacementRequest $request): array
     {
@@ -255,10 +257,11 @@ class OrderPlacer implements OrderPlacement
         foreach ($request->cart->cartItems() as $item) {
             $productId = (int) $item->product_id;
             $quantity = (int) $item->quantity;
+            $variantId = (int) ($item->variant_id ?? 0) ?: null;
 
             // The pricing authority. The cart's stored unit_price is only a
             // display snapshot and is never charged from.
-            $currentPrice = $this->catalog->price($productId);
+            $currentPrice = $this->catalog->price($productId, [], $variantId);
 
             // A line whose snapshot no longer matches the catalogue is refused
             // outright — a price changed mid-checkout must not be charged at
@@ -284,8 +287,22 @@ class OrderPlacer implements OrderPlacement
                 throw InsufficientStock::for($productId, $quantity);
             }
 
+            $variant = $variantId === null
+                ? null
+                : $this->catalog->findVariantById($productId, $variantId);
+
+            // A variant that no longer resolves (deactivated or deleted
+            // mid-checkout) cannot be fulfilled — the same class of failure as
+            // running out of stock, and the controller already knows how to
+            // turn that into a message.
+            if ($variantId !== null && $variant === null) {
+                throw InsufficientStock::for($productId, $quantity);
+            }
+
             $lines[] = [
                 'product_id' => $productId,
+                'variant_id' => $variantId,
+                'variant_label' => $variant?->catalogVariantLabel(),
                 'name' => $product->catalogName(),
                 'sku' => $product->catalogSku(),
                 'unit_price' => $currentPrice,
