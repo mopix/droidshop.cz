@@ -23,7 +23,12 @@
 
     <div class="mt-auto flex items-end justify-between gap-2 pt-3">
         <p>
-            <span class="text-lg font-semibold text-slate-900">{{ $product->catalogPrice()->format() }}</span>
+            @if ($product->catalogHasVariants())
+                <span class="text-sm text-slate-500">od</span>
+                <span class="text-lg font-semibold text-slate-900">{{ $product->catalogPriceFrom()->format() }}</span>
+            @else
+                <span class="text-lg font-semibold text-slate-900">{{ $product->catalogPrice()->format() }}</span>
+            @endif
             <span class="block text-xs text-slate-500">s DPH</span>
         </p>
 
