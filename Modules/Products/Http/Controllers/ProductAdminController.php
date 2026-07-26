@@ -99,6 +99,10 @@ class ProductAdminController
                 'stock_qty' => $product->stock_qty,
                 'stock_policy' => $product->stock_policy,
                 'stock_alert_qty' => $product->stock_alert_qty,
+                // null = inherit the shop-wide default (App\Core\Theme\VariantDisplay);
+                // the editor's select needs to tell "inherit" apart from either
+                // literal, so this stays null rather than a resolved default.
+                'variant_display' => $product->variant_display,
                 'seo_title' => $product->seo_title,
                 'seo_description' => $product->seo_description,
                 'url' => $product->url(),
