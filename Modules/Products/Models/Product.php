@@ -104,6 +104,16 @@ class Product extends Model implements CatalogProduct
         return $this->hasMany(ProductImage::class)->orderBy('position');
     }
 
+    public function options(): HasMany
+    {
+        return $this->hasMany(ProductOption::class)->orderBy('position');
+    }
+
+    public function variants(): HasMany
+    {
+        return $this->hasMany(ProductVariant::class)->orderBy('position');
+    }
+
     public function categories(): BelongsToMany
     {
         return $this->belongsToMany(Category::class, 'product_category')
