@@ -12,6 +12,8 @@ use Illuminate\Testing\TestResponse;
 use Modules\Checkout\Models\Cart;
 use Modules\Customers\Models\Customer;
 use Modules\Products\Models\Product;
+use Modules\Products\Models\ProductOption;
+use Modules\Products\Models\ProductVariant;
 use Modules\Products\Services\ProductWriter;
 use Tests\Concerns\ActivatesModules;
 use Tests\TestCase;
@@ -79,6 +81,29 @@ class CartMergeOnLoginTest extends TestCase
         return $this->context->runAs($tenant, fn () => Customer::factory()->create(['email' => $email]));
     }
 
+    /**
+     * @return array{product: Product, variant: ProductVariant}
+     */
+    private function makeVariantProduct(Tenant $tenant): array
+    {
+        return $this->context->runAs($tenant, function () {
+            $product = app(ProductWriter::class)->create([
+                'name' => 'Tričko Acme',
+                'price' => 49900,
+                'status' => Product::STATUS_ACTIVE,
+                'tax_rate_id' => app(TaxRates::class)->default()->id,
+            ]);
+
+            $size = ProductOption::create(['product_id' => $product->id, 'name' => 'Velikost', 'position' => 0]);
+            $lValue = $size->values()->create(['value' => 'L', 'position' => 0]);
+
+            $variant = ProductVariant::create(['product_id' => $product->id, 'position' => 0, 'price' => 54900]);
+            $variant->optionValues()->attach($lValue->id);
+
+            return ['product' => $product, 'variant' => $variant];
+        });
+    }
+
     private function login(string $email, ?string $anonToken = null, ?Tenant $tenant = null): TestResponse
     {
         if ($anonToken !== null) {
@@ -108,6 +133,26 @@ class CartMergeOnLoginTest extends TestCase
         return $this->context->runAs($tenant, fn () => $cart->items()
             ->get()
             ->mapWithKeys(fn ($item) => [(int) $item->product_id => (int) $item->quantity])
+            ->all());
+    }
+
+    /**
+     * Same tenant-scoping caveat as itemsOf(), but keeps variant_id and
+     * quantity apart per row instead of collapsing to one quantity per
+     * product — needed to prove a variant line and a no-variant line of the
+     * same product survive as two distinct rows, not one merged row.
+     *
+     * @return list<array{product_id: int, variant_id: int, quantity: int}>
+     */
+    private function lineRows(Tenant $tenant, Cart $cart): array
+    {
+        return $this->context->runAs($tenant, fn () => $cart->items()
+            ->get()
+            ->map(fn ($item) => [
+                'product_id' => (int) $item->product_id,
+                'variant_id' => (int) $item->variant_id,
+                'quantity' => (int) $item->quantity,
+            ])
             ->all());
     }
 
@@ -185,6 +230,77 @@ class CartMergeOnLoginTest extends TestCase
         // The browser must now track the merged-into cart, not the retired
         // anonymous one — otherwise the next /kosik request resolves right
         // back to a dead row.
+        $response->assertCookie('cart_token', $existingCart->token);
+    }
+
+    /**
+     * Regression coverage for CartMerger dropping variant_id when replaying
+     * an anonymous cart's lines into the customer's cart (found in review):
+     * addItem() takes an optional trailing $variantId, so a call site that
+     * forgets to forward it still compiles — the variant silently collapses
+     * to the sentinel (the base product) instead of erroring.
+     */
+    public function test_an_anonymous_cart_holding_a_variant_merges_into_the_customers_cart_with_the_variant_intact(): void
+    {
+        $data = $this->makeVariantProduct($this->tenant);
+        $product = $data['product'];
+        $variant = $data['variant'];
+        $customer = $this->makeCustomer($this->tenant, 'jan@example.test');
+
+        // The customer already has a cart with a plain (no-variant) line of
+        // the very same product — this is what would wrongly absorb the
+        // variant line below if the merge collapsed it to the variant_id
+        // sentinel instead of keeping it distinct.
+        $existingCart = $this->context->runAs($this->tenant, function () use ($customer, $product) {
+            $carts = app(CartRepository::class);
+            $cart = $carts->forToken(null);
+            $carts->addItem($cart, $product->id, 1);
+            $carts->attachToCustomer($cart, $customer->id);
+
+            return $cart;
+        });
+
+        // The anonymous cart carries the variant line. Built through the
+        // repository rather than POST /kosik — CartController does not yet
+        // accept a variant_id (that wiring is a later task) — but its token
+        // is then replayed as the cookie the real login POST reads, exactly
+        // like every other case in this file: the point of these tests is
+        // that Illuminate\Auth\Events\Login is wired to the merge, not how
+        // the anonymous cart itself was populated.
+        $anonToken = $this->context->runAs($this->tenant, function () use ($product, $variant) {
+            $carts = app(CartRepository::class);
+            $cart = $carts->forToken(null);
+            $carts->addItem($cart, $product->id, 2, $variant->id);
+
+            return $cart->token;
+        });
+
+        $response = $this->login('jan@example.test', $anonToken);
+        $response->assertRedirect($this->url('/ucet'));
+
+        $carts = $this->cartsFor($this->tenant);
+        $this->assertCount(2, $carts, 'the anonymous cart is retired, not deleted');
+
+        $merged = $carts->firstWhere('id', $existingCart->id);
+        $this->assertNotNull($merged);
+        $this->assertNull($merged->converted_at);
+
+        $rows = $this->lineRows($this->tenant, $merged);
+        $this->assertCount(2, $rows, 'the variant line must not collide with the existing no-variant line');
+
+        $plainRow = collect($rows)->firstWhere('variant_id', 0);
+        $this->assertNotNull($plainRow, 'the pre-existing no-variant line must survive untouched');
+        $this->assertSame(1, $plainRow['quantity']);
+
+        $variantRow = collect($rows)->firstWhere('variant_id', $variant->id);
+        $this->assertNotNull($variantRow, 'the variant must survive the merge, not collapse into the sentinel');
+        $this->assertSame($product->id, $variantRow['product_id']);
+        $this->assertSame(2, $variantRow['quantity']);
+
+        $retiredAnon = $carts->firstWhere('token', $anonToken);
+        $this->assertNotNull($retiredAnon);
+        $this->assertNotNull($retiredAnon->converted_at, 'the spent anonymous cart must be frozen');
+
         $response->assertCookie('cart_token', $existingCart->token);
     }
 

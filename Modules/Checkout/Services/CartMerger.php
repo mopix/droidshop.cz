@@ -78,10 +78,16 @@ class CartMerger
         }
 
         // Both carts exist: sum quantities into the customer's cart, never
-        // overwrite it. addItem() already merges same-product quantities
-        // (cart_item_unique) — reused here rather than hand-rolled.
+        // overwrite it. addItem() already merges same-product-and-variant
+        // quantities (cart_item_unique) — reused here rather than
+        // hand-rolled. The sentinel 0 is collapsed back to null at this
+        // boundary, the same way CartPricer does, so a variant-less line
+        // merges by product alone instead of colliding with the sentinel
+        // literally as a "variant".
         foreach ($anonItems as $item) {
-            $this->carts->addItem($existing, (int) $item->product_id, (int) $item->quantity);
+            $variantId = (int) ($item->variant_id ?? 0) ?: null;
+
+            $this->carts->addItem($existing, (int) $item->product_id, (int) $item->quantity, $variantId);
         }
 
         // The anonymous cart is spent — freeze it so a leftover cookie can
