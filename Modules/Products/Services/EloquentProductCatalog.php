@@ -145,12 +145,18 @@ class EloquentProductCatalog implements ProductCatalog
      * the same moment both succeed. The condition is in the WHERE clause so
      * the database decides, and a zero-row result means someone else won.
      *
-     * $variantId is accepted here to keep the signature stable for callers
-     * that already pass it; taking stock from product_variants.stock_qty
-     * instead of the product's own column is a follow-up task.
+     * When a $variantId is provided, takes stock from the variant, not the
+     * product. The variant's own stock_tracked and stock_policy are consulted,
+     * never the product's.
      */
     public function decrementStock(int $productId, int $quantity, ?int $variantId = null): void
     {
+        if ($variantId !== null) {
+            $this->decrementVariantStock($productId, $variantId, $quantity);
+
+            return;
+        }
+
         $product = Product::query()->whereKey($productId)->firstOrFail();
 
         if (! $product->stock_tracked) {
@@ -179,10 +185,29 @@ class EloquentProductCatalog implements ProductCatalog
      * A single UPDATE, same as the decrement, so the pair reads consistently
      * even though there is no contention to protect against on the way up.
      *
-     * $variantId: see decrementStock's note — variant stock is a follow-up.
+     * When a $variantId is provided, returns stock to the variant, not the
+     * product. The variant's own stock_tracked is consulted, never the
+     * product's.
      */
     public function incrementStock(int $productId, int $quantity, ?int $variantId = null): void
     {
+        if ($variantId !== null) {
+            $variant = ProductVariant::query()
+                ->where('product_id', $productId)
+                ->whereKey($variantId)
+                ->first();
+
+            if ($variant === null || ! $variant->stock_tracked) {
+                return;
+            }
+
+            ProductVariant::query()->whereKey($variantId)->update([
+                'stock_qty' => DB::raw('stock_qty + '.(int) $quantity),
+            ]);
+
+            return;
+        }
+
         $product = Product::query()->whereKey($productId)->firstOrFail();
 
         if (! $product->stock_tracked) {
@@ -192,6 +217,44 @@ class EloquentProductCatalog implements ProductCatalog
         Product::query()->whereKey($productId)->update([
             'stock_qty' => DB::raw('stock_qty + '.(int) $quantity),
         ]);
+    }
+
+    /**
+     * Same single conditional UPDATE as the product path — the condition
+     * lives in the WHERE clause so two checkouts landing on the last item at
+     * the same moment cannot both succeed.
+     *
+     * Note this does NOT filter on active: a variant deactivated between
+     * placement and cancellation must still be able to give its stock back.
+     */
+    private function decrementVariantStock(int $productId, int $variantId, int $quantity): void
+    {
+        $variant = ProductVariant::query()
+            ->where('product_id', $productId)
+            ->whereKey($variantId)
+            ->first();
+
+        if ($variant === null) {
+            throw InsufficientStock::for($productId, $quantity);
+        }
+
+        if (! $variant->stock_tracked) {
+            return;
+        }
+
+        $query = ProductVariant::query()->whereKey($variantId);
+
+        if ($variant->stock_policy !== Product::STOCK_POLICY_BACKORDER) {
+            $query->where('stock_qty', '>=', $quantity);
+        }
+
+        $affected = $query->update([
+            'stock_qty' => DB::raw('stock_qty - '.(int) $quantity),
+        ]);
+
+        if ($affected === 0) {
+            throw InsufficientStock::for($productId, $quantity);
+        }
     }
 
     /**
