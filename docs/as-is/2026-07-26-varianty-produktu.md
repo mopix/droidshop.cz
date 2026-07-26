@@ -11,7 +11,7 @@ Nájemce prodává **jeden produkt ve více variantách** (Velikost × Barva × 
 
 Produkt bez variant se chová beze změny — varianty jsou per produkt volitelná vrstva, ne povinná.
 
-12 commitů (`d54cf99`..`9f8ebf1`), 12 implementačních tasků + tento uzavírací. Plný běh testů na hlavě větve (ověřil controller, ne tato dokumentační vlna): **1252 passed / 4094 assertions**.
+18 commitů (`d54cf99`..`9f8ebf1`: 10 `feat`, 7 `fix`, 1 `test`), 12 implementačních tasků + tento uzavírací — 7 z těch 18 commitů jsou opravy nalezené v review cyklu, ne šum, viz sekce „Chyby nalezené a opravené v review cyklu" níže. Plný běh testů na hlavě větve (ověřil controller, ne tato dokumentační vlna): **1252 passed / 4094 assertions**.
 
 ## Mapa změn (kód)
 
@@ -52,14 +52,14 @@ Produkt bez variant se chová beze změny — varianty jsou per produkt voliteln
 
 - `Resources/views/storefront/partials/variant-picker.blade.php` (nový) — server-rendered osy: `<fieldset>/<legend>` + radio, nebo `<label>` + `<select>` dle `catalogVariantDisplay()`; `<script type="application/json" data-variant-matrix>` jako datový zdroj pro JS ostrůvek (matice obsahuje i `net_price`).
 - `Resources/views/storefront/show.blade.php` — cena/dostupnost počítaná ze zvolené/předvybrané varianty, JSON-LD `offers` = pole `Offer` per aktivní varianta (bez variant beze změny jediný `Offer`).
-- `Modules/Storefront/Resources/views/components/product-card.blade.php` — produkt s variantami zobrazí `catalogPriceFrom()` s prefixem „od"; přidání do košíku z výpisu u produktu s variantami nevkládá, vede na detail.
+- `Modules/Storefront/Resources/views/components/product-card.blade.php` — produkt s variantami zobrazí „od" + `catalogPriceFrom()` místo jediné ceny; karta samotná nemá tlačítko „Přidat do košíku" pro žádný produkt (s variantami ani bez) — jediná akce je odkaz „Detail", takže výběr varianty se řeší až na stránce produktu.
 - `resources/js/storefront.js` — nový vanilla JS ostrůvek (žádný framework): na `change` formuláře najde přesnou shodu v embedded matici, aktualizuje `[data-variant-price]` a `[data-variant-net-price]`, přepíná `disabled`/label tlačítka. Bez shody nechá poslední server-rendered stav beze změny. Bundle 1248 B / 606 B gzip, bez Vue.
 
 ### Admin — modul `products` + core Vue strom
 
 - `Http/Controllers/ProductVariantAdminController.php` (nový) — tenký, deleguje na `VariantWriter`; 10 endpointů (osy CRUD+move, hodnoty CRUD+move, generate, update varianty, destroy varianty). Každé dítě (option/value/variant) se resolvuje scoped na `product_id`, cizí id 404uje dřív, než se writer zavolá.
 - `Http/Requests/StoreProductOptionRequest.php`, `StoreOptionValueRequest.php`, `UpdateProductVariantRequest.php`.
-- `routes/admin.php` — 12 nových rout pod `admin.m.products.variants.*`.
+- `routes/admin.php` — 10 nových rout pod `admin.m.products.variants.*`.
 - `resources/js/Pages/Modules/Products/Show.vue` — nový tab „Varianty" v existující stránce detailu produktu (ne samostatná Vue komponenta): osy a hodnoty s tlačítky nahoru/dolů, „Generovat varianty", mřížka (cena/SKU/EAN/sklad/aktivní), per-řádkové ukládání s dirty-flag trackingem (viz Technický dluh — opraveno ve fix rounds Task 12).
 - `Http/Requests/Tenant/UpdateAppearanceRequest.php` + `Http/Controllers/Tenant/AppearanceController.php` (`/admin/nastaveni/vzhled`) — nové pole `variant_display` (radio/select), ukládá se do `tenant_theme`.
 
