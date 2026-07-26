@@ -119,6 +119,24 @@ class HomepageBlocksRenderTest extends TestCase
             ->assertSee('href="/kategorie/vse"', false);
     }
 
+    public function test_hero_block_renders_its_image_with_alt(): void
+    {
+        $this->seedBlocks([
+            ['type' => BlockType::Hero, 'payload' => [
+                'title' => 'Vítejte',
+                'subtitle' => null,
+                'cta_label' => null,
+                'cta_url' => null,
+                'image_path' => 'homepage/1.png',
+                'alt' => 'Úvodní fotka obchodu',
+            ]],
+        ]);
+
+        $html = $this->get('http://blockshop.droidshop/')->assertOk()->getContent();
+
+        $this->assertMatchesRegularExpression('/<img[^>]*alt="Úvodní fotka obchodu"[^>]*>/', $html);
+    }
+
     public function test_blocks_render_in_position_order(): void
     {
         $this->seedBlocks([
@@ -168,6 +186,25 @@ class HomepageBlocksRenderTest extends TestCase
 
         $response->assertSee('Letní kolekce', false);
         $this->assertDoesNotMatchRegularExpression('/<a[^>]*>\s*<img[^>]*banners\/leto\.jpg/s', $html);
+    }
+
+    public function test_two_product_rows_sharing_a_heading_get_distinct_ids(): void
+    {
+        $this->activateModule($this->tenant, 'products');
+
+        $this->seedBlocks([
+            ['type' => BlockType::ProductRow, 'payload' => ['heading' => 'Novinky', 'mode' => 'latest', 'count' => 8, 'product_ids' => []]],
+            ['type' => BlockType::ProductRow, 'payload' => ['heading' => 'Novinky', 'mode' => 'latest', 'count' => 8, 'product_ids' => []]],
+        ]);
+
+        $ids = $this->context->runAs($this->tenant, fn () => HomepageBlock::query()->orderBy('id')->pluck('id'));
+
+        $html = $this->get('http://blockshop.droidshop/')->assertOk()->getContent();
+
+        $this->assertStringContainsString('row-heading-'.$ids[0], $html);
+        $this->assertStringContainsString('row-heading-'.$ids[1], $html);
+        $this->assertSame(1, substr_count($html, 'id="row-heading-'.$ids[0].'"'));
+        $this->assertSame(1, substr_count($html, 'id="row-heading-'.$ids[1].'"'));
     }
 
     public function test_empty_homepage_still_answers_ok(): void

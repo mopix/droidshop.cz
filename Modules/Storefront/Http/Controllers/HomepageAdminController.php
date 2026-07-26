@@ -49,6 +49,10 @@ class HomepageAdminController
     {
         $type = $request->blockType();
 
+        if ($type === BlockType::Hero && HomepageBlock::query()->where('type', BlockType::Hero)->exists()) {
+            return back()->withErrors(['type' => 'Homepage může mít jen jeden Hero blok.']);
+        }
+
         HomepageBlock::create([
             'position' => (int) HomepageBlock::query()->max('position') + 1,
             'type' => $type,
@@ -114,14 +118,14 @@ class HomepageAdminController
             $neighbor->save();
         }
 
-        return back();
+        return back()->with('success', 'Pořadí bloků bylo změněno.');
     }
 
     public function toggle(ToggleBlockRequest $request, HomepageBlock $block): RedirectResponse
     {
         $block->update(['visible' => $request->boolean('visible')]);
 
-        return back();
+        return back()->with('success', $block->visible ? 'Blok byl zobrazen.' : 'Blok byl skryt.');
     }
 
     public function destroy(HomepageBlock $block): RedirectResponse

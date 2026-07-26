@@ -175,6 +175,41 @@ class HomepageAdminTest extends TestCase
             ->assertSessionHasErrors('type');
     }
 
+    public function test_a_second_hero_block_is_rejected(): void
+    {
+        [$tenant, $owner] = $this->makeShopWithOwner('shop1');
+
+        $this->block($tenant, BlockType::Hero, [
+            'title' => 'Vítejte', 'subtitle' => null, 'cta_label' => null, 'cta_url' => null, 'image_path' => null, 'alt' => null,
+        ]);
+
+        $this->actingAs($owner)
+            ->post($this->url($tenant, '/blok'), ['type' => 'hero'])
+            ->assertSessionHasErrors('type');
+
+        $count = $this->context->runAs($tenant, fn () => HomepageBlock::query()->where('type', BlockType::Hero)->count());
+
+        $this->assertSame(1, $count);
+    }
+
+    public function test_a_banner_with_an_uploaded_image_but_empty_alt_is_rejected(): void
+    {
+        Storage::fake(FileStorage::PUBLIC_DISK);
+
+        [$tenant, $owner] = $this->makeShopWithOwner('shop1');
+
+        $banner = $this->block($tenant, BlockType::Banner, [
+            'url' => null, 'image_path' => null, 'alt' => '',
+        ]);
+
+        $this->actingAs($owner)
+            ->patch($this->url($tenant, '/blok/'.$banner->id), [
+                'payload' => ['url' => null, 'alt' => ''],
+                'image' => UploadedFile::fake()->image('b.png'),
+            ])
+            ->assertSessionHasErrors('payload.alt');
+    }
+
     public function test_an_uploaded_image_overrides_a_spoofed_payload_image_path(): void
     {
         Storage::fake(FileStorage::PUBLIC_DISK);

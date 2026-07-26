@@ -49,6 +49,19 @@ class UpdateBlockRequest extends FormRequest
                     $v->errors()->add('payload.count', 'Počet 1–12.');
                 }
             }
+
+            if ($type === BlockType::Banner) {
+                // "Will have an image" covers both a fresh upload and an
+                // existing stored image kept from before (no new upload) —
+                // either way the storefront ends up rendering an <img>, so
+                // both need a non-empty alt.
+                $hasExistingImage = ! empty($this->route('block')->payload['image_path'] ?? null);
+                $hasImage = $this->hasFile('image') || $hasExistingImage;
+
+                if ($hasImage && trim((string) ($p['alt'] ?? '')) === '') {
+                    $v->errors()->add('payload.alt', 'Vyplňte alternativní text obrázku.');
+                }
+            }
         });
     }
 

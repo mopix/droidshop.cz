@@ -14,7 +14,7 @@ enum BlockType: string
     public function defaultPayload(): array
     {
         return match ($this) {
-            self::Hero => ['title' => '', 'subtitle' => null, 'cta_label' => null, 'cta_url' => null, 'image_path' => null],
+            self::Hero => ['title' => '', 'subtitle' => null, 'cta_label' => null, 'cta_url' => null, 'image_path' => null, 'alt' => null],
             self::ProductRow => ['heading' => 'Novinky', 'mode' => 'latest', 'count' => 8, 'product_ids' => []],
             self::CategoryGrid => ['heading' => 'Kategorie', 'category_ids' => []],
             self::Text => ['heading' => null, 'html' => ''],

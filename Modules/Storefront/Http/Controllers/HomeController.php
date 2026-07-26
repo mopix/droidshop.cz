@@ -63,6 +63,7 @@ class HomeController implements StorefrontHome
             BlockType::Banner => ['type' => 'banner', 'data' => $block->payload],
             BlockType::ProductRow => $this->modules->has('products')
                 ? ['type' => 'product-row', 'data' => [
+                    'id' => $block->id,
                     'heading' => $block->payload['heading'] ?? null,
                     'products' => $this->rowProducts($block->payload),
                 ]]
