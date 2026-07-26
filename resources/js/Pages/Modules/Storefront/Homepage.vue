@@ -183,18 +183,28 @@ const submitEdit = (block: Block) => {
     data.image = state.image
   }
 
+  // Method-spoofed POST, not a native PATCH: PHP only parses multipart/
+  // form-data bodies on POST, so a real PATCH with forceFormData would land
+  // with an empty `payload` on the server (Laravel's test client is more
+  // lenient than a real browser, which is why the HTTP feature tests didn't
+  // catch this). `_method: 'patch'` still dispatches to the `Route::patch`
+  // controller action.
+  data._method = 'patch'
+
   editProcessing.value = true
 
-  router.patch(route('admin.storefront.homepage.update', block.id), data, {
+  router.post(route('admin.storefront.homepage.update', block.id), data, {
     forceFormData: true,
     preserveScroll: true,
     onError: (errors) => {
       editErrors.value = errors as Record<string, string>
     },
-    onSuccess: () => cancelEdit(),
+    onSuccess: () => {
+      cancelEdit()
+      if (editImageInput.value) editImageInput.value.value = ''
+    },
     onFinish: () => {
       editProcessing.value = false
-      if (editImageInput.value) editImageInput.value.value = ''
     },
   })
 }
@@ -301,7 +311,7 @@ const existingImageName = computed(() => existingImagePath.value?.split('/').pop
                 class="rounded-md border border-gray-300 px-2 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-900 disabled:cursor-not-allowed disabled:opacity-40"
                 @click="move(block, 'up')"
               >
-                ↑ <span class="sr-only">Nahoru</span>
+                ↑
               </button>
 
               <button
@@ -311,7 +321,7 @@ const existingImageName = computed(() => existingImagePath.value?.split('/').pop
                 class="rounded-md border border-gray-300 px-2 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-900 disabled:cursor-not-allowed disabled:opacity-40"
                 @click="move(block, 'down')"
               >
-                ↓ <span class="sr-only">Dolů</span>
+                ↓
               </button>
 
               <button
