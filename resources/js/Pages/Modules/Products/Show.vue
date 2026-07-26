@@ -192,6 +192,14 @@ const newOption = ref('')
 const newValue = ref<Record<number, string>>({})
 
 /**
+ * A matrix row plus one bit of client-only state: whether the merchant has
+ * changed one of its editable fields since it was last loaded from — or
+ * saved to — the server. Not sent to the server (saveVariant only ever picks
+ * the named fields off this).
+ */
+type MatrixRow = ProductVariant & { dirty: boolean }
+
+/**
  * A local, decoupled copy of the matrix rows — the same reason every other
  * editable field on this page goes through `useForm()` instead of binding
  * `v-model` straight into `props.*`.
@@ -201,11 +209,22 @@ const newValue = ref<Record<number, string>>({})
  * replaces `props.variants` wholesale. If the matrix's inputs bound directly
  * into that prop, typing into row B and then saving row A (or reordering an
  * axis) would silently discard row B's in-progress, unsaved edit the moment
- * the visit's response replaced the prop. `rows` exists so a save or delete
- * elsewhere on the page can never clobber what the merchant is mid-typing in
- * a row they haven't saved yet.
+ * the visit's response replaced the prop.
+ *
+ * The merge below is keyed on `dirty`, not on mere presence: an earlier
+ * version of this kept every already-known row's local values forever,
+ * which protected in-progress typing but also meant a row the merchant never
+ * touched would never again pick up a server-side change — e.g. stock a
+ * completed order decremented on a variant nobody was editing would be
+ * invisible, and a later save of that untouched row would silently resend
+ * (and thus revert) the stale local quantity. Only a row flagged dirty keeps
+ * its local values; every other row re-seeds from the server on each visit.
  */
-const rows = ref<ProductVariant[]>(props.variants.map((variant) => ({ ...variant })))
+const rows = ref<MatrixRow[]>(props.variants.map((variant) => ({ ...variant, dirty: false })))
+
+const markDirty = (row: MatrixRow) => {
+  row.dirty = true
+}
 
 watch(
   () => props.variants,
@@ -216,17 +235,22 @@ watch(
       const existing = previous.get(incoming.id)
 
       // A variant this page has never held locally (just generated, or the
-      // very first render) has no in-progress edit to protect — take the
-      // server's row as-is.
-      if (!existing) return { ...incoming }
+      // very first render) has no in-progress edit to protect.
+      if (!existing) return { ...incoming, dirty: false }
 
-      // A row already known locally keeps whatever the matrix currently
-      // holds for every editable field — that is the in-progress edit this
-      // whole mechanism exists to protect. 'label' is the one field here
-      // that is server-computed and never edited in this matrix (it can
-      // legitimately change — e.g. after reordering an axis swaps the order
-      // the option values are joined in — so it always tracks the server).
-      return { ...existing, label: incoming.label }
+      if (existing.dirty) {
+        // Keep the local, still-unsaved (or server-rejected) edit — that is
+        // the whole point of this mechanism. 'label' is server-computed and
+        // never edited in this matrix, so it always tracks the server (it
+        // can legitimately change, e.g. after reordering an axis swaps the
+        // order the option values are joined in).
+        return { ...existing, label: incoming.label }
+      }
+
+      // Untouched since load or since its last successful save: take the
+      // server's row as-is, so a change from outside this tab (another
+      // admin, a completed order decrementing stock) actually shows up.
+      return { ...incoming, dirty: false }
     })
   },
 )
@@ -264,7 +288,7 @@ const moveValue = (option: ProductOption, value: ProductOptionValue, direction: 
 const generate = () =>
   router.post(route('admin.products.variants.generate', props.product.slug), {}, { preserveScroll: true })
 
-const saveVariant = (variant: ProductVariant) => {
+const saveVariant = (variant: MatrixRow) => {
   router.patch(
     route('admin.products.variants.update', [props.product.slug, variant.id]),
     {
@@ -285,7 +309,14 @@ const saveVariant = (variant: ProductVariant) => {
       stock_qty: Number(variant.stock_qty) || 0,
       active: variant.active,
     },
-    { preserveScroll: true },
+    {
+      preserveScroll: true,
+      // Only a confirmed-successful save clears 'dirty': on failure the row
+      // must stay flagged so the merge above keeps showing the merchant's
+      // (rejected, still-unsaved) edit instead of quietly re-seeding from
+      // whatever the server still has on record.
+      onSuccess: () => (variant.dirty = false),
+    },
   )
 }
 
@@ -1066,6 +1097,7 @@ const runVariantDelete = () => {
                     placeholder="dědí"
                     :disabled="!can.edit"
                     class="w-28 rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-900 focus:ring-gray-900 disabled:bg-gray-100"
+                    @input="markDirty(variant)"
                   />
                 </td>
 
@@ -1077,6 +1109,7 @@ const runVariantDelete = () => {
                     type="text"
                     :disabled="!can.edit"
                     class="w-32 rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-900 focus:ring-gray-900 disabled:bg-gray-100"
+                    @input="markDirty(variant)"
                   />
                 </td>
 
@@ -1087,6 +1120,7 @@ const runVariantDelete = () => {
                     type="checkbox"
                     :disabled="!can.edit"
                     class="rounded border-gray-300 text-gray-900 focus:ring-gray-900"
+                    @change="markDirty(variant)"
                   />
                   <label :for="`variant-tracked-${variant.id}`" class="sr-only">
                     Varianta {{ variant.label }} sleduje skladovou zásobu
@@ -1103,6 +1137,7 @@ const runVariantDelete = () => {
                     type="number"
                     :disabled="!can.edit || !variant.stock_tracked"
                     class="w-20 rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-900 focus:ring-gray-900 disabled:bg-gray-100"
+                    @input="markDirty(variant)"
                   />
                 </td>
 
@@ -1113,6 +1148,7 @@ const runVariantDelete = () => {
                     type="checkbox"
                     :disabled="!can.edit"
                     class="rounded border-gray-300 text-gray-900 focus:ring-gray-900"
+                    @change="markDirty(variant)"
                   />
                   <label :for="`variant-active-${variant.id}`" class="sr-only">
                     Varianta {{ variant.label }} je aktivní
