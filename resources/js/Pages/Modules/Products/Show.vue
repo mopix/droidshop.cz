@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, ref } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { Link, router, useForm } from '@inertiajs/vue3'
 import AdminLayout from '@/Layouts/AdminLayout.vue'
 import ConfirmDialog from '@/Components/Ui/ConfirmDialog.vue'
@@ -191,6 +191,46 @@ const removeImage = (image: ProductImage) =>
 const newOption = ref('')
 const newValue = ref<Record<number, string>>({})
 
+/**
+ * A local, decoupled copy of the matrix rows — the same reason every other
+ * editable field on this page goes through `useForm()` instead of binding
+ * `v-model` straight into `props.*`.
+ *
+ * Every other variant action (add/move/delete axis or value, generate) is a
+ * full `router.post`/`delete` visit with no `only`/`preserveState`, so it
+ * replaces `props.variants` wholesale. If the matrix's inputs bound directly
+ * into that prop, typing into row B and then saving row A (or reordering an
+ * axis) would silently discard row B's in-progress, unsaved edit the moment
+ * the visit's response replaced the prop. `rows` exists so a save or delete
+ * elsewhere on the page can never clobber what the merchant is mid-typing in
+ * a row they haven't saved yet.
+ */
+const rows = ref<ProductVariant[]>(props.variants.map((variant) => ({ ...variant })))
+
+watch(
+  () => props.variants,
+  (next) => {
+    const previous = new Map(rows.value.map((row) => [row.id, row]))
+
+    rows.value = next.map((incoming) => {
+      const existing = previous.get(incoming.id)
+
+      // A variant this page has never held locally (just generated, or the
+      // very first render) has no in-progress edit to protect — take the
+      // server's row as-is.
+      if (!existing) return { ...incoming }
+
+      // A row already known locally keeps whatever the matrix currently
+      // holds for every editable field — that is the in-progress edit this
+      // whole mechanism exists to protect. 'label' is the one field here
+      // that is server-computed and never edited in this matrix (it can
+      // legitimately change — e.g. after reordering an axis swaps the order
+      // the option values are joined in — so it always tracks the server).
+      return { ...existing, label: incoming.label }
+    })
+  },
+)
+
 const addOption = () => {
   router.post(
     route('admin.products.variants.options.store', props.product.slug),
@@ -230,11 +270,13 @@ const saveVariant = (variant: ProductVariant) => {
     {
       price: variant.price,
       sku: variant.sku,
-      // A product with variants tracks stock per variant, never on the
-      // product itself (see the warning banner on the stock tab) — every
-      // save from this matrix keeps that true rather than trusting a stale
-      // flag the row never exposed for editing.
-      stock_tracked: true,
+      // The matrix's own "Sleduje sklad" checkbox, not a forced value: a
+      // variant can legitimately have stock_tracked = false (untracked = no
+      // stock check at all, a fully supported state — see
+      // ProductVariant::isAvailable()). Sending anything but the row's own
+      // value here would silently flip it on every save of an unrelated
+      // field.
+      stock_tracked: variant.stock_tracked,
       // Unlike price (nullable = "inherit"), the server's stock_qty rule has
       // no nullable: an emptied number input leaves v-model.number holding
       // '', which the global ConvertEmptyStringsToNull middleware turns into
@@ -993,7 +1035,7 @@ const runVariantDelete = () => {
           Generovat varianty
         </button>
 
-        <div v-if="variants.length" class="mt-6 overflow-x-auto">
+        <div v-if="rows.length" class="mt-6 overflow-x-auto">
           <table class="w-full text-left text-sm">
             <caption class="sr-only">Varianty produktu {{ product.name }}</caption>
             <thead>
@@ -1001,13 +1043,14 @@ const runVariantDelete = () => {
                 <th scope="col" class="py-2 pr-2 font-medium">Kombinace</th>
                 <th scope="col" class="px-2 py-2 font-medium">Cena (haléře)</th>
                 <th scope="col" class="px-2 py-2 font-medium">SKU</th>
+                <th scope="col" class="px-2 py-2 font-medium">Sleduje sklad</th>
                 <th scope="col" class="px-2 py-2 font-medium">Sklad (ks)</th>
                 <th scope="col" class="px-2 py-2 font-medium">Aktivní</th>
                 <th v-if="can.edit" scope="col" class="py-2 pl-2"><span class="sr-only">Akce</span></th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="variant in variants" :key="variant.id" class="border-t border-gray-100">
+              <tr v-for="variant in rows" :key="variant.id" class="border-t border-gray-100">
                 <th scope="row" class="py-2 pr-2 text-left font-normal text-gray-900">{{ variant.label }}</th>
 
                 <td class="px-2 py-2">
@@ -1038,6 +1081,19 @@ const runVariantDelete = () => {
                 </td>
 
                 <td class="px-2 py-2">
+                  <input
+                    :id="`variant-tracked-${variant.id}`"
+                    v-model="variant.stock_tracked"
+                    type="checkbox"
+                    :disabled="!can.edit"
+                    class="rounded border-gray-300 text-gray-900 focus:ring-gray-900"
+                  />
+                  <label :for="`variant-tracked-${variant.id}`" class="sr-only">
+                    Varianta {{ variant.label }} sleduje skladovou zásobu
+                  </label>
+                </td>
+
+                <td class="px-2 py-2">
                   <label :for="`variant-stock-${variant.id}`" class="sr-only">
                     Skladová zásoba varianty {{ variant.label }}
                   </label>
@@ -1045,7 +1101,7 @@ const runVariantDelete = () => {
                     :id="`variant-stock-${variant.id}`"
                     v-model.number="variant.stock_qty"
                     type="number"
-                    :disabled="!can.edit"
+                    :disabled="!can.edit || !variant.stock_tracked"
                     class="w-20 rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-900 focus:ring-gray-900 disabled:bg-gray-100"
                   />
                 </td>
