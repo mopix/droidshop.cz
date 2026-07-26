@@ -2,5 +2,5 @@
     @if (!empty($heading))
         <h2 class="text-lg font-semibold text-slate-900">{{ $heading }}</h2>
     @endif
-    {!! $html !!} {{-- sanitized at write time (Task 5) --}}
+    {!! $html ?? '' !!} {{-- sanitized at write time (Task 5) --}}
 </section>

@@ -1,5 +1,5 @@
 <section class="border-b border-slate-100 pb-10">
-    <h1 class="text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">{{ $title }}</h1>
+    <h1 class="text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">{{ $title ?? '' }}</h1>
     @if (!empty($subtitle))
         <p class="mt-3 max-w-2xl text-slate-600">{{ $subtitle }}</p>
     @endif
