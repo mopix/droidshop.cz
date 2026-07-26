@@ -11,6 +11,30 @@ Pravidla: [`.claude/skills/versioning/SKILL.md`](.claude/skills/versioning/SKILL
 
 > CHANGELOG vede milníky (minor/major). Detail patchů je v `git log`.
 
+## [0.21.0] – 2026-07-26
+
+**Fáze 2 / vlna 2.3 — bloková homepage (page builder).** Nájemce si homepage e-shopu poskládá z bloků místo fixní šablony. Storefront homepage zůstává Blade SSR bez JS; editor je Inertia SPA v adminu. 1177 testů.
+
+### Datový model + render
+- Tabulka `homepage_blocks` (modul `storefront`): `tenant_id` (FK cascade), `position`, `type`, `payload` (JSON), `visible`; model `HomepageBlock` (`BelongsToTenant`), enum `BlockType`.
+- 5 typů bloků: `hero`, `product_row` (novinky / ruční výběr), `category_grid`, `text` (sanitizované HTML), `banner` (obrázek + odkaz).
+- `HomeController` iteruje viditelné bloky (`orderBy position`), `prepare()` mapuje typ na Blade partial + data (produkty z `ProductCatalog`, kategorie z `Category`); bloky vypnutých modulů se vynechají, prázdná homepage vrací 200. Čistý Blade SSR, žádný nový storefront JS.
+
+### Seed
+- `DefaultHomepage` = jediný seed recept (hero + product_row latest 8 + category_grid), idempotentní. Volá `TenantProvisioner` (noví tenanti) i backfill migrace (stávající). Core resolvuje seeder stringem, žádný compile-time modulový import.
+
+### Admin editor
+- Inertia `/admin/m/storefront/homepage` (`admin.storefront.homepage.*`, permission `storefront.homepage.manage`, nav „Homepage"): seznam bloků, řazení tlačítky (nahoru/dolů), skrýt/zobrazit, editace per typ, upload obrázků, mazání s potvrzením. Write-freeze pro suspended/past_due.
+
+### Bezpečnost
+- Text HTML sanitizován `HtmlSanitizer` při zápisu; obrázky raster-only (`png,jpg,jpeg,webp`, žádné SVG); `BlockUrl` guard odmítá `javascript:`/`data:`/`vbscript:`/protocol-relative `//`/backslash (open-redirect); `image_path` server-authoritative (klient ho nediktuje); PATCH+file přes POST+`_method` spoofing; strop 30 bloků; tenant izolace přes `BelongsToTenant`.
+
+### Přístupnost (WCAG 2.2 AA)
+- Audit + opravy: jeden `<h1>` (odmítnutí druhého hero), hero obrázek se renderuje + má `alt`, `id` sekcí z `block->id` (žádná kolize), success flash u řazení/skrytí, banner `alt` required s obrázkem, sanitizer doplní `alt=""`, error summary `role="alert"` + focus na první chybu, format hinty u uploadu, min target size řadících tlačítek.
+
+### Odchylky / follow-up
+- Page builder homepage je rozšíření nad rámec produktové spec (§4.1 katalogově orientovaný). „Celá nabídka →" odkaz nahrazen `category_grid` blokem. `category_ids`/`product_ids` v editoru = comma-text (MVP), ne multiselect. Page cache invalidace odložená (page cache zatím není). Live preview + drag&drop, blokové obecné stránky, další typy bloků = budoucí vlny.
+
 ## [0.20.0] – 2026-07-25
 
 **Fáze 2 / vlna 2.2 — šablona storefrontu + branding nájemce.** Storefront dostal jednu čistou prodejnou šablonu místo holé a nájemce si e-shop přebranduje (logo, favicon, primární + akcentní barva). Konzistentní vzhled přes všechny veřejné stránky, pořád Blade SSR bez JS. 1140 testů.
