@@ -27,6 +27,12 @@ class UpdateOrderRequest extends FormRequest
     {
         return [
             'items' => ['required', 'array', 'min:1'],
+            // Optional and only ever read back, never trusted as an
+            // authorisation: OrderEditor matches it against THIS order's own
+            // items to recover which variant a line already carries (the
+            // edit form has no variant picker), and simply ignores an id
+            // that does not belong to this order.
+            'items.*.id' => ['nullable', 'integer'],
             'items.*.product_id' => ['required', 'integer'],
             'items.*.quantity' => ['required', 'integer', 'min:1'],
 

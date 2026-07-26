@@ -259,6 +259,28 @@ class OrderPlacer implements OrderPlacement
             $quantity = (int) $item->quantity;
             $variantId = (int) ($item->variant_id ?? 0) ?: null;
 
+            // Resolved BEFORE any price comparison, deliberately: once a
+            // variant is deactivated, ProductCatalog::price() silently falls
+            // back to the product's own base price (see
+            // EloquentProductCatalog::price()'s own comment), which almost
+            // always differs from what the cart snapshotted for the
+            // variant. Checking price first would then surface a vanished
+            // variant as "cena se změnila" (PriceChanged) instead of "varianta
+            // již není dostupná" (InsufficientStock) — the wrong message for
+            // what actually happened, even though nothing is lost either way
+            // (both exceptions abort before any stock is touched).
+            $variant = $variantId === null
+                ? null
+                : $this->catalog->findVariantById($productId, $variantId);
+
+            // A variant that no longer resolves (deactivated or deleted
+            // mid-checkout) cannot be fulfilled — the same class of failure as
+            // running out of stock, and the controller already knows how to
+            // turn that into a message.
+            if ($variantId !== null && $variant === null) {
+                throw InsufficientStock::for($productId, $quantity);
+            }
+
             // The pricing authority. The cart's stored unit_price is only a
             // display snapshot and is never charged from.
             $currentPrice = $this->catalog->price($productId, [], $variantId);
@@ -284,18 +306,6 @@ class OrderPlacer implements OrderPlacement
                 // submitting. It cannot be fulfilled, so it is unavailable in
                 // the same sense as running out — the controller already knows
                 // how to turn this into a message (AK 3 path).
-                throw InsufficientStock::for($productId, $quantity);
-            }
-
-            $variant = $variantId === null
-                ? null
-                : $this->catalog->findVariantById($productId, $variantId);
-
-            // A variant that no longer resolves (deactivated or deleted
-            // mid-checkout) cannot be fulfilled — the same class of failure as
-            // running out of stock, and the controller already knows how to
-            // turn that into a message.
-            if ($variantId !== null && $variant === null) {
                 throw InsufficientStock::for($productId, $quantity);
             }
 

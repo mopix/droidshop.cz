@@ -230,14 +230,16 @@ const issueProforma = () => {
 // --- Item / address edit ----------------------------------------------------
 //
 // Mirrors exactly what Modules\Orders\Http\Requests\UpdateOrderRequest
-// validates: items[].{product_id,quantity}, email, phone, billing (with
+// validates: items[].{id,product_id,quantity}, email, phone, billing (with
 // name/company/ico/dic/street/city/zip/country), an optional shipping
 // address of the same shape (minus company/ico/dic), and note — the latter
 // becomes the order_events row's note (an internal record of *why* the
 // order was edited), never order.note (the customer's own note, left
 // untouched). No price/total is computed or sent from here: the server
 // re-prices every line from the catalogue (OrderEditor::edit), same as the
-// rest of checkout.
+// rest of checkout. `id` is carried through unedited (never offered as a
+// field to change) purely so the server can recover which variant, if any,
+// an existing line was already on — this form has no variant picker.
 //
 // Scope note: this only edits existing lines' quantities (or removes a
 // line) — there is no "add a new product" control here, since Show.vue has
@@ -247,6 +249,12 @@ const issueProforma = () => {
 // by dropping the line from the array entirely (the "Odebrat" button).
 
 type EditableLine = {
+  // The existing OrderItem's own id — carried through unedited so the
+  // server can match a submitted line back to which variant (if any) it
+  // already had. Nothing here lets the admin choose or change a variant;
+  // this only keeps the one already on the line from being silently
+  // dropped to "no variant" (see UpdateOrderRequest, OrderEditor::edit).
+  id: number
   product_id: number | null
   quantity: number
   name: string
@@ -289,6 +297,7 @@ const resetEditForm = () => {
     country: props.order.shipping?.country ?? 'CZ',
   }
   editForm.items = props.order.items.map((item) => ({
+    id: item.id,
     product_id: item.product_id,
     quantity: item.quantity,
     name: item.name,
@@ -318,7 +327,7 @@ const submitEdit = () => {
       // Only the fields UpdateOrderRequest declares a rule for — the
       // display-only name/sku on each line are dropped here rather than
       // relying on the server to ignore them.
-      items: data.items.map((line) => ({ product_id: line.product_id, quantity: line.quantity })),
+      items: data.items.map((line) => ({ id: line.id, product_id: line.product_id, quantity: line.quantity })),
       email: data.email,
       phone: data.phone || null,
       billing: Object.fromEntries(Object.entries(data.billing).filter(([, v]) => v !== '')),
