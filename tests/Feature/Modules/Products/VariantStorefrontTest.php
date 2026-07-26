@@ -103,6 +103,22 @@ class VariantStorefrontTest extends TestCase
         $response->assertSee('name="option_value_id[', escape: false);
     }
 
+    public function test_the_page_embeds_the_variant_matrix_for_the_island(): void
+    {
+        $data = $this->shirt();
+
+        $response = $this->get($this->url('/produkt/tricko-acme'));
+
+        $response->assertSee('data-variant-matrix', escape: false);
+        $response->assertSee('"id":'.$data['variants']['M'], escape: false);
+        $response->assertSee('data-variant-price', escape: false);
+        // The net-price line sits right next to the gross price; the matrix
+        // must carry a pre-formatted net figure too, otherwise the island
+        // would update the gross price and leave a stale net price beside it.
+        $response->assertSee('"net_price":', escape: false);
+        $response->assertSee('data-variant-net-price', escape: false);
+    }
+
     public function test_the_detail_page_still_shows_the_net_price_for_a_product_without_variants(): void
     {
         $product = $this->context->runAs($this->tenant, function () {

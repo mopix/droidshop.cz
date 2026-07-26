@@ -70,7 +70,7 @@
             <p class="mt-6">
                 <span class="text-3xl font-semibold text-slate-900" data-variant-price>{{ $displayPrice->format() }}</span>
                 <span class="block text-sm text-slate-500">
-                    s DPH · bez DPH {{ $displayNetPrice->format() }}
+                    s DPH · bez DPH <span data-variant-net-price>{{ $displayNetPrice->format() }}</span>
                 </span>
             </p>
 

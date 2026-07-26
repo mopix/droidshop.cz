@@ -47,13 +47,19 @@
     <p class="mt-3 text-sm text-red-700">{{ $message }}</p>
 @enderror
 
-{{-- The island's data source. Read-only JSON, no behaviour depends on it. --}}
+{{--
+    The island's data source. Read-only JSON, no behaviour depends on it.
+    net_price is pre-formatted server-side (same TaxRate conversion as the
+    initial render below) so the island never does price arithmetic in JS —
+    it only ever displays a string the server already computed.
+--}}
 @php
-    $variantMatrix = $variants->map(function ($variant) {
+    $variantMatrix = $variants->map(function ($variant) use ($product) {
         return [
             'id' => $variant->getKey(),
             'selection' => array_values($variant->catalogVariantSelection()),
             'price' => $variant->catalogVariantPrice()->format(),
+            'net_price' => $product->rate()->net($variant->catalogVariantPrice())->format(),
             'available' => $variant->catalogVariantIsAvailable(),
         ];
     })->values();
