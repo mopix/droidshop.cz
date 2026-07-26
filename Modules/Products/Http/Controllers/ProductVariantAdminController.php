@@ -38,8 +38,10 @@ class ProductVariantAdminController
         return back()->with('success', 'Vlastnost přejmenována.');
     }
 
-    public function destroyOption(Product $product, int $option): RedirectResponse
+    public function destroyOption(Request $request, Product $product, int $option): RedirectResponse
     {
+        abort_unless($request->user()->can('products.edit'), 403);
+
         $this->writer->deleteOption($this->option($product, $option));
 
         return back()->with('success', 'Vlastnost odebrána.');
@@ -47,6 +49,8 @@ class ProductVariantAdminController
 
     public function moveOption(Request $request, Product $product, int $option): RedirectResponse
     {
+        abort_unless($request->user()->can('products.edit'), 403);
+
         $this->writer->moveOption($this->option($product, $option), $this->direction($request));
 
         return back();
@@ -59,8 +63,10 @@ class ProductVariantAdminController
         return back()->with('success', 'Hodnota přidána.');
     }
 
-    public function destroyValue(Product $product, int $option, int $value): RedirectResponse
+    public function destroyValue(Request $request, Product $product, int $option, int $value): RedirectResponse
     {
+        abort_unless($request->user()->can('products.edit'), 403);
+
         $this->writer->deleteValue($this->value($product, $option, $value));
 
         return back()->with('success', 'Hodnota odebrána.');
@@ -68,13 +74,17 @@ class ProductVariantAdminController
 
     public function moveValue(Request $request, Product $product, int $option, int $value): RedirectResponse
     {
+        abort_unless($request->user()->can('products.edit'), 403);
+
         $this->writer->moveValue($this->value($product, $option, $value), $this->direction($request));
 
         return back();
     }
 
-    public function generate(Product $product): RedirectResponse
+    public function generate(Request $request, Product $product): RedirectResponse
     {
+        abort_unless($request->user()->can('products.edit'), 403);
+
         $created = $this->writer->generate($product);
 
         return back()->with('success', $created === 0
@@ -89,8 +99,10 @@ class ProductVariantAdminController
         return back()->with('success', 'Varianta uložena.');
     }
 
-    public function destroy(Product $product, int $variant): RedirectResponse
+    public function destroy(Request $request, Product $product, int $variant): RedirectResponse
     {
+        abort_unless($request->user()->can('products.edit'), 403);
+
         $this->writer->deleteVariant($this->variant($product, $variant));
 
         return back()->with('success', 'Varianta smazána.');

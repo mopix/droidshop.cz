@@ -66,6 +66,20 @@ class VariantAdminTest extends TestCase
         ]));
     }
 
+    /**
+     * A staff member scoped to 'products.view' only — mirrors
+     * ProductAdminTest::test_a_member_without_the_edit_permission_cannot_write.
+     */
+    private function staffWithoutEditPermission(): User
+    {
+        $staff = User::factory()->create();
+        $this->tenant->users()->attach($staff, [
+            'role' => 'staff', 'permissions' => ['products.view'], 'joined_at' => now(),
+        ]);
+
+        return $staff;
+    }
+
     public function test_an_owner_can_add_an_axis_a_value_and_generate_variants(): void
     {
         $product = $this->product();
@@ -347,6 +361,127 @@ class VariantAdminTest extends TestCase
         $this->actingAs($this->owner)
             ->patch($this->url('/'.$product->slug."/varianty/{$variant->id}"), ['price' => null])
             ->assertSessionDoesntHaveErrors('price');
+    }
+
+    // --- products.edit is required, even for the endpoints without a Form
+    // Request to carry authorize() (destroyOption, moveOption, destroyValue,
+    // moveValue, generate, destroy) ------------------------------------------
+
+    public function test_a_staff_member_without_edit_permission_cannot_delete_an_option(): void
+    {
+        $product = $this->product();
+        $staff = $this->staffWithoutEditPermission();
+
+        $option = $this->context->runAs($this->tenant, fn () => ProductOption::create([
+            'product_id' => $product->id, 'name' => 'Velikost', 'position' => 0,
+        ]));
+
+        $this->actingAs($staff)
+            ->delete($this->url('/'.$product->slug."/varianty/osy/{$option->id}"))
+            ->assertForbidden();
+
+        $this->context->runAs($this->tenant, function () use ($option) {
+            $this->assertSame(1, ProductOption::query()->whereKey($option->id)->count());
+        });
+    }
+
+    public function test_a_staff_member_without_edit_permission_cannot_move_an_option(): void
+    {
+        $product = $this->product();
+        $staff = $this->staffWithoutEditPermission();
+
+        [$first, $second] = $this->context->runAs($this->tenant, fn () => [
+            ProductOption::create(['product_id' => $product->id, 'name' => 'Velikost', 'position' => 0]),
+            ProductOption::create(['product_id' => $product->id, 'name' => 'Barva', 'position' => 1]),
+        ]);
+
+        $this->actingAs($staff)
+            ->post($this->url('/'.$product->slug."/varianty/osy/{$first->id}/poradi"), ['direction' => 'down'])
+            ->assertForbidden();
+
+        $this->context->runAs($this->tenant, function () use ($first, $second) {
+            $this->assertSame(0, $first->fresh()->position);
+            $this->assertSame(1, $second->fresh()->position);
+        });
+    }
+
+    public function test_a_staff_member_without_edit_permission_cannot_delete_a_value(): void
+    {
+        $product = $this->product();
+        $staff = $this->staffWithoutEditPermission();
+
+        $option = $this->context->runAs($this->tenant, fn () => ProductOption::create([
+            'product_id' => $product->id, 'name' => 'Velikost', 'position' => 0,
+        ]));
+        $value = $this->context->runAs($this->tenant, fn () => $option->values()->create(['value' => 'M', 'position' => 0]));
+
+        $this->actingAs($staff)
+            ->delete($this->url('/'.$product->slug."/varianty/osy/{$option->id}/hodnoty/{$value->id}"))
+            ->assertForbidden();
+
+        $this->context->runAs($this->tenant, function () use ($value) {
+            $this->assertSame(1, ProductOptionValue::query()->whereKey($value->id)->count());
+        });
+    }
+
+    public function test_a_staff_member_without_edit_permission_cannot_move_a_value(): void
+    {
+        $product = $this->product();
+        $staff = $this->staffWithoutEditPermission();
+
+        $option = $this->context->runAs($this->tenant, fn () => ProductOption::create([
+            'product_id' => $product->id, 'name' => 'Velikost', 'position' => 0,
+        ]));
+        [$first, $second] = $this->context->runAs($this->tenant, fn () => [
+            $option->values()->create(['value' => 'M', 'position' => 0]),
+            $option->values()->create(['value' => 'L', 'position' => 1]),
+        ]);
+
+        $this->actingAs($staff)
+            ->post($this->url('/'.$product->slug."/varianty/osy/{$option->id}/hodnoty/{$first->id}/poradi"), ['direction' => 'down'])
+            ->assertForbidden();
+
+        $this->context->runAs($this->tenant, function () use ($first, $second) {
+            $this->assertSame(0, $first->fresh()->position);
+            $this->assertSame(1, $second->fresh()->position);
+        });
+    }
+
+    public function test_a_staff_member_without_edit_permission_cannot_generate_variants(): void
+    {
+        $product = $this->product();
+        $staff = $this->staffWithoutEditPermission();
+
+        $option = $this->context->runAs($this->tenant, fn () => ProductOption::create([
+            'product_id' => $product->id, 'name' => 'Velikost', 'position' => 0,
+        ]));
+        $this->context->runAs($this->tenant, fn () => $option->values()->create(['value' => 'M', 'position' => 0]));
+
+        $this->actingAs($staff)
+            ->post($this->url('/'.$product->slug.'/varianty/generovat'))
+            ->assertForbidden();
+
+        $this->context->runAs($this->tenant, function () {
+            $this->assertSame(0, ProductVariant::query()->count());
+        });
+    }
+
+    public function test_a_staff_member_without_edit_permission_cannot_delete_a_variant(): void
+    {
+        $product = $this->product();
+        $staff = $this->staffWithoutEditPermission();
+
+        $variant = $this->context->runAs($this->tenant, fn () => ProductVariant::create([
+            'product_id' => $product->id, 'position' => 0,
+        ]));
+
+        $this->actingAs($staff)
+            ->delete($this->url('/'.$product->slug."/varianty/{$variant->id}"))
+            ->assertForbidden();
+
+        $this->context->runAs($this->tenant, function () use ($variant) {
+            $this->assertSame(1, ProductVariant::query()->whereKey($variant->id)->count());
+        });
     }
 
     public function test_the_product_page_exposes_the_variant_matrix_to_the_editor(): void
