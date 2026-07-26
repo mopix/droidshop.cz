@@ -29,6 +29,11 @@ class AddCartItemRequest extends FormRequest
         return [
             'product_id' => ['required', 'integer', 'min:1'],
             'quantity' => ['required', 'integer', 'min:1', 'max:99'],
+            // The client posts which option values it chose, never a
+            // variant id — CartController::add() resolves the variant
+            // server-side via ProductCatalog::resolveVariant().
+            'option_value_id' => ['sometimes', 'array', 'max:10'],
+            'option_value_id.*' => ['integer'],
             // Deliberately absent: any 'price' or 'unit_price' the client
             // sends is never a validated field, so it is never read — the
             // pricing authority stays ProductCatalog::price() (AK 5).

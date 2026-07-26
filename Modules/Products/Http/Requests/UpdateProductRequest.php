@@ -13,4 +13,16 @@ class UpdateProductRequest extends StoreProductRequest
     {
         return false;
     }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function rules(): array
+    {
+        return array_merge(parent::rules(), [
+            // null = inherit the shop default; the two literals are the only
+            // other accepted values.
+            'variant_display' => ['nullable', 'in:radio,select'],
+        ]);
+    }
 }

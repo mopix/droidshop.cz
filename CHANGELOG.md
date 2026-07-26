@@ -11,6 +11,29 @@ Pravidla: [`.claude/skills/versioning/SKILL.md`](.claude/skills/versioning/SKILL
 
 > CHANGELOG vede milníky (minor/major). Detail patchů je v `git log`.
 
+## [0.22.0] – 2026-07-26
+
+**Fáze 2 / vlna 2.4 — varianty produktu (víceosá matice).** Nájemce prodává jeden produkt ve více variantách (Velikost × Barva) s vlastní cenou, skladem a SKU per kombinace; zákazník variantu vybere a koupí i s vypnutým JavaScriptem. 1252 testů (4094 assertions).
+
+### Datový model + kernel kontrakty
+- 4 relační tabulky v modulu `products`: `product_options` (osy), `product_option_values` (hodnoty), `product_variants` (kombinace — cena nullable = zdědit `products.price`, sklad, SKU/EAN, `active`), `product_variant_values` (pivot). `products` + `tenant_theme` dostaly `variant_display` (radio/select, dědičnost produkt → tenant default).
+- `App\Core\Catalog\Contracts\CatalogVariant` (nový tvar) + rozšíření `ProductCatalog`/`CatalogProduct` o volitelný `?int $variantId` jako poslední parametr — žádný existující callsite se nemění. Server-authoritative resoluce: klient posílá `option_value_id[]`, nikdy `variant_id`; `resolveVariant()` ověří příslušnost k produktu i tenantovi.
+
+### Košík, objednávka, sklad
+- `cart_items.variant_id` (NOT NULL, sentinel `0`), přepsaný `cart_item_unique`; `order_items.variant_id`/`variant_label` (nullable snapshot, bez FK). Sklad se odepisuje z varianty atomicky ve stejné transakci jako zápis/storno objednávky. Admin editace objednávky zachovává variantu (opraven kritický nález review — editace dřív mazala `variant_id` a přeceňovala na základní cenu).
+
+### Storefront
+- `variant-picker.blade.php` — server-rendered osy (radio/`<fieldset>`+`<legend>` nebo `<select>`), formulář funguje čistě POSTem bez JS; JSON-LD `Offer` per aktivní varianta; „od" cena ve výpisu kategorie/homepage pro produkty s variantami.
+- Vanilla JS ostrůvek (`resources/js/storefront.js`, bez Alpine — projekt Alpine nemá) živě přepočítává cenu vč. „bez DPH" a dostupnost nad embedded maticí; bundle 1248 B / 606 B gzip, žádný framework.
+
+### Admin
+- Nový tab „Varianty" na detailu produktu (`Show.vue`): osy a hodnoty s řazením tlačítky, „Generovat varianty" (idempotentní kartézský součin), mřížka cena/SKU/EAN/sklad/aktivní s per-řádkovým dirty-flag trackingem. Globální default zobrazení na `/admin/nastaveni/vzhled`.
+- 10 nových admin endpointů, všech gated `products.edit` (opraven kritický nález review — šest endpointů zprvu kontrolu postrádalo).
+
+### Odloženo
+- Obrázky per varianta, URL per varianta, hmotnost per varianta, fasetový filtr podle osy, hromadný import variant — `docs/future/varianty-obrazky-a-url.md`.
+- Hromadné akce v mřížce variant (nastavit cenu/sklad všem najednou); „od" cena zatím počítá nejlevnější aktivní, ne nejlevnější skladem dostupnou variantu; page cache invalidace po změně varianty (page cache samotná zatím neexistuje).
+
 ## [0.21.0] – 2026-07-26
 
 **Fáze 2 / vlna 2.3 — bloková homepage (page builder).** Nájemce si homepage e-shopu poskládá z bloků místo fixní šablony. Storefront homepage zůstává Blade SSR bez JS; editor je Inertia SPA v adminu. 1177 testů.

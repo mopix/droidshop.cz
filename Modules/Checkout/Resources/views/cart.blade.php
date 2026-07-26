@@ -46,6 +46,10 @@
                             @endif
                         </p>
 
+                        @if ($line->variantLabel)
+                            <p class="text-sm text-slate-500">{{ $line->variantLabel }}</p>
+                        @endif
+
                         @if ($line->priceChanged)
                             <p class="mt-1 text-sm text-amber-700">
                                 Cena se změnila z {{ $line->previousUnitPrice->format() }} na {{ $line->unitPrice->format() }}.

@@ -131,7 +131,7 @@ class OrderPlacer implements OrderPlacement
             //    unit gets InsufficientStock, which propagates out and rolls
             //    the whole transaction back.
             foreach ($lines as $line) {
-                $this->catalog->decrementStock($line['product_id'], $line['quantity']);
+                $this->catalog->decrementStock($line['product_id'], $line['quantity'], $line['variant_id']);
             }
 
             // 5. Totals and the VAT recap, all server-side.
@@ -173,6 +173,8 @@ class OrderPlacer implements OrderPlacement
             foreach ($lines as $line) {
                 $order->items()->create([
                     'product_id' => $line['product_id'],
+                    'variant_id' => $line['variant_id'],
+                    'variant_label' => $line['variant_label'],
                     'name' => $line['name'],
                     'sku' => $line['sku'],
                     'unit_price' => $line['unit_price'],
@@ -246,7 +248,7 @@ class OrderPlacer implements OrderPlacement
     /**
      * Recomputes each cart line from the catalogue, rejecting a moved price.
      *
-     * @return list<array{product_id:int,name:string,sku:?string,unit_price:Money,tax_rate:float,quantity:int,line_total:Money}>
+     * @return list<array{product_id:int,variant_id:?int,variant_label:?string,name:string,sku:?string,unit_price:Money,tax_rate:float,quantity:int,line_total:Money}>
      */
     private function recomputeLines(PlacementRequest $request): array
     {
@@ -255,10 +257,61 @@ class OrderPlacer implements OrderPlacement
         foreach ($request->cart->cartItems() as $item) {
             $productId = (int) $item->product_id;
             $quantity = (int) $item->quantity;
+            $variantId = (int) ($item->variant_id ?? 0) ?: null;
+
+            // Fetched first (not after the price check, as recomputeLines
+            // itself used to): a vanished product and a variant-less line on
+            // a now-varianted product are both refused before any price
+            // comparison, for the same reason the vanished-variant check
+            // below is.
+            $product = $this->catalog->findById($productId);
+
+            if (! $product instanceof CatalogProduct) {
+                // The product left the catalogue between adding it and
+                // submitting. It cannot be fulfilled, so it is unavailable in
+                // the same sense as running out — the controller already knows
+                // how to turn this into a message (AK 3 path).
+                throw InsufficientStock::for($productId, $quantity);
+            }
+
+            // cart_items.variant_id collapsed to null (the sentinel 0) either
+            // because the line was added before this product had any
+            // variants, or a crafted POST never named one. Once the product
+            // has variants, products.price/stock are not the pricing/stock
+            // authority (Product::catalogHasVariants()) — letting this line
+            // through would price it at the base price and take stock from a
+            // column the shop no longer tracks. The same refusal a vanished
+            // variant already gets below, checked before any price
+            // comparison for the same reason that check is.
+            if ($variantId === null && $product->catalogHasVariants()) {
+                throw InsufficientStock::for($productId, $quantity);
+            }
+
+            // Resolved BEFORE any price comparison, deliberately: once a
+            // variant is deactivated, ProductCatalog::price() silently falls
+            // back to the product's own base price (see
+            // EloquentProductCatalog::price()'s own comment), which almost
+            // always differs from what the cart snapshotted for the
+            // variant. Checking price first would then surface a vanished
+            // variant as "cena se změnila" (PriceChanged) instead of "varianta
+            // již není dostupná" (InsufficientStock) — the wrong message for
+            // what actually happened, even though nothing is lost either way
+            // (both exceptions abort before any stock is touched).
+            $variant = $variantId === null
+                ? null
+                : $this->catalog->findVariantById($productId, $variantId);
+
+            // A variant that no longer resolves (deactivated or deleted
+            // mid-checkout) cannot be fulfilled — the same class of failure as
+            // running out of stock, and the controller already knows how to
+            // turn that into a message.
+            if ($variantId !== null && $variant === null) {
+                throw InsufficientStock::for($productId, $quantity);
+            }
 
             // The pricing authority. The cart's stored unit_price is only a
             // display snapshot and is never charged from.
-            $currentPrice = $this->catalog->price($productId);
+            $currentPrice = $this->catalog->price($productId, [], $variantId);
 
             // A line whose snapshot no longer matches the catalogue is refused
             // outright — a price changed mid-checkout must not be charged at
@@ -274,18 +327,10 @@ class OrderPlacer implements OrderPlacement
                 throw PriceChanged::forProduct($productId, $snapshot, $currentPrice);
             }
 
-            $product = $this->catalog->findById($productId);
-
-            if (! $product instanceof CatalogProduct) {
-                // The product left the catalogue between adding it and
-                // submitting. It cannot be fulfilled, so it is unavailable in
-                // the same sense as running out — the controller already knows
-                // how to turn this into a message (AK 3 path).
-                throw InsufficientStock::for($productId, $quantity);
-            }
-
             $lines[] = [
                 'product_id' => $productId,
+                'variant_id' => $variantId,
+                'variant_label' => $variant?->catalogVariantLabel(),
                 'name' => $product->catalogName(),
                 'sku' => $product->catalogSku(),
                 'unit_price' => $currentPrice,

@@ -56,14 +56,14 @@ interface ProductCatalog
     public function paginate(ProductQuery $query): LengthAwarePaginator;
 
     /**
-     * Takes stock, atomically.
+     * Takes stock, atomically. A variant, when the product has them.
      *
      * Implementations must not read-modify-write: two checkouts landing at the
      * same moment on the last item is the ordinary case, not the edge case.
      *
      * @throws InsufficientStock
      */
-    public function decrementStock(int $productId, int $quantity): void;
+    public function decrementStock(int $productId, int $quantity, ?int $variantId = null): void;
 
     /**
      * Gives stock back — the exact counterpart of decrementStock, used when
@@ -73,12 +73,38 @@ interface ProductCatalog
      * Untracked stock is a no-op, mirroring decrementStock's own guard: a
      * product that never had stock taken from it has nothing to give back.
      */
-    public function incrementStock(int $productId, int $quantity): void;
+    public function incrementStock(int $productId, int $quantity, ?int $variantId = null): void;
 
     /**
      * The price a given context pays, after the PriceModifier chain.
      *
+     * $variantId is last and optional on purpose: every existing call site
+     * prices a whole product and must keep compiling untouched.
+     *
      * @param  array<string, mixed>  $context
      */
-    public function price(int $productId, array $context = []): Money;
+    public function price(int $productId, array $context = [], ?int $variantId = null): Money;
+
+    /**
+     * Which variant a set of chosen option values means, or null.
+     *
+     * The storefront posts option value ids, never a variant id: the server
+     * has to be the one that decides which row that is, or a crafted POST
+     * could name an inactive variant — or one belonging to another product.
+     *
+     * @param  array<int>  $optionValueIds
+     */
+    public function resolveVariant(int $productId, array $optionValueIds): ?CatalogVariant;
+
+    /**
+     * A variant by id, but only if it really belongs to this product.
+     */
+    public function findVariantById(int $productId, int $variantId): ?CatalogVariant;
+
+    /**
+     * Every active variant of a product, in position order.
+     *
+     * @return Collection<int, CatalogVariant>
+     */
+    public function variantsFor(int $productId): Collection;
 }

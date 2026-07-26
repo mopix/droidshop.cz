@@ -89,12 +89,22 @@ class OrderEditor
      * from stock, a removed one is given back) and recomputing every total
      * server-side.
      *
-     * @param  list<array{product_id:int,quantity:int}>  $lines
+     * The admin edit form has no variant picker — it only lets an admin
+     * change a line's quantity or drop it — so a line's variant is never
+     * chosen here, only *preserved*. Each incoming line's optional `id` is
+     * matched back against this order's own existing items to recover which
+     * variant (if any) it was placed on; an id that is absent or does not
+     * belong to this order's items is treated as a genuinely new line with
+     * no variant, never as "drop the variant this line already had".
+     *
+     * @param  list<array{product_id:int,quantity:int,id?:int|null}>  $lines
      * @param  array<string, mixed>  $billing
      * @param  array<string, mixed>|null  $shipping
      *
      * @throws OrderEditingClosed when the order has moved past "shipped"
-     * @throws InsufficientStock when an increased quantity has no stock to take
+     * @throws InsufficientStock when an increased quantity has no stock to
+     *                           take, or a line's variant no longer resolves
+     *                           (deactivated or deleted since placement)
      */
     public function edit(
         Order $order,
@@ -112,15 +122,20 @@ class OrderEditor
         }
 
         DB::transaction(function () use ($order, $lines, $billing, $shipping, $email, $phone, $note, $actorType, $actorId): void {
-            $oldQuantities = $this->quantitiesFromItems($order->items()->get());
+            $existingItems = $order->items()->get();
 
-            $newLines = $this->recomputeLines($lines);
+            $oldQuantities = $this->quantitiesFromItems($existingItems);
+
+            $resolvedLines = $this->resolveLineVariants($lines, $existingItems);
+            $newLines = $this->recomputeLines($resolvedLines);
             $newQuantities = $this->quantitiesFromLines($newLines);
 
             // Stock is adjusted before the rows are rewritten: if a raised
             // quantity has no stock behind it, decrementStock throws and the
             // whole transaction rolls back — the order keeps its old lines,
-            // not half-edited ones.
+            // not half-edited ones. Keyed by (product_id, variant_id), not
+            // product_id alone, so two lines for the same product on
+            // different variants each move stock on their own variant.
             $this->applyStockDelta($oldQuantities, $newQuantities);
 
             $order->items()->delete();
@@ -130,6 +145,8 @@ class OrderEditor
             foreach ($newLines as $line) {
                 $order->items()->create([
                     'product_id' => $line['product_id'],
+                    'variant_id' => $line['variant_id'],
+                    'variant_label' => $line['variant_label'],
                     'name' => $line['name'],
                     'sku' => $line['sku'],
                     'unit_price' => $line['unit_price'],
@@ -216,7 +233,13 @@ class OrderEditor
             $currency = $newLines[0]['unit_price']->currency;
 
             foreach ($newLines as $line) {
-                $this->catalog->decrementStock($line['product_id'], $line['quantity']);
+                // Never null in practice here — the manual-order form has no
+                // variant picker, so recomputeLines() always resolves
+                // variant_id to null for these lines — but decrementStock's
+                // own $variantId parameter is passed through anyway rather
+                // than hardcoding the two-argument call, so this stays
+                // correct if a variant picker is ever added here.
+                $this->catalog->decrementStock($line['product_id'], $line['quantity'], $line['variant_id']);
             }
 
             $itemsTotal = $this->sum(array_column($newLines, 'line_total'), $currency);
@@ -262,6 +285,8 @@ class OrderEditor
             foreach ($newLines as $line) {
                 $order->items()->create([
                     'product_id' => $line['product_id'],
+                    'variant_id' => $line['variant_id'],
+                    'variant_label' => $line['variant_label'],
                     'name' => $line['name'],
                     'sku' => $line['sku'],
                     'unit_price' => $line['unit_price'],
@@ -323,7 +348,11 @@ class OrderEditor
             if ($returnStock) {
                 foreach ($order->items()->get() as $item) {
                     if ($item->product_id !== null) {
-                        $this->catalog->incrementStock($item->product_id, $item->quantity);
+                        $this->catalog->incrementStock(
+                            (int) $item->product_id,
+                            $item->quantity,
+                            $item->variant_id ? (int) $item->variant_id : null,
+                        );
                     }
                 }
             }
@@ -355,34 +384,93 @@ class OrderEditor
     // --- pricing, mirroring OrderPlacer's approach -------------------------
 
     /**
-     * Turns raw {product_id, quantity} pairs into full line snapshots,
-     * always at the catalogue's current price — an admin edit or manual
-     * order does not have a stale cart snapshot to compare against, so
-     * there is no PriceChanged check here, only the pricing-authority rule.
+     * Matches each incoming {product_id, quantity, id?} line back to the
+     * variant (if any) it already carries on the order, via its OrderItem
+     * id — the one piece of data that unambiguously identifies which
+     * existing line an incoming one continues, when the same product_id can
+     * legitimately appear twice on one order (two different variants of the
+     * same shirt). The admin edit form has no variant picker, so there is
+     * nothing else here to decide a variant FROM: an id that matches one of
+     * this order's own items carries that item's variant_id over; anything
+     * else (no id, or an id belonging to a different order or a different
+     * product_id — nonsense input, not a variant to preserve) is a
+     * genuinely new line and gets no variant, exactly as it would have
+     * before variants existed.
      *
-     * Duplicate product_ids in the input are summed into a single line, so
-     * the stock-delta computation always has exactly one quantity per
-     * product to compare against the order's existing lines.
+     * @param  list<array{product_id:int,quantity:int,id?:int|null}>  $lines
+     * @param  Collection<int, OrderItem>  $existingItems
+     * @return list<array{product_id:int,variant_id:?int,quantity:int}>
+     */
+    private function resolveLineVariants(array $lines, Collection $existingItems): array
+    {
+        $byId = $existingItems->keyBy('id');
+
+        return array_map(function (array $line) use ($byId): array {
+            $productId = (int) $line['product_id'];
+            $quantity = (int) $line['quantity'];
+            $itemId = $line['id'] ?? null;
+
+            /** @var OrderItem|null $existing */
+            $existing = $itemId !== null ? $byId->get($itemId) : null;
+
+            $variantId = ($existing !== null && (int) $existing->product_id === $productId && $existing->variant_id !== null)
+                ? (int) $existing->variant_id
+                : null;
+
+            return ['product_id' => $productId, 'variant_id' => $variantId, 'quantity' => $quantity];
+        }, $lines);
+    }
+
+    /**
+     * Turns {product_id, variant_id, quantity} lines into full line
+     * snapshots, always at the catalogue's current price — an admin edit or
+     * manual order does not have a stale cart snapshot to compare against,
+     * so there is no PriceChanged check here, only the pricing-authority
+     * rule (variant-aware, same as OrderPlacer::recomputeLines()).
      *
-     * @param  list<array{product_id:int,quantity:int}>  $lines
-     * @return list<array{product_id:int,name:string,sku:?string,unit_price:Money,tax_rate:float,quantity:int,line_total:Money}>
+     * Duplicate (product_id, variant_id) pairs in the input are summed into
+     * a single line, so the stock-delta computation always has exactly one
+     * quantity per (product, variant) to compare against the order's
+     * existing lines. Two lines for the same product but different variants
+     * stay distinct.
+     *
+     * A variant_id that no longer resolves (deactivated or deleted since the
+     * order was placed or last edited) refuses the whole edit — the same
+     * treatment recomputeLines already gives a vanished product_id, extended
+     * to a vanished variant rather than silently falling back to the
+     * product's base price.
+     *
+     * @param  list<array{product_id:int,variant_id:?int,quantity:int}>  $lines
+     * @return list<array{product_id:int,variant_id:?int,variant_label:?string,name:string,sku:?string,unit_price:Money,tax_rate:float,quantity:int,line_total:Money}>
      */
     private function recomputeLines(array $lines): array
     {
         $quantities = $this->quantitiesFromLines($lines);
         $result = [];
 
-        foreach ($quantities as $productId => $quantity) {
+        foreach ($quantities as $group) {
+            $productId = $group['product_id'];
+            $variantId = $group['variant_id'];
+            $quantity = $group['quantity'];
+
             $product = $this->catalog->findById($productId);
 
             if (! $product instanceof CatalogProduct) {
                 throw InsufficientStock::for($productId, $quantity);
             }
 
-            $unitPrice = $this->catalog->price($productId);
+            $variant = $variantId === null ? null : $this->catalog->findVariantById($productId, $variantId);
+
+            if ($variantId !== null && $variant === null) {
+                throw InsufficientStock::for($productId, $quantity);
+            }
+
+            $unitPrice = $this->catalog->price($productId, [], $variantId);
 
             $result[] = [
                 'product_id' => $productId,
+                'variant_id' => $variantId,
+                'variant_label' => $variant?->catalogVariantLabel(),
                 'name' => $product->catalogName(),
                 'sku' => $product->catalogSku(),
                 'unit_price' => $unitPrice,
@@ -397,7 +485,7 @@ class OrderEditor
 
     /**
      * @param  Collection<int, OrderItem>  $items
-     * @return array<int, int>
+     * @return array<string, array{product_id:int,variant_id:?int,quantity:int}>
      */
     private function quantitiesFromItems(Collection $items): array
     {
@@ -408,15 +496,23 @@ class OrderEditor
                 continue;
             }
 
-            $out[$item->product_id] = ($out[$item->product_id] ?? 0) + $item->quantity;
+            $productId = (int) $item->product_id;
+            $variantId = $item->variant_id ? (int) $item->variant_id : null;
+            $key = $this->lineKey($productId, $variantId);
+
+            if (! isset($out[$key])) {
+                $out[$key] = ['product_id' => $productId, 'variant_id' => $variantId, 'quantity' => 0];
+            }
+
+            $out[$key]['quantity'] += $item->quantity;
         }
 
         return $out;
     }
 
     /**
-     * @param  list<array{product_id:int,quantity:int}>  $lines
-     * @return array<int, int>
+     * @param  list<array{product_id:int,variant_id?:?int,quantity:int}>  $lines
+     * @return array<string, array{product_id:int,variant_id:?int,quantity:int}>
      */
     private function quantitiesFromLines(array $lines): array
     {
@@ -424,6 +520,7 @@ class OrderEditor
 
         foreach ($lines as $line) {
             $productId = (int) $line['product_id'];
+            $variantId = isset($line['variant_id']) && $line['variant_id'] !== null ? (int) $line['variant_id'] : null;
             $quantity = (int) $line['quantity'];
 
             if ($quantity <= 0) {
@@ -432,30 +529,53 @@ class OrderEditor
                 continue;
             }
 
-            $out[$productId] = ($out[$productId] ?? 0) + $quantity;
+            $key = $this->lineKey($productId, $variantId);
+
+            if (! isset($out[$key])) {
+                $out[$key] = ['product_id' => $productId, 'variant_id' => $variantId, 'quantity' => 0];
+            }
+
+            $out[$key]['quantity'] += $quantity;
         }
 
         return $out;
     }
 
     /**
-     * @param  array<int, int>  $old
-     * @param  array<int, int>  $new
+     * The grouping key for a (product_id, variant_id) pair. '0' can never
+     * collide with a real variant id (auto-increment primary keys start at
+     * 1), so it is a safe "no variant" placeholder for this string key —
+     * mirroring the 0 sentinel cart_items uses on the same column, without
+     * reusing that column's actual NOT NULL/unique-index reasoning here.
+     */
+    private function lineKey(int $productId, ?int $variantId): string
+    {
+        return $productId.':'.($variantId ?? 0);
+    }
+
+    /**
+     * @param  array<string, array{product_id:int,variant_id:?int,quantity:int}>  $old
+     * @param  array<string, array{product_id:int,variant_id:?int,quantity:int}>  $new
      */
     private function applyStockDelta(array $old, array $new): void
     {
-        $productIds = array_unique(array_merge(array_keys($old), array_keys($new)));
+        $keys = array_unique(array_merge(array_keys($old), array_keys($new)));
 
-        foreach ($productIds as $productId) {
-            $delta = ($new[$productId] ?? 0) - ($old[$productId] ?? 0);
+        foreach ($keys as $key) {
+            $reference = $new[$key] ?? $old[$key];
+            $productId = $reference['product_id'];
+            $variantId = $reference['variant_id'];
+            $delta = ($new[$key]['quantity'] ?? 0) - ($old[$key]['quantity'] ?? 0);
 
             if ($delta > 0) {
                 // An added unit is taken from stock the same way a checkout
                 // would take it — including throwing InsufficientStock when
-                // there is none, which rolls the whole edit back.
-                $this->catalog->decrementStock($productId, $delta);
+                // there is none, which rolls the whole edit back. On the
+                // correct variant, not the product's own stock, when this
+                // line has one.
+                $this->catalog->decrementStock($productId, $delta, $variantId);
             } elseif ($delta < 0) {
-                $this->catalog->incrementStock($productId, -$delta);
+                $this->catalog->incrementStock($productId, -$delta, $variantId);
             }
         }
     }

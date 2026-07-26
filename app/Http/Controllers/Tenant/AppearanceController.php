@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Tenant;
 use App\Core\Storage\FileStorage;
 use App\Core\Tenancy\TenantContext;
 use App\Core\Theme\Contrast;
+use App\Core\Theme\VariantDisplay;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Tenant\UpdateAppearanceRequest;
 use App\Models\TenantTheme;
@@ -41,6 +42,7 @@ class AppearanceController extends Controller
                 'logo_url' => $theme?->logo_path !== null ? $this->files->publicUrl($theme->logo_path) : null,
                 'favicon_url' => $theme?->favicon_path !== null ? $this->files->publicUrl($theme->favicon_path) : null,
                 'contrast_ratio' => round(Contrast::ratio($primary, '#ffffff'), 2),
+                'variant_display' => $theme?->variant_display ?? VariantDisplay::DEFAULT,
             ],
         ]);
     }
@@ -53,6 +55,7 @@ class AppearanceController extends Controller
         $data = [
             'primary_color' => $request->validated('primary_color'),
             'accent_color' => $request->validated('accent_color'),
+            'variant_display' => $request->validated('variant_display'),
         ];
 
         if ($request->hasFile('logo')) {

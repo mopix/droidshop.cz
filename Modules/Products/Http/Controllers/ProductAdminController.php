@@ -99,6 +99,10 @@ class ProductAdminController
                 'stock_qty' => $product->stock_qty,
                 'stock_policy' => $product->stock_policy,
                 'stock_alert_qty' => $product->stock_alert_qty,
+                // null = inherit the shop-wide default (App\Core\Theme\VariantDisplay);
+                // the editor's select needs to tell "inherit" apart from either
+                // literal, so this stays null rather than a resolved default.
+                'variant_display' => $product->variant_display,
                 'seo_title' => $product->seo_title,
                 'seo_description' => $product->seo_description,
                 'url' => $product->url(),
@@ -117,6 +121,21 @@ class ProductAdminController
                 'percent' => $rate->percent(),
             ]),
             'categories' => $this->categoryOptions(),
+            'options' => $product->options()->with('values')->get(),
+            'variants' => $product->variants()->with('optionValues')->get()->map(fn ($variant) => [
+                'id' => $variant->id,
+                'label' => $variant->label(),
+                'sku' => $variant->sku,
+                'ean' => $variant->ean,
+                // Raw haléře, not a Money instance: the editor's number input
+                // binds straight to it, same convention as the product's own
+                // 'price' prop above.
+                'price' => $variant->price?->amount,
+                'stock_tracked' => $variant->stock_tracked,
+                'stock_qty' => $variant->stock_qty,
+                'stock_policy' => $variant->stock_policy,
+                'active' => $variant->active,
+            ]),
             'can' => [
                 'edit' => $request->user()->can('products.edit'),
                 'costs' => $canSeeCosts,

@@ -66,6 +66,7 @@ class AppearanceControllerTest extends TestCase
             ->post($this->host().'/admin/nastaveni/vzhled', [
                 'primary_color' => '#0f766e',
                 'accent_color' => '#2563eb',
+                'variant_display' => 'radio',
             ])
             ->assertRedirect();
 
@@ -86,6 +87,7 @@ class AppearanceControllerTest extends TestCase
             ->post($this->host().'/admin/nastaveni/vzhled', [
                 'primary_color' => '#0f766e',
                 'accent_color' => '#2563eb',
+                'variant_display' => 'radio',
                 'logo' => UploadedFile::fake()->image('logo.png', 200, 60)->size(10),
             ])
             ->assertRedirect();
@@ -116,6 +118,7 @@ class AppearanceControllerTest extends TestCase
             ->post($this->host().'/admin/nastaveni/vzhled', [
                 'primary_color' => '#0f766e',
                 'accent_color' => '#2563eb',
+                'variant_display' => 'radio',
                 'favicon' => UploadedFile::fake()->create('favicon.ico', 10, 'image/x-icon'),
             ])
             ->assertSessionDoesntHaveErrors('favicon')
@@ -288,6 +291,7 @@ class AppearanceControllerTest extends TestCase
             ->post($this->host('shopa').'/admin/nastaveni/vzhled', [
                 'primary_color' => '#0f766e',
                 'accent_color' => '#2563eb',
+                'variant_display' => 'radio',
             ])
             ->assertRedirect();
 

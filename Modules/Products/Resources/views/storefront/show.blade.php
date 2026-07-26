@@ -52,22 +52,39 @@
                 <p class="mt-4 text-slate-600">{{ $product->short_description }}</p>
             @endif
 
+            @php
+                $hasVariants = $product->catalogHasVariants();
+                $selectedVariant = $hasVariants ? $variants->first(fn ($v) => $v->catalogVariantIsAvailable()) : null;
+                $preselected = $selectedVariant?->catalogVariantSelection() ?? [];
+                $displayPrice = $selectedVariant?->catalogVariantPrice() ?? $product->price;
+                // Same tax_rate_id either way (a variant never carries its own
+                // VAT rate), so Product::rate() converts a variant's gross
+                // price to net just as well as the product's own — the
+                // conversion lives on TaxRate, never on Money itself.
+                $displayNetPrice = $product->rate()->net($displayPrice);
+                // The contract method, not an inline recomputation: the
+                // category/search listing badge (product-card.blade.php)
+                // reads catalogIsAvailable() too, and the two must never
+                // disagree about the same product (review fix).
+                $isAvailable = $product->catalogIsAvailable();
+            @endphp
+
             <p class="mt-6">
-                <span class="text-3xl font-semibold text-slate-900">{{ $product->price->format() }}</span>
+                <span class="text-3xl font-semibold text-slate-900" data-variant-price>{{ $displayPrice->format() }}</span>
                 <span class="block text-sm text-slate-500">
-                    s DPH · bez DPH {{ $product->netPrice()->format() }}
+                    s DPH · bez DPH <span data-variant-net-price>{{ $displayNetPrice->format() }}</span>
                 </span>
             </p>
 
             <p class="mt-4">
-                @if ($product->isAvailable())
+                @if ($isAvailable)
                     <span class="badge bg-emerald-100 text-emerald-800">Skladem</span>
                 @else
                     <span class="badge bg-amber-100 text-amber-800">Vyprodáno</span>
                 @endif
             </p>
 
-            @if ($cartEnabled && $product->isAvailable())
+            @if ($cartEnabled && $isAvailable)
                 {{--
                     A real HTML form, no JS: this POST plus the redirect back
                     from CartController::add is the entire "add to cart"
@@ -75,19 +92,30 @@
                     (no reload), but it must never be the only way it works
                     (.claude/rules/storefront-rendering.md).
                 --}}
-                <form method="POST" action="{{ route('storefront.checkout.add') }}" class="mt-8 flex items-end gap-3">
+                <form method="POST" action="{{ route('storefront.checkout.add') }}" class="mt-8">
                     @csrf
                     <input type="hidden" name="product_id" value="{{ $product->id }}">
 
-                    <div>
-                        <label for="mnozstvi" class="field-label">Množství</label>
-                        <input id="mnozstvi" name="quantity" type="number" value="1" min="1" max="99"
-                               inputmode="numeric" class="field-input w-20">
-                    </div>
+                    @if ($hasVariants)
+                        @include('products::storefront.partials.variant-picker', [
+                            'product' => $product,
+                            'options' => $options,
+                            'variants' => $variants,
+                            'preselected' => $preselected,
+                        ])
+                    @endif
 
-                    <button type="submit" class="btn btn-primary">
-                        Přidat do košíku
-                    </button>
+                    <div class="mt-6 flex items-end gap-3">
+                        <div>
+                            <label for="mnozstvi" class="field-label">Množství</label>
+                            <input id="mnozstvi" name="quantity" type="number" value="1" min="1" max="99"
+                                   inputmode="numeric" class="field-input w-20">
+                        </div>
+
+                        <button type="submit" class="btn btn-primary">
+                            Přidat do košíku
+                        </button>
+                    </div>
                 </form>
             @elseif ($cartEnabled)
                 <p class="mt-8 text-sm text-slate-600">
@@ -113,6 +141,29 @@
 @endsection
 
 @push('head')
+    @php
+        $offers = $product->catalogHasVariants()
+            ? $variants->map(fn ($variant) => [
+                '@type' => 'Offer',
+                'url' => url($product->url()),
+                'sku' => $variant->catalogVariantSku(),
+                'price' => number_format($variant->catalogVariantPrice()->amount / 100, 2, '.', ''),
+                'priceCurrency' => $variant->catalogVariantPrice()->currency,
+                'availability' => $variant->catalogVariantIsAvailable()
+                    ? 'https://schema.org/InStock'
+                    : 'https://schema.org/OutOfStock',
+            ])->values()->all()
+            : [
+                '@type' => 'Offer',
+                'url' => url($product->url()),
+                'price' => number_format($product->price->amount / 100, 2, '.', ''),
+                'priceCurrency' => $product->price->currency,
+                'availability' => $product->isAvailable()
+                    ? 'https://schema.org/InStock'
+                    : 'https://schema.org/OutOfStock',
+            ];
+    @endphp
+
     <x-storefront::json-ld :data="array_filter([
         '@context' => 'https://schema.org',
         '@type' => 'Product',
@@ -121,14 +172,6 @@
         'sku' => $product->sku,
         'gtin13' => $product->ean && strlen($product->ean) === 13 ? $product->ean : null,
         'image' => $seo->image,
-        'offers' => [
-            '@type' => 'Offer',
-            'url' => url($product->url()),
-            'price' => number_format($product->price->amount / 100, 2, '.', ''),
-            'priceCurrency' => $product->price->currency,
-            'availability' => $product->isAvailable()
-                ? 'https://schema.org/InStock'
-                : 'https://schema.org/OutOfStock',
-        ],
+        'offers' => $offers,
     ])" />
 @endpush

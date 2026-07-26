@@ -49,13 +49,36 @@ class CartController
         // does not resolve here is either fabricated or belongs to another
         // tenant, so it is treated as "not found", not "forbidden": which
         // one it is is nobody outside the shop's business.
-        if ($this->catalog->findById($request->integer('product_id')) === null) {
+        $product = $this->catalog->findById($request->integer('product_id'));
+
+        if ($product === null) {
             abort(404);
+        }
+
+        $variantId = null;
+
+        if ($product->catalogHasVariants()) {
+            // The server decides which variant a selection means. A missing,
+            // partial or foreign selection is refused outright — never
+            // silently resolved to "the first one". The client never posts
+            // a variant_id directly.
+            $variant = $this->catalog->resolveVariant(
+                $request->integer('product_id'),
+                $request->input('option_value_id', []),
+            );
+
+            if ($variant === null || ! $variant->catalogVariantIsAvailable($request->integer('quantity'))) {
+                return back()->withErrors([
+                    'option_value_id' => 'Zvolte prosím dostupnou variantu produktu.',
+                ]);
+            }
+
+            $variantId = (int) $variant->getKey();
         }
 
         $cart = $this->carts->forToken(CartCookie::read($request));
 
-        $this->carts->addItem($cart, $request->integer('product_id'), $request->integer('quantity'));
+        $this->carts->addItem($cart, $request->integer('product_id'), $request->integer('quantity'), $variantId);
 
         return CartCookie::attach(
             redirect()->route('storefront.checkout.show')->with('status', 'Přidáno do košíku.'),
