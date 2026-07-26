@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, nextTick, ref } from 'vue'
 import { router, useForm } from '@inertiajs/vue3'
 import AdminLayout from '@/Layouts/AdminLayout.vue'
 import ConfirmDialog from '@/Components/Ui/ConfirmDialog.vue'
@@ -28,6 +28,12 @@ const TYPE_LABELS: Record<string, string> = {
 }
 
 const typeLabel = (type: string) => TYPE_LABELS[type] ?? type
+
+/** The homepage may only ever have one hero — the server rejects a second
+ *  one, so don't offer it in the "add block" list once one already exists. */
+const availableTypes = computed(() =>
+  props.blockTypes.filter((t) => t !== 'hero' || !props.blocks.some((b) => b.type === 'hero')),
+)
 
 // --- Add block --------------------------------------------------------
 
@@ -144,6 +150,7 @@ const payloadFor = (type: string, state: Record<string, any>): BlockPayload => {
         subtitle: state.subtitle || null,
         cta_label: state.cta_label || null,
         cta_url: state.cta_url || null,
+        alt: state.alt || null,
       }
     case 'product_row':
       return {
@@ -198,6 +205,10 @@ const submitEdit = (block: Block) => {
     preserveScroll: true,
     onError: (errors) => {
       editErrors.value = errors as Record<string, string>
+      nextTick(() => {
+        const firstKey = Object.keys(errors)[0]?.replace('payload.', '').replace(/_/g, '-')
+        if (firstKey) document.getElementById(`${firstKey}-${block.id}`)?.focus()
+      })
     },
     onSuccess: () => {
       cancelEdit()
@@ -211,6 +222,11 @@ const submitEdit = (block: Block) => {
 
 const errorFor = (field: string) => editErrors.value[field]
 const describedByFor = (id: string, field: string) => (errorFor(field) ? `${id}-error` : undefined)
+
+/** Same as describedByFor, but also includes a persistent format hint id
+ *  that's always present (e.g. the "PNG/JPG/WebP, max 2 MB" note). */
+const describedByWithHint = (id: string, field: string, hintId: string) =>
+  [hintId, errorFor(field) ? `${id}-error` : null].filter(Boolean).join(' ')
 
 const isFirst = (block: Block) => props.blocks[0]?.id === block.id
 const isLast = (block: Block) => props.blocks[props.blocks.length - 1]?.id === block.id
@@ -253,13 +269,15 @@ const existingImageName = computed(() => existingImagePath.value?.split('/').pop
         <select
           id="new-block-type"
           v-model="addForm.type"
+          :aria-invalid="addForm.errors.type ? 'true' : undefined"
+          aria-describedby="new-block-type-error"
           class="mt-1 rounded-md border-gray-300 shadow-sm focus:border-gray-900 focus:ring-gray-900"
         >
-          <option v-for="type in blockTypes" :key="type" :value="type">
+          <option v-for="type in availableTypes" :key="type" :value="type">
             {{ typeLabel(type) }}
           </option>
         </select>
-        <p v-if="addForm.errors.type" class="mt-1 text-sm text-red-700">
+        <p v-if="addForm.errors.type" id="new-block-type-error" class="mt-1 text-sm text-red-700">
           {{ addForm.errors.type }}
         </p>
       </div>
@@ -308,7 +326,7 @@ const existingImageName = computed(() => existingImagePath.value?.split('/').pop
                 type="button"
                 :disabled="isFirst(block)"
                 :aria-label="`Posunout blok ${typeLabel(block.type)} nahoru`"
-                class="rounded-md border border-gray-300 px-2 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-900 disabled:cursor-not-allowed disabled:opacity-40"
+                class="min-h-6 min-w-6 rounded-md border border-gray-300 px-2 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-900 disabled:cursor-not-allowed disabled:opacity-40"
                 @click="move(block, 'up')"
               >
                 ↑
@@ -318,7 +336,7 @@ const existingImageName = computed(() => existingImagePath.value?.split('/').pop
                 type="button"
                 :disabled="isLast(block)"
                 :aria-label="`Posunout blok ${typeLabel(block.type)} dolů`"
-                class="rounded-md border border-gray-300 px-2 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-900 disabled:cursor-not-allowed disabled:opacity-40"
+                class="min-h-6 min-w-6 rounded-md border border-gray-300 px-2 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-900 disabled:cursor-not-allowed disabled:opacity-40"
                 @click="move(block, 'down')"
               >
                 ↓
@@ -360,6 +378,14 @@ const existingImageName = computed(() => existingImagePath.value?.split('/').pop
             class="border-t border-gray-200 p-4"
           >
             <form class="grid gap-4 sm:grid-cols-2" enctype="multipart/form-data" @submit.prevent="submitEdit(block)">
+              <div
+                v-if="Object.keys(editErrors).length"
+                role="alert"
+                class="sm:col-span-2 rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-800"
+              >
+                Formulář obsahuje chyby, opravte prosím zvýrazněná pole.
+              </div>
+
               <!-- Hero -->
               <template v-if="block.type === 'hero'">
                 <div class="sm:col-span-2">
@@ -434,11 +460,35 @@ const existingImageName = computed(() => existingImagePath.value?.split('/').pop
                     accept="image/png,image/jpeg,image/webp"
                     class="mt-1 block w-full text-sm text-gray-700 file:mr-4 file:rounded-md file:border-0 file:bg-gray-100 file:px-3 file:py-2 file:text-sm file:font-medium file:text-gray-700 hover:file:bg-gray-200"
                     :aria-invalid="errorFor('image') ? 'true' : undefined"
-                    :aria-describedby="describedByFor(`image-${block.id}`, 'image')"
+                    :aria-describedby="describedByWithHint(`image-${block.id}`, 'image', `image-${block.id}-hint`)"
                     @change="onEditImageChange"
                   />
+                  <p :id="`image-${block.id}-hint`" class="mt-1 text-sm text-gray-600">
+                    PNG, JPG nebo WebP, max. 2 MB.
+                  </p>
                   <p v-if="errorFor('image')" :id="`image-${block.id}-error`" class="mt-1 text-sm text-red-700">
                     {{ errorFor('image') }}
+                  </p>
+                </div>
+
+                <div>
+                  <label :for="`hero-alt-${block.id}`" class="block text-sm font-medium text-gray-700">
+                    Alternativní text obrázku
+                  </label>
+                  <input
+                    :id="`hero-alt-${block.id}`"
+                    v-model="editState.alt"
+                    type="text"
+                    :aria-invalid="errorFor('payload.alt') ? 'true' : undefined"
+                    :aria-describedby="describedByFor(`hero-alt-${block.id}`, 'payload.alt')"
+                    class="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-gray-900 focus:ring-gray-900"
+                  />
+                  <p
+                    v-if="errorFor('payload.alt')"
+                    :id="`hero-alt-${block.id}-error`"
+                    class="mt-1 text-sm text-red-700"
+                  >
+                    {{ errorFor('payload.alt') }}
                   </p>
                 </div>
               </template>
@@ -606,9 +656,12 @@ const existingImageName = computed(() => existingImagePath.value?.split('/').pop
                     accept="image/png,image/jpeg,image/webp"
                     class="mt-1 block w-full text-sm text-gray-700 file:mr-4 file:rounded-md file:border-0 file:bg-gray-100 file:px-3 file:py-2 file:text-sm file:font-medium file:text-gray-700 hover:file:bg-gray-200"
                     :aria-invalid="errorFor('image') ? 'true' : undefined"
-                    :aria-describedby="describedByFor(`image-${block.id}`, 'image')"
+                    :aria-describedby="describedByWithHint(`image-${block.id}`, 'image', `image-${block.id}-hint`)"
                     @change="onEditImageChange"
                   />
+                  <p :id="`image-${block.id}-hint`" class="mt-1 text-sm text-gray-600">
+                    PNG, JPG nebo WebP, max. 2 MB.
+                  </p>
                   <p v-if="errorFor('image')" :id="`image-${block.id}-error`" class="mt-1 text-sm text-red-700">
                     {{ errorFor('image') }}
                   </p>
@@ -643,8 +696,18 @@ const existingImageName = computed(() => existingImagePath.value?.split('/').pop
                     :id="`alt-${block.id}`"
                     v-model="editState.alt"
                     type="text"
+                    required
+                    :aria-invalid="errorFor('payload.alt') ? 'true' : undefined"
+                    :aria-describedby="describedByFor(`alt-${block.id}`, 'payload.alt')"
                     class="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-gray-900 focus:ring-gray-900"
                   />
+                  <p
+                    v-if="errorFor('payload.alt')"
+                    :id="`alt-${block.id}-error`"
+                    class="mt-1 text-sm text-red-700"
+                  >
+                    {{ errorFor('payload.alt') }}
+                  </p>
                 </div>
               </template>
 
