@@ -66,6 +66,11 @@ class TenantProvisioner
                 $this->registry->activate($tenant, $key);
             }
 
+            // Resolved at runtime, not constructor-injected: core must not know
+            // module classes by type, and `storefront` is a core module that is
+            // always active, so this is safe to resolve unconditionally here.
+            app('Modules\\Storefront\\Support\\DefaultHomepage')->seed($tenant);
+
             $this->context->runAs($tenant, fn () => $this->audit->log('tenant.provisioned', $tenant, ['host' => $host]));
 
             return $tenant;

@@ -136,6 +136,13 @@ class HtmlSanitizer
             $node->setAttribute('rel', 'noopener noreferrer');
         }
 
+        // A missing alt makes a screen reader read out the raw URL; an empty
+        // one is the correct "decorative image" signal. Tenant-authored HTML
+        // must never ship the former.
+        if ($tag === 'img' && ! $node->hasAttribute('alt')) {
+            $node->setAttribute('alt', '');
+        }
+
         $this->cleanChildren($node);
     }
 

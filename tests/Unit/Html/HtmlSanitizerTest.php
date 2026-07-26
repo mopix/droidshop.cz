@@ -117,6 +117,13 @@ class HtmlSanitizerTest extends TestCase
         $this->assertStringContainsString('ďábelské', $out);
     }
 
+    public function test_an_image_without_alt_gets_an_empty_alt_attribute(): void
+    {
+        $out = $this->sanitizer->clean('<img src="/img/a.jpg">');
+
+        $this->assertStringContainsString('alt=""', $out);
+    }
+
     public function test_null_stays_null_and_empty_stays_empty(): void
     {
         $this->assertNull($this->sanitizer->clean(null));
