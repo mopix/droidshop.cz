@@ -117,6 +117,21 @@ class ProductAdminController
                 'percent' => $rate->percent(),
             ]),
             'categories' => $this->categoryOptions(),
+            'options' => $product->options()->with('values')->get(),
+            'variants' => $product->variants()->with('optionValues')->get()->map(fn ($variant) => [
+                'id' => $variant->id,
+                'label' => $variant->label(),
+                'sku' => $variant->sku,
+                'ean' => $variant->ean,
+                // Raw haléře, not a Money instance: the editor's number input
+                // binds straight to it, same convention as the product's own
+                // 'price' prop above.
+                'price' => $variant->price?->amount,
+                'stock_tracked' => $variant->stock_tracked,
+                'stock_qty' => $variant->stock_qty,
+                'stock_policy' => $variant->stock_policy,
+                'active' => $variant->active,
+            ]),
             'can' => [
                 'edit' => $request->user()->can('products.edit'),
                 'costs' => $canSeeCosts,
