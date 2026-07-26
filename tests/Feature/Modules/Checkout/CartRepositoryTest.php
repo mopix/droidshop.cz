@@ -152,7 +152,7 @@ class CartRepositoryTest extends TestCase
             {
                 public int $lookupCalls = 0;
 
-                protected function existingItem(Cart $cart, int $productId): ?CartItem
+                protected function existingItem(Cart $cart, int $productId, int $variantId = 0): ?CartItem
                 {
                     $this->lookupCalls++;
 
@@ -160,7 +160,7 @@ class CartRepositoryTest extends TestCase
                         return null;
                     }
 
-                    return parent::existingItem($cart, $productId);
+                    return parent::existingItem($cart, $productId, $variantId);
                 }
             };
 

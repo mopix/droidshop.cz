@@ -30,7 +30,7 @@ final class NullCartRepository implements CartRepository
         return new TransientCart(Str::random(40), now()->addDays(14));
     }
 
-    public function addItem(CartShape $cart, int $productId, int $quantity): void
+    public function addItem(CartShape $cart, int $productId, int $quantity, ?int $variantId = null): void
     {
         // No-op: there is nowhere to persist a line item.
     }

@@ -49,15 +49,21 @@ final class CartPricer
                 ? $item->unit_price
                 : new Money((int) $item->unit_price, config('app.currency', 'CZK'));
 
-            if ($product === null) {
-                // Left the catalogue (unpublished or deleted) since it was
-                // added. Still shown so the shopper can remove it, but it
-                // never counts toward a total nothing can actually sell.
+            $variantId = (int) ($item->variant_id ?? 0) ?: null;
+            $variant = $variantId === null
+                ? null
+                : $this->catalog->findVariantById($productId, $variantId);
+
+            // A line that names a variant which no longer resolves (removed or
+            // deactivated) is unavailable for the same reason a withdrawn
+            // product is: nothing can ship it. It still renders so the shopper
+            // can take it out.
+            if ($product === null || ($variantId !== null && $variant === null)) {
                 $lines[] = new PricedCartLine(
                     itemId: (int) $item->id,
                     productId: $productId,
-                    name: 'Produkt už není dostupný',
-                    url: null,
+                    name: $product?->catalogName() ?? 'Produkt už není dostupný',
+                    url: $product?->catalogUrl(),
                     imageUrl: null,
                     quantity: $quantity,
                     unitPrice: $snapshot,
@@ -65,12 +71,14 @@ final class CartPricer
                     priceChanged: false,
                     previousUnitPrice: null,
                     available: false,
+                    variantId: $variantId,
+                    variantLabel: null,
                 );
 
                 continue;
             }
 
-            $currentPrice = $this->catalog->price($productId);
+            $currentPrice = $this->catalog->price($productId, [], $variantId);
             $changed = ! $currentPrice->equals($snapshot);
             $lineTotal = $currentPrice->times($quantity);
 
@@ -86,6 +94,8 @@ final class CartPricer
                 priceChanged: $changed,
                 previousUnitPrice: $changed ? $snapshot : null,
                 available: true,
+                variantId: $variantId,
+                variantLabel: $variant?->catalogVariantLabel(),
             );
 
             $hasPriceChange = $hasPriceChange || $changed;

@@ -30,10 +30,13 @@ interface CartRepository
      * Adds a product to the cart, snapshotting today's catalogue price.
      *
      * Adding a product already in the cart increases its quantity instead
-     * of creating a second row — one row per product per cart, enforced by
-     * `cart_item_unique`.
+     * of creating a second row — one row per product (per variant) per
+     * cart, enforced by `cart_item_unique`.
+     *
+     * $variantId is optional and last: a product without variants adds
+     * exactly as it always did.
      */
-    public function addItem(CartShape $cart, int $productId, int $quantity): void;
+    public function addItem(CartShape $cart, int $productId, int $quantity, ?int $variantId = null): void;
 
     /**
      * Sets a line's quantity. Zero (or less) removes the row.

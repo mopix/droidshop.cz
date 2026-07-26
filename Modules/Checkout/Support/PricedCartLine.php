@@ -30,5 +30,8 @@ final readonly class PricedCartLine
          * itemsTotal.
          */
         public bool $available,
+        /** 0/null when the line is a plain product without variants. */
+        public ?int $variantId = null,
+        public ?string $variantLabel = null,
     ) {}
 }

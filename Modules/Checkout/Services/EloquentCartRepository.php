@@ -51,7 +51,7 @@ class EloquentCartRepository implements CartRepository
         ]);
     }
 
-    public function addItem(CartShape $cart, int $productId, int $quantity): void
+    public function addItem(CartShape $cart, int $productId, int $quantity, ?int $variantId = null): void
     {
         if (! $this->modules->has('checkout')) {
             return;
@@ -59,7 +59,10 @@ class EloquentCartRepository implements CartRepository
 
         $cart = $this->persisted($cart);
 
-        $existing = $this->existingItem($cart, $productId);
+        // 0, never null — see the migration: NULL would defeat cart_item_unique.
+        $variantKey = $variantId ?? 0;
+
+        $existing = $this->existingItem($cart, $productId, $variantKey);
 
         if ($existing !== null) {
             $existing->increment('quantity', $quantity);
@@ -73,17 +76,18 @@ class EloquentCartRepository implements CartRepository
             // ProductCatalog::price(), read again wherever a total is computed.
             $cart->items()->create([
                 'product_id' => $productId,
+                'variant_id' => $variantKey,
                 'quantity' => $quantity,
-                'unit_price' => $this->catalog->price($productId),
+                'unit_price' => $this->catalog->price($productId, [], $variantId),
             ]);
         } catch (UniqueConstraintViolationException $e) {
-            // A concurrent addItem() for the same product committed between
-            // our lookup above and this insert — the ordinary shape of a
-            // same-product double-click, or two open tabs. cart_item_unique
-            // caught it before two rows could exist; merge into the row that
-            // won instead of surfacing a 500 (mirrors OrderPlacer's own
-            // recovery from order_idem_unique).
-            $winner = $this->existingItem($cart, $productId);
+            // A concurrent addItem() for the same product (and variant)
+            // committed between our lookup above and this insert — the
+            // ordinary shape of a same-product double-click, or two open
+            // tabs. cart_item_unique caught it before two rows could exist;
+            // merge into the row that won instead of surfacing a 500
+            // (mirrors OrderPlacer's own recovery from order_idem_unique).
+            $winner = $this->existingItem($cart, $productId, $variantKey);
 
             if ($winner === null) {
                 // Not a duplicate-key collision we can resolve to a row —
@@ -101,9 +105,12 @@ class EloquentCartRepository implements CartRepository
      * UniqueConstraintViolationException recovery path deterministically in
      * single-threaded PHPUnit (mirrors OrderPlacer::existingOrder()).
      */
-    protected function existingItem(Cart $cart, int $productId): ?CartItem
+    protected function existingItem(Cart $cart, int $productId, int $variantId = 0): ?CartItem
     {
-        return $cart->items()->where('product_id', $productId)->first();
+        return $cart->items()
+            ->where('product_id', $productId)
+            ->where('variant_id', $variantId)
+            ->first();
     }
 
     public function setQuantity(CartShape $cart, int $itemId, int $quantity): void
