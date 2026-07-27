@@ -1,6 +1,7 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
+use Modules\Packeta\Http\Controllers\DispatchQueueController;
 use Modules\Packeta\Http\Controllers\ShipmentAdminController;
 
 // Handing shipments over to the carrier, printing labels, and cancelling a
@@ -16,9 +17,11 @@ use Modules\Packeta\Http\Controllers\ShipmentAdminController;
 // turning a disabled module's 404 into a login redirect that reveals the
 // module is installed.
 //
-// The dispatch queue listing (admin.packeta.dispatch) is added by a later
-// wave 2.5 task, once Modules\Packeta\Http\Controllers\DispatchQueueController
-// exists — it must not be routed here ahead of that class.
+// The dispatch queue listing (admin.packeta.dispatch, wave 2.5, task 14) is
+// GET-only: it never mutates anything, so CheckTenantStatus's write-freeze
+// (rozhodnutí 2026-07-22) leaves it reachable for a suspended tenant even
+// though the mutating routes below are not.
+Route::get('expedice', [DispatchQueueController::class, 'index'])->name('dispatch');
 Route::post('zasilky/podat', [ShipmentAdminController::class, 'submit'])->name('shipments.submit');
 Route::post('zasilky/stitky', [ShipmentAdminController::class, 'labels'])->name('shipments.labels');
 Route::delete('zasilky/{shipment}', [ShipmentAdminController::class, 'cancel'])->name('shipments.cancel');

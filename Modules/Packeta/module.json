@@ -20,5 +20,13 @@
         "packeta.ship"
     ],
     "settings_schema": null,
-    "nav": []
+    "nav": [
+        {
+            "area": "admin",
+            "label": "Expedice",
+            "route": "admin.packeta.dispatch",
+            "icon": "send",
+            "order": 45
+        }
+    ]
 }

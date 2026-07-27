@@ -49,6 +49,14 @@ class HandleInertiaRequests extends Middleware
                 'recoveryCodes' => fn () => $request->session()->get('recoveryCodes'),
                 'success' => fn () => $request->session()->get('success'),
                 'error' => fn () => $request->session()->get('error'),
+                // Modules\Packeta\Http\Controllers\ShipmentAdminController
+                // flashes its batch result under the Blade-page convention
+                // ('status', shared with Laravel's own auth controllers)
+                // rather than 'success' — added here (wave 2.5, task 14) so
+                // its first Inertia consumer, Dispatch.vue, can actually see
+                // it. Additive only: every existing page ignores a prop it
+                // never reads.
+                'status' => fn () => $request->session()->get('status'),
             ],
             // The shop this request belongs to, and what its back office may
             // show. Lazy: platform hosts have no tenant and would pay for a
