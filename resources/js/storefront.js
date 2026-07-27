@@ -131,6 +131,7 @@ function initPacketaWidget() {
 
     mount.hidden = false;
 
+    const idleText = button.textContent;
     let loading = null;
 
     const loadLibrary = () => {
@@ -156,13 +157,16 @@ function initPacketaWidget() {
 
     button.addEventListener('click', () => {
         button.disabled = true;
-        button.setAttribute('aria-busy', 'true');
+        // A bare aria-busy toggle is not reliably announced by screen
+        // readers; the mount carries aria-live="polite", so changing the
+        // button's own text is what actually gets read out.
+        button.textContent = 'Načítání mapy…';
 
         loadLibrary()
             .then(() => {
                 window.Packeta.Widget.pick(apiKey, (point) => {
                     button.disabled = false;
-                    button.removeAttribute('aria-busy');
+                    button.textContent = idleText;
 
                     if (!point || !point.id) {
                         return;
@@ -195,8 +199,11 @@ function initPacketaWidget() {
             .catch(() => {
                 // Adblock, offline, CSP — fail silently and leave the
                 // no-JS search below fully usable. No alert, no broken page.
+                // Reset the cached promise too, so a later click (network
+                // back, adblock toggled off) retries the request instead of
+                // replaying the same rejected promise forever.
+                loading = null;
                 button.disabled = false;
-                button.removeAttribute('aria-busy');
                 button.textContent = 'Mapa se nenačetla — vyhledejte místo níže';
             });
     });

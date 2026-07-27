@@ -30,7 +30,7 @@
         <div class="mt-6" data-packeta-widget data-api-key="{{ $widgetApiKey }}"
              data-action="{{ route('storefront.checkout.choosePickupPoint') }}" aria-live="polite" hidden>
             @csrf
-            <button type="button" data-packeta-open class="btn btn-secondary">Vybrat na mapě</button>
+            <button type="button" data-packeta-open class="btn btn-outline">Vybrat na mapě</button>
         </div>
     @endif
 
