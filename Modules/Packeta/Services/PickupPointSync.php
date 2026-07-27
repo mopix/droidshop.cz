@@ -79,6 +79,28 @@ final class PickupPointSync
             }
         }
 
+        if (count($seen) < (int) config('packeta.feed_min_points')) {
+            // Guards the destructive step below, not the upserts above: rows
+            // already written for points that did carry a usable id are real
+            // records and are kept — a run that upserted a handful of good
+            // rows before the feed degraded is not the failure this guards
+            // against. What must never happen is reaching whereNotIn() below
+            // with an empty (or too-small) $seen: a malformed answer that has
+            // *enough rows* but no usable `id` field on any of them (e.g. the
+            // feed renaming the field) sails past the raw-count guard above,
+            // the loop above skips every row, $seen stays empty, and Laravel's
+            // grammar turns whereNotIn('code', []) into `1 = 1` — deactivating
+            // every active point for every tenant at once. Same catastrophe
+            // the first guard exists to prevent, just measured on the number
+            // that actually feeds the destructive query.
+            throw CarrierError::unreachable(self::CARRIER, sprintf(
+                'feed vrátil jen %d použitelných míst (z %d), což je pod prahem %d — deaktivace se neprovede',
+                count($seen),
+                count($points),
+                (int) config('packeta.feed_min_points'),
+            ));
+        }
+
         // A single whereNotIn over the full set rather than chunking: for the
         // CZ catalogue (~4,000 points) this is one query on the edge, not a
         // problem. If the catalogue ever grows past ~5,000 points, switch to
