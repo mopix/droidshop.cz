@@ -17,6 +17,13 @@ use Illuminate\Support\Facades\Schema;
  * it, two requests racing the same order (double click, two tabs, a retry
  * overlapping a slow first attempt) could both adopt the same `pending` row
  * and both call the carrier, producing two real parcels for one order.
+ *
+ * `claimed_at` (fix round 2/5) is the timestamp that claim writes. A row a
+ * process crashed on between winning the claim and writing the carrier's
+ * answer would otherwise sit in `submitting` forever — reachable by nothing,
+ * an order that silently never ships — so claimForSubmission() also reclaims
+ * a `submitting` row once `claimed_at` is older than
+ * config('packeta.submit_stale_after_minutes').
  */
 return new class extends Migration
 {
@@ -39,6 +46,7 @@ return new class extends Migration
             $table->unsignedInteger('weight_grams')->default(0);
 
             $table->text('error')->nullable();
+            $table->timestamp('claimed_at')->nullable();
             $table->timestamp('submitted_at')->nullable();
             $table->timestamp('label_printed_at')->nullable();
 

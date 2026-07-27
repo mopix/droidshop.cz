@@ -248,6 +248,74 @@ class ShipmentSubmitterTest extends TestCase
         Http::assertSentCount(1);
     }
 
+    /**
+     * Fix round 2/5: without a staleness reclaim, a row a process crashed on
+     * right after claimForSubmission() — status `submitting`, no carrier
+     * answer ever written — is unrecoverable forever: nothing in the
+     * codebase ever revisits it, and the order silently never ships. Manually
+     * building that exact row (an old `claimed_at`) simulates the crash
+     * without actually killing a process mid-request.
+     */
+    public function test_a_stale_submitting_shipment_is_reclaimed_and_the_carrier_is_called(): void
+    {
+        $tenant = $this->tenant();
+        $this->context->set($tenant);
+        $order = $this->readyOrder();
+
+        $threshold = (int) config('packeta.submit_stale_after_minutes');
+
+        $stuck = Shipment::create([
+            'order_id' => $order->id,
+            'carrier' => ShippingMethod::PROVIDER_PACKETA,
+            'status' => Shipment::STATUS_SUBMITTING,
+            'cod_amount' => 0,
+            'currency' => 'CZK',
+            'weight_grams' => 200,
+            'claimed_at' => now()->subMinutes($threshold + 5),
+        ]);
+
+        Http::fake(['*' => Http::response(self::OK_RESPONSE)]);
+
+        $shipment = app(ShipmentSubmitter::class)->submit($order->uuid);
+
+        $this->assertSame($stuck->id, $shipment->id);
+        $this->assertSame(Shipment::STATUS_SUBMITTED, $shipment->shipmentStatus());
+        $this->assertSame(1, Shipment::count());
+        Http::assertSentCount(1);
+    }
+
+    /**
+     * The other half of the same fix: reclaiming a genuinely stale row must
+     * not turn into reclaiming a live one. A `submitting` row claimed just
+     * now (well inside the threshold) is a real request still in flight —
+     * calling the carrier for it a second time is exactly what fix round 1/5
+     * closed.
+     */
+    public function test_a_fresh_submitting_shipment_is_not_reclaimed(): void
+    {
+        $tenant = $this->tenant();
+        $this->context->set($tenant);
+        $order = $this->readyOrder();
+
+        Shipment::create([
+            'order_id' => $order->id,
+            'carrier' => ShippingMethod::PROVIDER_PACKETA,
+            'status' => Shipment::STATUS_SUBMITTING,
+            'cod_amount' => 0,
+            'currency' => 'CZK',
+            'weight_grams' => 200,
+            'claimed_at' => now(),
+        ]);
+
+        Http::fake(['*' => Http::response(self::OK_RESPONSE)]);
+
+        $shipment = app(ShipmentSubmitter::class)->submit($order->uuid);
+
+        $this->assertSame(Shipment::STATUS_SUBMITTING, $shipment->shipmentStatus());
+        $this->assertSame(1, Shipment::count());
+        Http::assertNothingSent();
+    }
+
     public function test_a_carrier_error_marks_the_shipment_failed_and_keeps_it_retryable(): void
     {
         $tenant = $this->tenant();

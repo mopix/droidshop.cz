@@ -26,7 +26,9 @@ class Shipment extends Model implements ShipmentView
      * Transient claim state (fix round 1/5): exactly one live request holds a
      * row here, between the atomic claim and the carrier's answer — see
      * Modules\Packeta\Services\ShipmentSubmitter::claimForSubmission(). Never
-     * set directly outside that atomic UPDATE.
+     * set directly outside that atomic UPDATE. A row a process crashed on
+     * while in this state is reclaimable again once `claimed_at` is older
+     * than config('packeta.submit_stale_after_minutes') (fix round 2/5).
      */
     public const STATUS_SUBMITTING = 'submitting';
 
@@ -42,6 +44,7 @@ class Shipment extends Model implements ShipmentView
     {
         return [
             'cod_amount' => MoneyCast::class,
+            'claimed_at' => 'datetime',
             'submitted_at' => 'datetime',
             'label_printed_at' => 'datetime',
         ];

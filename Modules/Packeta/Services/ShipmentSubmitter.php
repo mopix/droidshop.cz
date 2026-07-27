@@ -7,6 +7,7 @@ use App\Core\Orders\Contracts\OrderBook;
 use App\Core\Orders\Contracts\OrderView;
 use App\Core\Shipping\Contracts\CarrierRegistry;
 use App\Core\Shipping\Exceptions\CarrierError;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Modules\Packeta\Models\Shipment;
 use Modules\Shipping\Models\PaymentMethod;
@@ -33,12 +34,22 @@ use Modules\Shipping\Models\PaymentMethod;
  * same row look identical from a plain status read; only an atomic
  * conditional UPDATE can tell them apart. claimForSubmission() below performs
  * exactly the single-statement compare-and-swap `UPDATE shipments SET
- * status='submitting' WHERE id=? AND status IN ('pending','failed')` that
+ * status='submitting', claimed_at=? WHERE id=? AND (status IN
+ * ('pending','failed') OR (status='submitting' AND claimed_at < ?))` that
  * distinguishes them: whichever request's UPDATE actually affects the row is
- * the only one that may call the carrier. A `submitting` row left behind by a
- * genuine process crash (as opposed to a live loser) is not reclaimed by this
- * class — narrower than the crash window this docblock used to describe, and
- * a known, accepted gap until a later task adds a staleness-based reclaim.
+ * the only one that may call the carrier.
+ *
+ * Fix round 2/5: the staleness half of that WHERE clause exists because the
+ * first fix round left a worse failure behind it. A process that crashes
+ * between winning the claim and writing the carrier's answer leaves a
+ * `submitting` row that nothing in the codebase ever revisits — not a risk of
+ * a duplicate parcel any more, but an order that silently never ships at all,
+ * discoverable only by a manual database check. `claimed_at` is the
+ * timestamp the winning UPDATE writes; once it is older than
+ * config('packeta.submit_stale_after_minutes'), the row is claimable again
+ * exactly like a `pending`/`failed` one. A fresh `submitting` row (a live
+ * request still genuinely in flight) stays excluded, so the exclusivity fix
+ * round 1/5 added is unaffected: at most one request wins per claim window.
  */
 final class ShipmentSubmitter
 {
@@ -166,8 +177,17 @@ final class ShipmentSubmitter
      * the WHERE clause is the lock. InnoDB serialises two concurrent UPDATEs
      * against the same row, so of two requests racing this method, the first
      * to commit moves the row to `submitting` and returns true; the second's
-     * WHERE no longer matches (the row is no longer `pending`/`failed`) and it
-     * gets 0 affected rows — that request must not call the carrier.
+     * WHERE no longer matches — the row is no longer `pending`/`failed`, and
+     * `claimed_at` was just set to now() by the winner, so the staleness arm
+     * cannot match it either — and it gets 0 affected rows: that request must
+     * not call the carrier.
+     *
+     * A `submitting` row past the staleness threshold claims exactly the same
+     * way a `pending`/`failed` one does: this UPDATE is the only place
+     * `claimed_at` is ever written, so reclaiming it here also resets the
+     * clock, which is correct — a reclaimed row gets its own fresh staleness
+     * window rather than being immediately reclaimable again by a third
+     * request racing this one.
      *
      * True only for the request that just won the claim; on true, the
      * in-memory $shipment is updated to match without an extra round trip,
@@ -175,16 +195,29 @@ final class ShipmentSubmitter
      */
     private function claimForSubmission(Shipment $shipment): bool
     {
+        $now = now();
+        $staleBefore = $now->clone()->subMinutes((int) config('packeta.submit_stale_after_minutes'));
+
         $affected = Shipment::query()
             ->whereKey($shipment->getKey())
-            ->whereIn('status', [Shipment::STATUS_PENDING, Shipment::STATUS_FAILED])
-            ->update(['status' => Shipment::STATUS_SUBMITTING]);
+            ->where(function (Builder $query) use ($staleBefore): void {
+                $query->whereIn('status', [Shipment::STATUS_PENDING, Shipment::STATUS_FAILED])
+                    ->orWhere(function (Builder $query) use ($staleBefore): void {
+                        $query->where('status', Shipment::STATUS_SUBMITTING)
+                            ->where('claimed_at', '<', $staleBefore);
+                    });
+            })
+            ->update([
+                'status' => Shipment::STATUS_SUBMITTING,
+                'claimed_at' => $now,
+            ]);
 
         if ($affected !== 1) {
             return false;
         }
 
         $shipment->setAttribute('status', Shipment::STATUS_SUBMITTING);
+        $shipment->setAttribute('claimed_at', $now);
 
         return true;
     }
