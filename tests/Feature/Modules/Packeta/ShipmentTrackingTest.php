@@ -119,6 +119,45 @@ class ShipmentTrackingTest extends TestCase
         $response->assertSee('https://tracking.test/Z1234567890', false);
     }
 
+    /**
+     * Final review, wave 2.5: spec AK "zákazník vidí u své objednávky výdejní
+     * místo a sledovací odkaz" was only half met — the place itself only
+     * rendered once a tracking link existed (barcode present), even though
+     * shipping_snapshot['pickup_point'] is known from the moment the order is
+     * placed, long before any parcel is ever handed to the carrier.
+     */
+    public function test_a_customer_sees_the_pickup_point_before_any_parcel_is_submitted(): void
+    {
+        $customer = $this->makeCustomer($this->tenant);
+        $order = $this->makeOrder($this->tenant, [
+            'customer_id' => $customer->id,
+            'number' => 'MOJE-3',
+            'shipping_snapshot' => [
+                'id' => 1,
+                'name' => 'Zásilkovna',
+                'pickup_point' => [
+                    'code' => '1001',
+                    'name' => 'Brno — Hlavní nádraží',
+                    'street' => 'Nádražní 1',
+                    'city' => 'Brno',
+                    'zip' => '60200',
+                    'provider' => ShippingMethod::PROVIDER_PACKETA,
+                    'weight_grams' => 500,
+                ],
+            ],
+        ]);
+
+        // Deliberately no shipment row at all — the pickup point must show
+        // regardless.
+        $response = $this->actingAsCustomer($customer)->get($this->url('/ucet/objednavky/'.$order->uuid));
+
+        $response->assertOk();
+        $response->assertSee('Výdejní místo');
+        $response->assertSee('Brno — Hlavní nádraží');
+        $response->assertSee('Nádražní 1');
+        $response->assertDontSee('Sledování zásilky');
+    }
+
     public function test_a_customer_cannot_see_another_customers_order(): void
     {
         $customer = $this->makeCustomer($this->tenant);

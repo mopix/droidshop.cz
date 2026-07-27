@@ -82,6 +82,14 @@ class AccountOrdersController
             'documents' => $this->documents->forOrder($uuid),
             'shipment' => $shipment,
             'trackingUrl' => $trackingUrl,
+            // Read straight off the order's own placement-time snapshot
+            // (mirrors Modules\Orders\Http\Controllers\OrderAdminController's
+            // own 'pickupPoint' prop) — present the moment the order is
+            // placed, regardless of whether a shipment row exists yet or has
+            // a barcode. Final review, wave 2.5: the acceptance criterion is
+            // "the customer sees their pickup point", not "...once it has a
+            // tracking link".
+            'pickupPoint' => $order->orderShippingSnapshot()['pickup_point'] ?? null,
         ]);
     }
 
