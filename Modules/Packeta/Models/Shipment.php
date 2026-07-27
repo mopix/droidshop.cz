@@ -91,6 +91,17 @@ class Shipment extends Model implements ShipmentView
     }
 
     /**
+     * ShipmentView's read-only mirror of isResubmittable() below — added in
+     * wave 2.5 task 15 so the order detail's "Podat do Zásilkovny" button
+     * (reached only through the kernel contract, never this class) can ask
+     * the same question the dispatch queue already asks directly.
+     */
+    public function shipmentIsResubmittable(): bool
+    {
+        return $this->isResubmittable();
+    }
+
+    /**
      * The instant before which a `submitting` row counts as abandoned rather
      * than genuinely in flight — the single source of truth for
      * config('packeta.submit_stale_after_minutes'), so that config read never
