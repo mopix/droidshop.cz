@@ -4,11 +4,13 @@ namespace Modules\Packeta\Providers;
 
 use App\Core\Shipping\Contracts\CarrierRegistry;
 use App\Core\Shipping\Contracts\PickupPointCatalog;
+use App\Core\Shipping\Contracts\ShipmentBook;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\ServiceProvider;
 use Modules\Packeta\Console\SyncPickupPointsCommand;
 use Modules\Packeta\Services\EloquentCarrierRegistry;
 use Modules\Packeta\Services\EloquentPickupPointCatalog;
+use Modules\Packeta\Services\EloquentShipmentBook;
 
 class ModuleProvider extends ServiceProvider
 {
@@ -17,12 +19,9 @@ class ModuleProvider extends ServiceProvider
         // Overrides the kernel's null binding. Per-tenant activation is
         // answered at call time inside the implementation by ShopModules,
         // not here — this binding is per deploy.
-        //
-        // ShipmentBook is bound here in a later wave 2.5 task, once
-        // Modules\Packeta\Models\Shipment exists — keeping this task
-        // standalone.
         $this->app->bind(PickupPointCatalog::class, EloquentPickupPointCatalog::class);
         $this->app->bind(CarrierRegistry::class, EloquentCarrierRegistry::class);
+        $this->app->bind(ShipmentBook::class, EloquentShipmentBook::class);
     }
 
     public function boot(): void
