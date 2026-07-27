@@ -9,6 +9,7 @@ use App\Core\Money\Money;
 use App\Core\Orders\Contracts\OrderPlacement;
 use App\Core\Orders\Contracts\OrderSettlement;
 use App\Core\Orders\Exceptions\OrderPlacementUnavailable;
+use App\Core\Orders\Exceptions\PickupPointMissing;
 use App\Core\Orders\Exceptions\PriceChanged;
 use App\Core\Orders\PlacementRequest;
 use App\Core\Payments\Contracts\PaymentGatewayRegistry;
@@ -301,6 +302,21 @@ class CheckoutController
             // right now. Nothing was written.
             return CartCookie::attach(
                 back()->with('status', 'E-shop momentálně nepřijímá objednávky. Zkuste to prosím později.'),
+                $cart,
+                $request,
+            );
+        } catch (PickupPointMissing $e) {
+            // The chosen carrier needs a branch and the cart has none (never
+            // picked, or picked and then deactivated between selection and
+            // submit — OrderPlacer re-resolves it from the catalogue, never
+            // trusts the cart). Sent back to the shipping step, where the
+            // pickup-point picker lives, rather than straight to /kosik: the
+            // items and their prices are still fine, only the branch is
+            // missing.
+            return CartCookie::attach(
+                redirect()
+                    ->route('storefront.checkout.shipping')
+                    ->withErrors(['pickup_point_code' => $e->getMessage()]),
                 $cart,
                 $request,
             );

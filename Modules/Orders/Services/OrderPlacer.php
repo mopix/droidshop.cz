@@ -10,11 +10,14 @@ use App\Core\Orders\Contracts\OrderPlacement;
 use App\Core\Orders\Contracts\OrderView;
 use App\Core\Orders\Contracts\PlacedOrder;
 use App\Core\Orders\Exceptions\OrderPlacementUnavailable;
+use App\Core\Orders\Exceptions\PickupPointMissing;
 use App\Core\Orders\Exceptions\PriceChanged;
 use App\Core\Orders\PlacementRequest;
 use App\Core\Sequences\SequenceService;
+use App\Core\Shipping\Contracts\CarrierRegistry;
 use App\Core\Shipping\Contracts\PaymentOption;
 use App\Core\Shipping\Contracts\PaymentOptions;
+use App\Core\Shipping\Contracts\PickupPointCatalog;
 use App\Core\Shipping\Contracts\ShippingOption;
 use App\Core\Shipping\Contracts\ShippingOptions;
 use App\Core\Tax\TaxRates;
@@ -50,6 +53,8 @@ class OrderPlacer implements OrderPlacement
         private readonly PaymentOptions $paymentOptions,
         private readonly SequenceService $sequences,
         private readonly TaxRates $taxRates,
+        private readonly CarrierRegistry $carriers,
+        private readonly PickupPointCatalog $points,
     ) {}
 
     public function place(PlacementRequest $request): PlacedOrder
@@ -125,7 +130,24 @@ class OrderPlacer implements OrderPlacement
 
             $currency = $lines[0]['line_total']->currency;
 
-            // 4. Take stock inside the transaction, so it rolls back with the
+            // 4. Totals — moved ahead of the stock decrement (was step 5)
+            //    because resolving the shipping option is what step 4a below
+            //    needs, and a free-shipping threshold needs items_total to
+            //    resolve it.
+            $itemsTotal = $this->sum(array_column($lines, 'line_total'), $currency);
+            [$shippingOption, $shippingTotal] = $this->resolveShipping($request, $itemsTotal, $currency);
+
+            // 4a. A carrier that delivers to a branch cannot be handed an
+            //     order with no branch on it. Checked here, before any stock
+            //     is touched (wave 2.4 fixed exactly this class of ordering
+            //     bug — an exception must never let a rejected order take
+            //     stock first), and re-resolved from the catalogue rather
+            //     than trusted from the cart: a point deactivated between
+            //     selection and submit must block placement, not produce an
+            //     unshippable parcel.
+            $pickupPointSnapshot = $this->resolvePickupPoint($request, $shippingOption, $lines);
+
+            // 5. Take stock inside the transaction, so it rolls back with the
             //    order. decrementStock is a single atomic conditional UPDATE
             //    (see EloquentProductCatalog): the loser of a race on the last
             //    unit gets InsufficientStock, which propagates out and rolls
@@ -134,17 +156,21 @@ class OrderPlacer implements OrderPlacement
                 $this->catalog->decrementStock($line['product_id'], $line['quantity'], $line['variant_id']);
             }
 
-            // 5. Totals and the VAT recap, all server-side.
-            $itemsTotal = $this->sum(array_column($lines, 'line_total'), $currency);
-            [$shippingOption, $shippingTotal] = $this->resolveShipping($request, $itemsTotal, $currency);
+            // 6. The rest of the totals and the VAT recap, all server-side.
             [$paymentOption, $paymentFee] = $this->resolvePayment($request, $currency);
             $total = $itemsTotal->plus($shippingTotal)->plus($paymentFee);
             $vatSummary = $this->vatSummary($lines, $shippingOption, $shippingTotal, $paymentOption, $paymentFee, $currency);
 
-            // 6. A gap-free order number for the current tenant.
+            // 7. A gap-free order number for the current tenant.
             $number = $this->sequences->next('orders');
 
-            // 7. The order, its lines, its opening event, and the cart's
+            $shippingSnapshot = $this->shippingSnapshot($shippingOption, $shippingTotal);
+
+            if ($shippingSnapshot !== null && $pickupPointSnapshot !== null) {
+                $shippingSnapshot['pickup_point'] = $pickupPointSnapshot;
+            }
+
+            // 8. The order, its lines, its opening event, and the cart's
             //    conversion — the whole placement.
             $order = Order::query()->create([
                 'number' => $number,
@@ -156,7 +182,7 @@ class OrderPlacer implements OrderPlacement
                 'phone' => $request->phone,
                 'billing' => $request->billing,
                 'shipping' => $request->shipping,
-                'shipping_snapshot' => $this->shippingSnapshot($shippingOption, $shippingTotal),
+                'shipping_snapshot' => $shippingSnapshot,
                 'payment_snapshot' => $this->paymentSnapshot($paymentOption, $paymentFee),
                 'items_total' => $itemsTotal,
                 'shipping_total' => $shippingTotal,
@@ -248,7 +274,7 @@ class OrderPlacer implements OrderPlacement
     /**
      * Recomputes each cart line from the catalogue, rejecting a moved price.
      *
-     * @return list<array{product_id:int,variant_id:?int,variant_label:?string,name:string,sku:?string,unit_price:Money,tax_rate:float,quantity:int,line_total:Money}>
+     * @return list<array{product_id:int,variant_id:?int,variant_label:?string,name:string,sku:?string,unit_price:Money,tax_rate:float,quantity:int,line_total:Money,weight_grams:int}>
      */
     private function recomputeLines(PlacementRequest $request): array
     {
@@ -337,6 +363,12 @@ class OrderPlacer implements OrderPlacement
                 'tax_rate' => $product->catalogTaxRatePercent(),
                 'quantity' => $quantity,
                 'line_total' => $currentPrice->times($quantity),
+                // Read from the catalogue alongside everything else on this
+                // line (never trusted from the cart or the request), summed
+                // below for a carrier pickup-point snapshot's weight_grams —
+                // the later shipment-submission task reads it to hand the
+                // carrier a weight without a second catalogue round trip.
+                'weight_grams' => $product->catalogWeightGrams() * $quantity,
             ];
         }
 
@@ -367,6 +399,53 @@ class OrderPlacer implements OrderPlacement
         }
 
         return [$option, $option->price()];
+    }
+
+    /**
+     * The pickup-point snapshot for a carrier delivery, or null when the
+     * chosen method needs no branch at all.
+     *
+     * Called before any stock is decremented (see the numbered comments in
+     * placeInTransaction()): a cart with no chosen point, or a code that no
+     * longer resolves to an active point, throws PickupPointMissing here and
+     * the transaction rolls back before decrementStock() ever runs.
+     *
+     * @param  list<array{weight_grams:int}>  $lines
+     *
+     * @throws PickupPointMissing
+     */
+    private function resolvePickupPoint(PlacementRequest $request, ?ShippingOption $shipping, array $lines): ?array
+    {
+        if ($shipping === null) {
+            return null;
+        }
+
+        $carrier = $this->carriers->for($shipping->provider());
+
+        if (! $carrier?->requiresPickupPoint()) {
+            return null;
+        }
+
+        $code = $request->cart->cartPickupPointCode();
+        $point = $code === null ? null : $this->points->find($carrier->key(), $code);
+
+        if ($point === null) {
+            throw PickupPointMissing::make();
+        }
+
+        return [
+            'code' => $point->pointCode(),
+            'name' => $point->pointName(),
+            'street' => $point->pointStreet(),
+            'city' => $point->pointCity(),
+            'zip' => $point->pointZip(),
+            // Carried alongside the address so a later shipment-submission
+            // task can resolve CarrierRegistry::for($provider) and hand the
+            // driver a weight without re-touching the cart or the catalogue
+            // (rozhodnutí wave 2.5, task-8 brief extension).
+            'provider' => $carrier->key(),
+            'weight_grams' => array_sum(array_column($lines, 'weight_grams')),
+        ];
     }
 
     /**
