@@ -8,6 +8,12 @@ use Modules\Shipping\Models\ShippingMethod;
 
 class StoreShippingMethodRequest extends FormRequest
 {
+    // api_password must never be flashed into the session on a validation
+    // failure (e.g. a bad price alongside a valid api_password). On this
+    // Laravel version a $dontFlash property here would be silently ignored —
+    // FormRequest no longer reads one — so the exclusion is registered
+    // app-wide in bootstrap/app.php via $exceptions->dontFlash().
+
     public function authorize(): bool
     {
         return (bool) $this->user('web')?->can('shipping.manage');

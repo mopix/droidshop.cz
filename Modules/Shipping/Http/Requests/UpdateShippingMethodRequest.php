@@ -12,6 +12,9 @@ namespace Modules\Shipping\Http\Requests;
  */
 class UpdateShippingMethodRequest extends StoreShippingMethodRequest
 {
+    // api_password is excluded from session flash app-wide (bootstrap/app.php);
+    // see StoreShippingMethodRequest.
+
     /**
      * @return array<int, mixed>
      */

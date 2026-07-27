@@ -130,6 +130,31 @@ class ShippingCredentialsTest extends TestCase
         });
     }
 
+    public function test_a_failed_update_does_not_flash_the_api_password_into_the_session(): void
+    {
+        $method = $this->context->runAs($this->tenant, fn () => app(ShippingMethodWriter::class)->create([
+            'provider' => ShippingMethod::PROVIDER_PACKETA,
+            'name' => 'Zásilkovna',
+            'price' => 8900,
+            'is_active' => true,
+            'api_password' => 'keep-me',
+            'api_key' => 'key-1',
+            'eshop' => 'shop-1',
+            'default_weight_g' => 1000,
+        ]));
+
+        // A valid api_password alongside an invalid price must fail validation
+        // without leaving the credential sitting in the session's old input.
+        $this->actingAs($this->owner)
+            ->put($this->url('/zpusoby-dopravy/'.$method->id), $this->payload([
+                'price' => -1,
+                'api_password' => 'super-secret-password',
+            ]))
+            ->assertSessionHasErrors('price');
+
+        $this->assertArrayNotHasKey('api_password', session()->getOldInput());
+    }
+
     public function test_admin_props_never_carry_the_api_password(): void
     {
         $this->actingAs($this->owner)

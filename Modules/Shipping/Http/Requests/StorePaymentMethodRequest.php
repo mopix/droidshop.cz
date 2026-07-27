@@ -9,6 +9,12 @@ use Modules\Shipping\Models\PaymentMethod;
 
 class StorePaymentMethodRequest extends FormRequest
 {
+    // account and secret must never be flashed into the session on a
+    // validation failure (e.g. a bad fee alongside a valid secret). On this
+    // Laravel version a $dontFlash property here would be silently ignored —
+    // FormRequest no longer reads one — so the exclusion is registered
+    // app-wide in bootstrap/app.php via $exceptions->dontFlash().
+
     public function authorize(): bool
     {
         return (bool) $this->user('web')?->can('shipping.manage');
