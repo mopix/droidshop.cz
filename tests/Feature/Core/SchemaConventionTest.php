@@ -68,6 +68,11 @@ class SchemaConventionTest extends TestCase
         // VAT rates are law, not shop configuration. A tenant_id here would
         // invite a shop to invent its own rates (spec §6.2).
         'tax_rates',
+
+        // Carrier pickup points (wave 2.5). Non-tenant on purpose: every shop
+        // delivering to Zásilkovna resolves the same physical points, so one
+        // platform-wide sync feeds all tenants.
+        'pickup_points',
     ];
 
     public function test_every_domain_table_carries_a_tenant_id(): void

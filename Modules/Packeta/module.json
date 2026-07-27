@@ -1,0 +1,24 @@
+{
+    "name": "packeta",
+    "version": "1.0.0",
+    "title": {
+        "cs": "Zásilkovna"
+    },
+    "description": {
+        "cs": "Doprava na výdejní místa Zásilkovny — výběr místa v pokladně, podání zásilek, štítky a sledování."
+    },
+    "core": false,
+    "billable": false,
+    "level": "base",
+    "requires": {},
+    "provides": [
+        "carrier-packeta"
+    ],
+    "listens": [],
+    "permissions": [
+        "packeta.manage",
+        "packeta.ship"
+    ],
+    "settings_schema": null,
+    "nav": []
+}
