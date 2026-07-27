@@ -92,7 +92,7 @@ class ShippingMethodAdminController
      */
     private function presentShipping(ShippingMethod $method): array
     {
-        return [
+        $data = [
             'id' => $method->id,
             'provider' => $method->provider,
             'name' => $method->name,
@@ -103,9 +103,24 @@ class ShippingMethodAdminController
             'tax_rate_id' => $method->tax_rate_id,
             'is_active' => $method->is_active,
             'position' => $method->position,
-            // Pickup address and hours are printed on the storefront: not secret.
-            'settings' => $method->settings,
         ];
+
+        if ($method->provider() === ShippingMethod::PROVIDER_PACKETA) {
+            // Packeta's settings hold a credential (api_password) and never
+            // appear here in the clear — only the non-secret fields, and
+            // whether a password is stored at all.
+            $data['packeta_api_key'] = $method->packetaApiKey();
+            $data['packeta_eshop'] = $method->packetaEshop();
+            $data['packeta_default_weight_g'] = $method->packetaDefaultWeightG();
+            $data['has_api_password'] = $method->apiPasswordSet();
+
+            return $data;
+        }
+
+        // Pickup address and hours are printed on the storefront: not secret.
+        $data['settings'] = $method->settings;
+
+        return $data;
     }
 
     /**
