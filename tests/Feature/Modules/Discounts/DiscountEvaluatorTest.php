@@ -230,8 +230,8 @@ class DiscountEvaluatorTest extends TestCase
     public function test_stacking_discounts_are_capped_to_the_basket_total(): void
     {
         // Rule 6/8: a 90 % coupon plus a fixed rule that is itself already
-        // capped to the basket (rule 5) still sum past itemsTotal (100 Kč
-        // basket, 90 Kč + up to 1000 Kč) — the combined total must never
+        // capped to the basket (rule 5) still sum past itemsTotal (1000 Kč
+        // basket, 900 Kč + up to 1000 Kč) — the combined total must never
         // exceed what the shopper is buying, and both discounts still fire.
         app(TenantContext::class)->runAs($this->tenant, function (): void {
             Discount::factory()->code('SLEVA90')->percent(900)->create();
@@ -242,6 +242,231 @@ class DiscountEvaluatorTest extends TestCase
             $this->assertSame(100000, $applied->total->amount);
             $this->assertSame(100000, array_sum(array_map(fn (Money $m): int => $m->amount, $applied->perLine)));
             $this->assertCount(2, $applied->sources);
+            // Rule: cumulative discount on a line must never exceed that
+            // line's own total, no matter how many discounts touch it.
+            $this->assertLessThanOrEqual(60000, $applied->perLine[1]->amount);
+            $this->assertLessThanOrEqual(40000, $applied->perLine[2]->amount);
+        });
+    }
+
+    public function test_two_scoped_rules_on_the_same_line_never_exceed_that_lines_total(): void
+    {
+        // Critical reproducer: category-scoped and product-scoped rules that
+        // both resolve to item 1 (60000, category 7, product 10) are each
+        // valid on their own base and individually pass capToBasket (sum
+        // 72000 <= itemsTotal 100000), but together they must not put more
+        // than 60000 onto item 1.
+        app(TenantContext::class)->runAs($this->tenant, function (): void {
+            $byCategory = Discount::factory()->percent(600)->create([
+                'name' => 'Kategorie 7',
+                'scope' => Discount::SCOPE_CATEGORIES,
+            ]);
+            $byCategory->targets()->create([
+                'target_type' => DiscountTarget::TYPE_CATEGORY,
+                'target_id' => 7,
+            ]);
+
+            $byProduct = Discount::factory()->percent(600)->create([
+                'name' => 'Produkt 10',
+                'scope' => Discount::SCOPE_PRODUCTS,
+            ]);
+            $byProduct->targets()->create([
+                'target_type' => DiscountTarget::TYPE_PRODUCT,
+                'target_id' => 10,
+            ]);
+
+            $applied = $this->engine()->apply($this->context());
+
+            $this->assertLessThanOrEqual(60000, $applied->perLine[1]->amount);
+            $this->assertSame(
+                $applied->total->amount,
+                array_sum(array_map(fn (Money $m): int => $m->amount, $applied->perLine)),
+            );
+            $this->assertCount(2, $applied->sources);
+        });
+    }
+
+    public function test_a_cart_and_category_discount_together_never_exceed_the_shared_line(): void
+    {
+        // Critical reproducer (mixed): a cart-scope fixed coupon (touches
+        // both lines) and a category-scoped fixed rule (touches only item 1)
+        // together ask for 110000 against a 100000 basket. capToBasket caps
+        // their *sum* to 100000 (54546 coupon / 45454 rule) but says nothing
+        // about how much of that lands on any one line: naive allocation by
+        // each discount's own line totals would put 78182 onto item 1 alone
+        // — 18182 more than the line (60000) is worth. Capacity-aware
+        // allocation clamps the rule to whatever room item 1 has left after
+        // the coupon already took its (larger) share, so item 1 lands
+        // exactly at its own total and no further — the rule's clamped
+        // capToBasket amount (45454) cannot be fully realised, so the
+        // basket-level cap is a ceiling here, not a target.
+        app(TenantContext::class)->runAs($this->tenant, function (): void {
+            Discount::factory()->code('CELY')->fixed(60000)->create();
+
+            $rule = Discount::factory()->fixed(50000)->create([
+                'name' => 'Kategorie 7 sleva',
+                'scope' => Discount::SCOPE_CATEGORIES,
+                'combinable' => true,
+            ]);
+            $rule->targets()->create([
+                'target_type' => DiscountTarget::TYPE_CATEGORY,
+                'target_id' => 7,
+            ]);
+
+            $applied = $this->engine()->apply($this->context(code: 'CELY'));
+
+            $this->assertSame(60000, $applied->perLine[1]->amount);
+            $this->assertSame(21818, $applied->perLine[2]->amount);
+            $this->assertSame(81818, $applied->total->amount);
+            $this->assertSame(
+                $applied->total->amount,
+                array_sum(array_map(fn (Money $m): int => $m->amount, $applied->perLine)),
+            );
+        });
+    }
+
+    public function test_a_higher_priority_rule_claims_capacity_before_a_lower_priority_one(): void
+    {
+        // Rule 2's priority ordering only becomes observable once allocation
+        // is capacity-aware: two rules that would each take the whole line
+        // must not split it 50/50 by luck of insertion order — the one with
+        // the numerically lower `priority` (processed first) gets its full
+        // amount, the other is clamped to whatever capacity is left.
+        //
+        // $low is created FIRST (so it would win on id if id decided
+        // anything) but carries the higher (later) priority number, so this
+        // pins the ordering to `priority`, not insertion order.
+        app(TenantContext::class)->runAs($this->tenant, function (): void {
+            $low = Discount::factory()->percent(600)->create([
+                'name' => 'Nizka priorita',
+                'scope' => Discount::SCOPE_CATEGORIES,
+                'priority' => 2,
+            ]);
+            $low->targets()->create([
+                'target_type' => DiscountTarget::TYPE_CATEGORY,
+                'target_id' => 7,
+            ]);
+
+            $high = Discount::factory()->percent(600)->create([
+                'name' => 'Vysoka priorita',
+                'scope' => Discount::SCOPE_CATEGORIES,
+                'priority' => 1,
+            ]);
+            $high->targets()->create([
+                'target_type' => DiscountTarget::TYPE_CATEGORY,
+                'target_id' => 7,
+            ]);
+
+            $applied = $this->engine()->apply($this->context());
+
+            $this->assertSame(60000, $applied->perLine[1]->amount);
+            $this->assertSame(60000, $applied->total->amount);
+            $this->assertCount(2, $applied->sources);
+
+            $byName = [];
+            foreach ($applied->sources as $source) {
+                $byName[$source->name] = $source->amount->amount;
+            }
+
+            $this->assertSame(36000, $byName['Vysoka priorita']);
+            $this->assertSame(24000, $byName['Nizka priorita']);
+        });
+    }
+
+    public function test_a_coupon_worth_nothing_still_reports_as_applied(): void
+    {
+        app(TenantContext::class)->runAs($this->tenant, function (): void {
+            Discount::factory()->code('NULA')->percent(0)->create();
+
+            $applied = $this->engine()->apply($this->context(code: 'NULA'));
+
+            $this->assertNull($applied->rejection);
+            $this->assertTrue($applied->total->isZero());
+            $this->assertCount(1, $applied->sources);
+            $this->assertSame('NULA', $applied->sources[0]->code);
+            $this->assertSame(0, $applied->sources[0]->amount->amount);
+        });
+    }
+
+    public function test_a_usage_limit_gates_the_coupon(): void
+    {
+        app(TenantContext::class)->runAs($this->tenant, function (): void {
+            Discount::factory()->code('VYCERPANO')->percent(100)->create([
+                'usage_limit' => 3,
+                'used_count' => 3,
+            ]);
+
+            $applied = $this->engine()->apply($this->context(code: 'VYCERPANO'));
+
+            $this->assertSame(DiscountRejection::USAGE_LIMIT, $applied->rejection?->reason);
+        });
+    }
+
+    public function test_a_per_email_limit_gates_the_coupon(): void
+    {
+        app(TenantContext::class)->runAs($this->tenant, function (): void {
+            $email = 'stejny.zakaznik@example.com';
+
+            $discount = Discount::factory()->code('JEDNOU')->percent(100)->create([
+                'usage_limit_per_email' => 1,
+            ]);
+
+            $discount->redemptions()->create([
+                'order_id' => 1,
+                'email' => $email,
+            ]);
+
+            $applied = $this->engine()->apply($this->context(code: 'JEDNOU', email: $email));
+
+            $this->assertSame(DiscountRejection::EMAIL_LIMIT, $applied->rejection?->reason);
+        });
+    }
+
+    public function test_a_released_redemption_does_not_count_toward_the_per_email_limit(): void
+    {
+        app(TenantContext::class)->runAs($this->tenant, function (): void {
+            $email = 'vraceny.kupon@example.com';
+
+            $discount = Discount::factory()->code('UVOLNENO')->percent(100)->create([
+                'usage_limit_per_email' => 1,
+            ]);
+
+            $discount->redemptions()->create([
+                'order_id' => 1,
+                'email' => $email,
+                'released_at' => now(),
+            ]);
+
+            $applied = $this->engine()->apply($this->context(code: 'UVOLNENO', email: $email));
+
+            $this->assertNull($applied->rejection);
+            $this->assertSame(10000, $applied->total->amount);
+        });
+    }
+
+    public function test_an_inactive_coupon_is_rejected(): void
+    {
+        app(TenantContext::class)->runAs($this->tenant, function (): void {
+            Discount::factory()->code('VYPNUTO')->percent(100)->create([
+                'active' => false,
+            ]);
+
+            $applied = $this->engine()->apply($this->context(code: 'VYPNUTO'));
+
+            $this->assertSame(DiscountRejection::INACTIVE, $applied->rejection?->reason);
+        });
+    }
+
+    public function test_a_not_yet_started_coupon_is_rejected(): void
+    {
+        app(TenantContext::class)->runAs($this->tenant, function (): void {
+            Discount::factory()->code('BRZY')->percent(100)->create([
+                'starts_at' => now()->addDay(),
+            ]);
+
+            $applied = $this->engine()->apply($this->context(code: 'BRZY'));
+
+            $this->assertSame(DiscountRejection::NOT_STARTED, $applied->rejection?->reason);
         });
     }
 
@@ -268,6 +493,38 @@ class DiscountEvaluatorTest extends TestCase
             $applied = $this->engine()->apply($this->context(code: 'PRVNI', email: $email));
 
             $this->assertSame(DiscountRejection::FIRST_ORDER_ONLY, $applied->rejection?->reason);
+        });
+    }
+
+    public function test_first_order_only_ignores_another_tenants_order_history(): void
+    {
+        // Tenant isolation (CLAUDE.md): an order placed under a different
+        // tenant, even with the exact same shopper e-mail, must never gate a
+        // first_order_only coupon here — that would leak tenant B's order
+        // history into tenant A's discount decision.
+        $other = Tenant::factory()->create(['name' => 'Shop Two']);
+        $email = 'sdilena.adresa@example.com';
+
+        DB::table('orders')->insert([
+            'tenant_id' => $other->id,
+            'uuid' => (string) Str::uuid(),
+            'number' => '2026-0001',
+            'checkout_token' => Str::random(32),
+            'email' => $email,
+            'billing' => json_encode([]),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        app(TenantContext::class)->runAs($this->tenant, function () use ($email): void {
+            Discount::factory()->code('PRVNI')->percent(100)->create([
+                'first_order_only' => true,
+            ]);
+
+            $applied = $this->engine()->apply($this->context(code: 'PRVNI', email: $email));
+
+            $this->assertNull($applied->rejection);
+            $this->assertSame(10000, $applied->total->amount);
         });
     }
 

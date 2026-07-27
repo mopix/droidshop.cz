@@ -45,9 +45,10 @@ final class DiscountEvaluator implements DiscountEngine
 
         $rejection = null;
         $coupon = null;
+        $couponLines = null;
 
         if ($context->couponCode !== null && trim($context->couponCode) !== '') {
-            [$coupon, $rejection] = $this->resolveCoupon(trim($context->couponCode), $context);
+            [$coupon, $couponLines, $rejection] = $this->resolveCoupon(trim($context->couponCode), $context);
         }
 
         $rules = $this->rules($coupon !== null);
@@ -58,7 +59,12 @@ final class DiscountEvaluator implements DiscountEngine
         $sources = [];
 
         foreach ($this->ordered($coupon, $rules) as $discount) {
-            $lines = $this->eligibleLines($discount, $context);
+            // The coupon's eligible lines were already resolved (and spent a
+            // discount_targets query) inside resolveCoupon() to run its
+            // eligibility check — reuse them instead of asking again. This
+            // matters because apply() runs three times per purchase (see
+            // class docblock).
+            $lines = $discount === $coupon ? $couponLines : $this->eligibleLines($discount, $context);
 
             if ($discount !== $coupon && $this->eligibility->check($discount, $context, $lines) !== null) {
                 // A rule that does not hold simply does not fire; only a
@@ -83,6 +89,20 @@ final class DiscountEvaluator implements DiscountEngine
             $amount = $this->amountFor($discount, $lines, $currency);
 
             if ($amount->isZero()) {
+                // A coupon the shopper typed still owes an answer — "applied,
+                // for nothing" — even when its own math comes out to zero
+                // (e.g. a 0 %-off code). An automatic rule that computes
+                // zero simply never fired; no one is owed an explanation.
+                if ($discount === $coupon) {
+                    $sources[] = new AppliedDiscountSource(
+                        discountId: (int) $discount->id,
+                        type: $discount->type,
+                        code: $discount->code,
+                        name: $discount->name,
+                        amount: $amount,
+                    );
+                }
+
                 continue;
             }
 
@@ -91,11 +111,100 @@ final class DiscountEvaluator implements DiscountEngine
 
         $fired = $this->capToBasket($fired, $context->itemsTotal);
 
+        [$perLine, $total, $allocatedSources] = $this->allocate($fired, $context->lines, $currency);
+
+        $perLine = array_filter($perLine, static fn (Money $m): bool => ! $m->isZero());
+
+        return new AppliedDiscount(
+            $perLine,
+            $freeShipping,
+            $total,
+            array_values([...$sources, ...$allocatedSources]),
+            $rejection,
+        );
+    }
+
+    /**
+     * Allocates every fired discount across the lines it actually has room
+     * on, capacity-aware.
+     *
+     * capToBasket() only bounds the SUM of what fires against the whole
+     * basket (rule 6/8) — nothing upstream of this stops two discounts that
+     * each target the same line from together putting more onto that one
+     * line than it is worth (rule 5 talks about each discount's OWN base,
+     * not what a line has left after an earlier discount already took a
+     * bite). A negative line total is not just wrong money: order_items'
+     * columns are unsigned, so it is a write failure downstream (Task 5/8).
+     *
+     * `$remaining` starts at each line's full total and is spent down as
+     * discounts fire, in the exact order they were queued (coupon first,
+     * then rules by `priority` then `id` — see ordered()/rules()). This is
+     * also what makes `priority` observable for the first time: the
+     * earlier-ordered discount gets first claim on a line's capacity, a
+     * later one is clamped to whatever is left.
+     *
+     * Lines already at zero remaining are dropped from the ratio set before
+     * calling the allocator, not just left in with a zero weight: Money::
+     * allocateByRatios() hands its rounding remainder to buckets by index,
+     * not by weight, so a zero-weight bucket left in the set could still
+     * receive +1 from rounding and go negative-capacity by one haléř. A
+     * bucket that is not in the set at all cannot receive anything.
+     *
+     * @param  list<array{discount: Discount, amount: Money, lines: list<DiscountLine>}>  $fired
+     * @param  list<DiscountLine>  $allLines
+     * @return array{0: array<int, Money>, 1: Money, 2: list<AppliedDiscountSource>}
+     */
+    private function allocate(array $fired, array $allLines, string $currency): array
+    {
+        $remaining = [];
+
+        foreach ($allLines as $line) {
+            $remaining[$line->itemId] = $line->lineTotal->amount;
+        }
+
         $perLine = [];
+        $total = new Money(0, $currency);
+        $sources = [];
 
         foreach ($fired as $entry) {
-            foreach ($this->allocator->allocate($entry['amount'], $entry['lines']) as $itemId => $share) {
+            $available = array_values(array_filter(
+                $entry['lines'],
+                static fn (DiscountLine $line): bool => ($remaining[$line->itemId] ?? 0) > 0,
+            ));
+
+            $capacity = array_sum(array_map(
+                static fn (DiscountLine $line): int => $remaining[$line->itemId],
+                $available,
+            ));
+
+            $amount = $entry['amount']->amount > $capacity
+                ? new Money($capacity, $currency)
+                : $entry['amount'];
+
+            if ($amount->isZero()) {
+                // Every line this discount could touch is already spoken for
+                // by an earlier (higher-priority, or coupon) discount.
+                continue;
+            }
+
+            $capacityLines = array_map(
+                static fn (DiscountLine $line): DiscountLine => new DiscountLine(
+                    $line->itemId,
+                    $line->productId,
+                    $line->variantId,
+                    $line->categoryIds,
+                    new Money($remaining[$line->itemId], $currency),
+                    $line->taxRatePercent,
+                ),
+                $available,
+            );
+
+            $actual = new Money(0, $currency);
+
+            foreach ($this->allocator->allocate($amount, $capacityLines) as $itemId => $share) {
                 $perLine[$itemId] = isset($perLine[$itemId]) ? $perLine[$itemId]->plus($share) : $share;
+                $remaining[$itemId] -= $share->amount;
+                $actual = $actual->plus($share);
             }
 
             $sources[] = new AppliedDiscountSource(
@@ -103,23 +212,17 @@ final class DiscountEvaluator implements DiscountEngine
                 type: $entry['discount']->type,
                 code: $entry['discount']->code,
                 name: $entry['discount']->name,
-                amount: $entry['amount'],
+                amount: $actual,
             );
+
+            $total = $total->plus($actual);
         }
 
-        $perLine = array_filter($perLine, static fn (Money $m): bool => ! $m->isZero());
-
-        $total = array_reduce(
-            $fired,
-            static fn (Money $carry, array $entry): Money => $carry->plus($entry['amount']),
-            new Money(0, $currency),
-        );
-
-        return new AppliedDiscount($perLine, $freeShipping, $total, array_values($sources), $rejection);
+        return [$perLine, $total, $sources];
     }
 
     /**
-     * @return array{0: ?Discount, 1: ?DiscountRejection}
+     * @return array{0: ?Discount, 1: ?list<DiscountLine>, 2: ?DiscountRejection}
      */
     private function resolveCoupon(string $code, DiscountContext $context): array
     {
@@ -129,16 +232,17 @@ final class DiscountEvaluator implements DiscountEngine
             ->first();
 
         if ($coupon === null) {
-            return [null, new DiscountRejection($code, DiscountRejection::NOT_FOUND)];
+            return [null, null, new DiscountRejection($code, DiscountRejection::NOT_FOUND)];
         }
 
-        $reason = $this->eligibility->check($coupon, $context, $this->eligibleLines($coupon, $context));
+        $lines = $this->eligibleLines($coupon, $context);
+        $reason = $this->eligibility->check($coupon, $context, $lines);
 
         if ($reason !== null) {
-            return [null, new DiscountRejection($code, $reason)];
+            return [null, null, new DiscountRejection($code, $reason)];
         }
 
-        return [$coupon, null];
+        return [$coupon, $lines, null];
     }
 
     /**
