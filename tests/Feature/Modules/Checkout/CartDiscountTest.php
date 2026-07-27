@@ -12,6 +12,7 @@ use Modules\Checkout\Services\CartPricer;
 use Modules\Discounts\Models\Discount;
 use Modules\Products\Models\Product;
 use Modules\Products\Services\ProductWriter;
+use Modules\Shipping\Models\ShippingMethod;
 use Tests\Concerns\ActivatesModules;
 use Tests\TestCase;
 
@@ -143,6 +144,49 @@ class CartDiscountTest extends TestCase
             $priced = app(CartPricer::class)->price($cart->fresh());
 
             $this->assertTrue($priced->freeShipping);
+        });
+    }
+
+    /**
+     * Review finding (wave 2.6): freeShipping() computes the progress-bar
+     * threshold BEFORE the discount engine runs, so a cart entitled to free
+     * shipping through an automatic rule must not still be told it owes more
+     * to reach a paid method's own threshold — shippingCost() already
+     * charges it nothing either way.
+     */
+    public function test_a_free_shipping_rule_clears_the_progress_bar_below_threshold(): void
+    {
+        app(TenantContext::class)->runAs($this->tenant, function (): void {
+            $this->activateModule($this->tenant, 'shipping');
+
+            ShippingMethod::query()->create([
+                'provider' => ShippingMethod::PROVIDER_FLAT,
+                'name' => 'Kurýr',
+                'price' => 9900,
+                'currency' => 'CZK',
+                'tax_rate_id' => app(TaxRates::class)->default()->id,
+                'is_active' => true,
+                'free_from' => 100000000,
+            ]);
+
+            Discount::factory()->freeShipping()->create(['name' => 'Doprava zdarma']);
+
+            $product = $this->product(30000);
+
+            $cart = Cart::query()->create(['token' => 'tok-5']);
+            $cart->items()->create([
+                'product_id' => $product->id,
+                'variant_id' => 0,
+                'quantity' => 1,
+                'unit_price' => 30000,
+                'currency' => 'CZK',
+            ]);
+
+            $priced = app(CartPricer::class)->price($cart->fresh());
+
+            $this->assertTrue($priced->freeShipping);
+            $this->assertNotNull($priced->freeShippingThreshold);
+            $this->assertNull($priced->freeShippingRemaining);
         });
     }
 }

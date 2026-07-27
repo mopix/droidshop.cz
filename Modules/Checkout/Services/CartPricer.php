@@ -4,6 +4,7 @@ namespace Modules\Checkout\Services;
 
 use App\Core\Catalog\Contracts\ProductCatalog;
 use App\Core\Checkout\Contracts\CartShape;
+use App\Core\Discounts\AppliedDiscount;
 use App\Core\Discounts\Contracts\DiscountEngine;
 use App\Core\Discounts\DiscountContext;
 use App\Core\Discounts\DiscountLine;
@@ -129,14 +130,32 @@ final class CartPricer
 
         [$threshold, $remaining] = $this->freeShipping($weightGrams, $itemsTotal);
 
-        $applied = $this->discounts->apply(new DiscountContext(
-            lines: $discountLines,
-            itemsTotal: $itemsTotal,
-            couponCode: $cart->cartCouponCode(),
-            customerId: $cart->cartCustomerId(),
-            email: null,
-            shippingCost: new Money(0, $itemsTotal->currency),
-        ));
+        $couponCode = $cart->cartCouponCode();
+
+        // Nothing can apply against an empty basket with no typed code — skip
+        // the engine call outright rather than let it run a `discounts`
+        // query for nothing. This matters because the anonymous mini-cart
+        // poll (CartSummaryController) calls price() on every storefront
+        // page view, empty cart or not (review finding, wave 2.6).
+        $applied = ($discountLines === [] && ($couponCode === null || trim($couponCode) === ''))
+            ? AppliedDiscount::none($itemsTotal->currency)
+            : $this->discounts->apply(new DiscountContext(
+                lines: $discountLines,
+                itemsTotal: $itemsTotal,
+                couponCode: $couponCode,
+                customerId: $cart->cartCustomerId(),
+                email: null,
+                shippingCost: new Money(0, $itemsTotal->currency),
+            ));
+
+        // A free-shipping discount already zeroes shippingCost() regardless
+        // of the method's own threshold (see that method below) — the
+        // progress bar must agree, or the cart page tells a shopper who
+        // already has free shipping that they still owe more to get it
+        // (review finding, wave 2.6).
+        if ($applied->freeShipping) {
+            $remaining = null;
+        }
 
         // Fold the allocation back onto the lines the view renders, so a
         // template never has to know how the discount was computed — it just
