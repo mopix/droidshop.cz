@@ -26,9 +26,15 @@ use App\Core\Orders\NullOrderPlacement;
 use App\Core\Orders\NullOrderSettlement;
 use App\Core\Payments\Contracts\PaymentGatewayRegistry;
 use App\Core\Payments\NullPaymentGatewayRegistry;
+use App\Core\Shipping\Contracts\CarrierRegistry;
 use App\Core\Shipping\Contracts\PaymentOptions;
+use App\Core\Shipping\Contracts\PickupPointCatalog;
+use App\Core\Shipping\Contracts\ShipmentBook;
 use App\Core\Shipping\Contracts\ShippingOptions;
+use App\Core\Shipping\NullCarrierRegistry;
 use App\Core\Shipping\NullPaymentOptions;
+use App\Core\Shipping\NullPickupPointCatalog;
+use App\Core\Shipping\NullShipmentBook;
 use App\Core\Shipping\NullShippingOptions;
 use App\Core\Storage\StorageLimitCounter;
 use Illuminate\Support\Facades\Vite;
@@ -91,6 +97,17 @@ class AppServiceProvider extends ServiceProvider
         // Modules\Payments\Providers\ModuleProvider overwrites it with a
         // registry that knows the deployed, tenant-configured drivers.
         $this->app->bind(PaymentGatewayRegistry::class, NullPaymentGatewayRegistry::class);
+
+        // Same pattern for carrier drivers (wave 2.5): app(CarrierRegistry::class),
+        // app(PickupPointCatalog::class) and app(ShipmentBook::class) all resolve
+        // on a deploy without a carrier module. The registry's for() returns
+        // null and available() is empty, so checkout offers no API-backed
+        // delivery method; the catalog answers an empty search and no point;
+        // the order screen's shipment block simply does not render. A carrier
+        // module's own provider overwrites all three.
+        $this->app->bind(CarrierRegistry::class, NullCarrierRegistry::class);
+        $this->app->bind(PickupPointCatalog::class, NullPickupPointCatalog::class);
+        $this->app->bind(ShipmentBook::class, NullShipmentBook::class);
 
         // Same pattern for document issuance: app(DocumentIssuer::class)
         // resolves even on a deploy without the docs module. Unlike the
