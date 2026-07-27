@@ -62,4 +62,11 @@ interface CartShape
      * never leaves a stale address in a live cart.
      */
     public function cartPickupPointCode(): ?string;
+
+    /**
+     * The discount code the shopper typed, or null. Never a discount id and
+     * never an amount: what the code is worth is decided by the engine on
+     * every call, not stored on the cart.
+     */
+    public function cartCouponCode(): ?string;
 }

@@ -100,12 +100,12 @@ class CheckoutController
         }
 
         $shippingCost = $selectedShipping !== null
-            ? $this->pricer->shippingCost($priced->itemsTotal, $selectedShipping)
+            ? $this->pricer->shippingCost($priced->itemsTotal, $selectedShipping, $priced->freeShipping)
             : null;
 
         $paymentFee = $selectedPayment?->fee();
 
-        $total = $priced->itemsTotal;
+        $total = $priced->payableTotal;
 
         if ($shippingCost !== null) {
             $total = $total->plus($shippingCost);
@@ -426,12 +426,12 @@ class CheckoutController
         }
 
         $shippingCost = $shipping !== null
-            ? $this->pricer->shippingCost($priced->itemsTotal, $shipping)
+            ? $this->pricer->shippingCost($priced->itemsTotal, $shipping, $priced->freeShipping)
             : new Money(0, $currency);
 
         $paymentFee = $payment?->fee() ?? new Money(0, $currency);
 
-        $total = $priced->itemsTotal->plus($shippingCost)->plus($paymentFee);
+        $total = $priced->payableTotal->plus($shippingCost)->plus($paymentFee);
 
         return [
             'usingFallback' => $usingFallback,

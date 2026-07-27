@@ -334,4 +334,12 @@ class Product extends Model implements CatalogProduct
 
         return app(VariantDisplay::class)->forCurrentTenant();
     }
+
+    /**
+     * @return list<int>
+     */
+    public function catalogCategoryIds(): array
+    {
+        return $this->categories()->pluck('categories.id')->map(intval(...))->all();
+    }
 }

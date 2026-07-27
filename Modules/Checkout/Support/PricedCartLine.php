@@ -33,5 +33,9 @@ final readonly class PricedCartLine
         /** 0/null when the line is a plain product without variants. */
         public ?int $variantId = null,
         public ?string $variantLabel = null,
+        /** How much of the basket's discount lands on this line (0 when none does). */
+        public ?Money $discountAmount = null,
+        /** lineTotal minus discountAmount — what this line actually costs. */
+        public ?Money $discountedLineTotal = null,
     ) {}
 }

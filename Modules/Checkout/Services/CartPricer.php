@@ -4,6 +4,9 @@ namespace Modules\Checkout\Services;
 
 use App\Core\Catalog\Contracts\ProductCatalog;
 use App\Core\Checkout\Contracts\CartShape;
+use App\Core\Discounts\Contracts\DiscountEngine;
+use App\Core\Discounts\DiscountContext;
+use App\Core\Discounts\DiscountLine;
 use App\Core\Money\Money;
 use App\Core\Shipping\Contracts\PaymentOption;
 use App\Core\Shipping\Contracts\ShippingOption;
@@ -31,11 +34,14 @@ final class CartPricer
         private readonly ProductCatalog $catalog,
         private readonly ShippingOptions $shippingOptions,
         private readonly TaxRates $taxRates,
+        private readonly DiscountEngine $discounts,
     ) {}
 
     public function price(CartShape $cart): PricedCart
     {
         $lines = [];
+        /** @var list<DiscountLine> $discountLines */
+        $discountLines = [];
         $itemsTotal = null;
         $hasPriceChange = false;
         $weightGrams = 0;
@@ -105,6 +111,15 @@ final class CartPricer
                 variantLabel: $variant?->catalogVariantLabel(),
             );
 
+            $discountLines[] = new DiscountLine(
+                itemId: (int) $item->id,
+                productId: $productId,
+                variantId: $variantId,
+                categoryIds: $product->catalogCategoryIds(),
+                lineTotal: $lineTotal,
+                taxRatePercent: $product->catalogTaxRatePercent(),
+            );
+
             $hasPriceChange = $hasPriceChange || $changed;
             $itemsTotal = $itemsTotal === null ? $lineTotal : $itemsTotal->plus($lineTotal);
             $weightGrams += $product->catalogWeightGrams() * $quantity;
@@ -114,12 +129,56 @@ final class CartPricer
 
         [$threshold, $remaining] = $this->freeShipping($weightGrams, $itemsTotal);
 
+        $applied = $this->discounts->apply(new DiscountContext(
+            lines: $discountLines,
+            itemsTotal: $itemsTotal,
+            couponCode: $cart->cartCouponCode(),
+            customerId: $cart->cartCustomerId(),
+            email: null,
+            shippingCost: new Money(0, $itemsTotal->currency),
+        ));
+
+        // Fold the allocation back onto the lines the view renders, so a
+        // template never has to know how the discount was computed — it just
+        // prints discountedLineTotal. forLine() defaults to 0 for a line that
+        // was never in $discountLines (unavailable), which is exactly right:
+        // nothing was ever offered against a line that does not count toward
+        // itemsTotal either.
+        $lines = array_map(function (PricedCartLine $line) use ($applied, $itemsTotal): PricedCartLine {
+            $share = $applied->forLine($line->itemId, $itemsTotal->currency);
+
+            return new PricedCartLine(
+                itemId: $line->itemId,
+                productId: $line->productId,
+                name: $line->name,
+                url: $line->url,
+                imageUrl: $line->imageUrl,
+                quantity: $line->quantity,
+                unitPrice: $line->unitPrice,
+                lineTotal: $line->lineTotal,
+                priceChanged: $line->priceChanged,
+                previousUnitPrice: $line->previousUnitPrice,
+                available: $line->available,
+                variantId: $line->variantId,
+                variantLabel: $line->variantLabel,
+                discountAmount: $share,
+                discountedLineTotal: $line->lineTotal->minus($share),
+            );
+        }, $lines);
+
+        $payableTotal = $itemsTotal->minus($applied->total);
+
         return new PricedCart(
             lines: $lines,
             itemsTotal: $itemsTotal,
             hasPriceChange: $hasPriceChange,
             freeShippingThreshold: $threshold,
             freeShippingRemaining: $remaining,
+            discountTotal: $applied->total,
+            payableTotal: $payableTotal,
+            discountSources: $applied->sources,
+            freeShipping: $applied->freeShipping,
+            discountRejection: $applied->rejection,
         );
     }
 
@@ -155,8 +214,14 @@ final class CartPricer
      * the option's own price() blindly, and never anything a POST body
      * claims (AK 5, AK 10): free once itemsTotal already meets free_from.
      */
-    public function shippingCost(Money $itemsTotal, ShippingOption $option): Money
+    public function shippingCost(Money $itemsTotal, ShippingOption $option, bool $freeShipping = false): Money
     {
+        // A free-shipping discount outranks the method's own threshold: the
+        // shop deliberately gave it away, so the threshold no longer decides.
+        if ($freeShipping) {
+            return new Money(0, $itemsTotal->currency);
+        }
+
         $freeFrom = $option->freeFrom();
 
         if ($freeFrom !== null && ! $itemsTotal->lessThan($freeFrom)) {
@@ -216,7 +281,7 @@ final class CartPricer
                 continue;
             }
 
-            $add($byPercent->get((string) $product->catalogTaxRatePercent()), $line->lineTotal);
+            $add($byPercent->get((string) $product->catalogTaxRatePercent()), $line->discountedLineTotal ?? $line->lineTotal);
         }
 
         if ($shipping !== null && $shipping->taxRateId() !== null) {
