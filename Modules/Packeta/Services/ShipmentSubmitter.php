@@ -22,6 +22,23 @@ use Modules\Shipping\Models\PaymentMethod;
  *
  * The cost of committing first is a `pending` row surviving a crash between
  * commit and answer — so a retry adopts a pending row rather than refusing it.
+ *
+ * Fix round 1/5: that adoption alone only protects against a duplicate ROW,
+ * not a duplicate HTTP CALL. Two live requests racing the same order (a
+ * double click, two open tabs, a retry overlapping a slow first attempt)
+ * could both find the same committed `pending` row, both see a status other
+ * than `submitted`, and both call the carrier — two real parcels, one order,
+ * the second `packet_id` overwritten and lost the moment the slower request
+ * saves. A `pending` row surviving a crash and two *live* requests racing the
+ * same row look identical from a plain status read; only an atomic
+ * conditional UPDATE can tell them apart. claimForSubmission() below performs
+ * exactly the single-statement compare-and-swap `UPDATE shipments SET
+ * status='submitting' WHERE id=? AND status IN ('pending','failed')` that
+ * distinguishes them: whichever request's UPDATE actually affects the row is
+ * the only one that may call the carrier. A `submitting` row left behind by a
+ * genuine process crash (as opposed to a live loser) is not reclaimed by this
+ * class — narrower than the crash window this docblock used to describe, and
+ * a known, accepted gap until a later task adds a staleness-based reclaim.
  */
 final class ShipmentSubmitter
 {
@@ -69,6 +86,15 @@ final class ShipmentSubmitter
             return $shipment;
         }
 
+        if (! $this->claimForSubmission($shipment)) {
+            // Another live request already holds this shipment — its atomic
+            // UPDATE won the race (see this class's own docblock). Whatever
+            // it has written so far (still `submitting`, or already
+            // `submitted`/`failed` by now) is the truth; we must not call the
+            // carrier a second time to find out.
+            return $shipment->refresh();
+        }
+
         try {
             $result = $carrier->submit(
                 $order,
@@ -97,7 +123,9 @@ final class ShipmentSubmitter
     }
 
     /**
-     * Takes (or adopts) the single shipment row for this order.
+     * Takes (or adopts) the single shipment ROW for this order — this alone
+     * does not decide who may call the carrier, see claimForSubmission()
+     * below for that.
      *
      * @param  array<string, mixed>|null  $pickupPoint
      */
@@ -108,11 +136,11 @@ final class ShipmentSubmitter
         $existing = Shipment::where('order_id', $orderId)->first();
 
         if ($existing !== null) {
-            // Covers both the ordinary "already claimed" case and the crash
-            // window this class's own docblock describes: a row left `pending`
-            // because the process died between the commit below and the
-            // carrier's answer is adopted here exactly like a `submitted` one,
-            // never duplicated.
+            // Covers the ordinary "already claimed" case, a pending row left
+            // by a crashed process, and — since this class's own guarantee is
+            // "at most one row per order", not "at most one reader of this
+            // row" — a second live request racing the first. Which of those
+            // this is gets decided next, by claimForSubmission().
             return $existing;
         }
 
@@ -129,6 +157,36 @@ final class ShipmentSubmitter
             // Another request won the race; use its row rather than failing.
             return Shipment::where('order_id', $orderId)->firstOrFail();
         }
+    }
+
+    /**
+     * The compare-and-swap that makes calling the carrier exclusive.
+     *
+     * A single UPDATE, not a transaction wrapping the HTTP call that follows:
+     * the WHERE clause is the lock. InnoDB serialises two concurrent UPDATEs
+     * against the same row, so of two requests racing this method, the first
+     * to commit moves the row to `submitting` and returns true; the second's
+     * WHERE no longer matches (the row is no longer `pending`/`failed`) and it
+     * gets 0 affected rows — that request must not call the carrier.
+     *
+     * True only for the request that just won the claim; on true, the
+     * in-memory $shipment is updated to match without an extra round trip,
+     * since we already know what the UPDATE just wrote.
+     */
+    private function claimForSubmission(Shipment $shipment): bool
+    {
+        $affected = Shipment::query()
+            ->whereKey($shipment->getKey())
+            ->whereIn('status', [Shipment::STATUS_PENDING, Shipment::STATUS_FAILED])
+            ->update(['status' => Shipment::STATUS_SUBMITTING]);
+
+        if ($affected !== 1) {
+            return false;
+        }
+
+        $shipment->setAttribute('status', Shipment::STATUS_SUBMITTING);
+
+        return true;
     }
 
     private function codAmount(OrderView $order): Money

@@ -22,6 +22,14 @@ class Shipment extends Model implements ShipmentView
 
     public const STATUS_PENDING = 'pending';
 
+    /**
+     * Transient claim state (fix round 1/5): exactly one live request holds a
+     * row here, between the atomic claim and the carrier's answer — see
+     * Modules\Packeta\Services\ShipmentSubmitter::claimForSubmission(). Never
+     * set directly outside that atomic UPDATE.
+     */
+    public const STATUS_SUBMITTING = 'submitting';
+
     public const STATUS_SUBMITTED = 'submitted';
 
     public const STATUS_FAILED = 'failed';

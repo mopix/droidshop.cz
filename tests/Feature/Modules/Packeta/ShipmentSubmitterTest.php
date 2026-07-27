@@ -206,6 +206,48 @@ class ShipmentSubmitterTest extends TestCase
         Http::assertSentCount(1);
     }
 
+    /**
+     * The scenario the sequential test above cannot reach: two live requests
+     * racing the SAME order, not one request retried after the first
+     * finished. A single-threaded PHPUnit process cannot run two requests at
+     * once, so the race is simulated by making the *second* submit() call
+     * from inside the fake HTTP handler for the *first* — at that point the
+     * first request has already run claim() and claimForSubmission()
+     * (status is `submitting`) but has not yet received the carrier's
+     * answer, exactly the window fix round 1/5 closes. The racer must find
+     * the row already claimed and must not reach the carrier itself.
+     */
+    public function test_two_concurrent_submits_call_the_carrier_only_once(): void
+    {
+        $tenant = $this->tenant();
+        $this->context->set($tenant);
+        $order = $this->readyOrder();
+
+        $racerRan = false;
+
+        Http::fake(function () use ($order, &$racerRan) {
+            if (! $racerRan) {
+                $racerRan = true;
+
+                $racer = app(ShipmentSubmitter::class)->submit($order->uuid);
+
+                // The racer lost claimForSubmission()'s atomic UPDATE: it
+                // sees the winner's in-flight claim, not a fresh pending row,
+                // and returns without ever calling the carrier.
+                $this->assertSame(Shipment::STATUS_SUBMITTING, $racer->shipmentStatus());
+            }
+
+            return Http::response(self::OK_RESPONSE);
+        });
+
+        $winner = app(ShipmentSubmitter::class)->submit($order->uuid);
+
+        $this->assertTrue($racerRan, 'The racing submit() never ran inside the fake HTTP handler.');
+        $this->assertSame(Shipment::STATUS_SUBMITTED, $winner->shipmentStatus());
+        $this->assertSame(1, Shipment::count());
+        Http::assertSentCount(1);
+    }
+
     public function test_a_carrier_error_marks_the_shipment_failed_and_keeps_it_retryable(): void
     {
         $tenant = $this->tenant();

@@ -9,6 +9,14 @@ use Illuminate\Support\Facades\Schema;
  *
  * order_id is deliberately not a foreign key: orders belongs to another
  * module, the same boundary carts.shipping_method_id keeps.
+ *
+ * `submitting` (fix round 1/5) is a transient claim state: exactly one live
+ * request may flip a row from `pending`/`failed` into it, via a single atomic
+ * `UPDATE ... WHERE status IN ('pending','failed')` — see
+ * Modules\Packeta\Services\ShipmentSubmitter::claimForSubmission(). Without
+ * it, two requests racing the same order (double click, two tabs, a retry
+ * overlapping a slow first attempt) could both adopt the same `pending` row
+ * and both call the carrier, producing two real parcels for one order.
  */
 return new class extends Migration
 {
@@ -24,7 +32,7 @@ return new class extends Migration
             $table->string('packet_id', 40)->nullable();
             $table->string('barcode', 60)->nullable();
 
-            $table->enum('status', ['pending', 'submitted', 'failed', 'cancelled'])->default('pending');
+            $table->enum('status', ['pending', 'submitting', 'submitted', 'failed', 'cancelled'])->default('pending');
 
             $table->unsignedInteger('cod_amount')->default(0);
             $table->string('currency', 3)->default('CZK');
