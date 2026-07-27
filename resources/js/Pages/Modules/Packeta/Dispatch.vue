@@ -24,7 +24,9 @@ const props = defineProps<{
 
 const page = usePage()
 
-const flashStatus = computed(() => (page.props.flash as { status?: string } | undefined)?.status ?? null)
+// flash.status (the batch-submit outcome) is now rendered by AdminLayout
+// itself (final review, wave 2.5) — every page that can submit a shipment
+// shows it the same way, so this screen no longer needs its own copy.
 const carrierError = computed(() => (page.props.errors as { carrier?: string } | undefined)?.carrier ?? null)
 
 const money = (haler: number, currency: string) =>
@@ -33,14 +35,28 @@ const money = (haler: number, currency: string) =>
 const STATUS_LABELS: Record<string, string> = {
   failed: 'Podání selhalo',
   pending: 'Čeká na podání',
+  // A row only reappears here at all once it is stale enough for
+  // ShipmentSubmitter::claimForSubmission() to reclaim it (see
+  // DispatchQueueController::pending()'s own docblock) — that is exactly
+  // the "stuck mid hand-over" case this queue exists to surface, and
+  // without a label here it fell through to the generic "never submitted"
+  // text, which is simply false for a row that already tried once.
+  submitting: 'Podání se zaseklo — zkuste znovu',
 }
 
 const statusLabel = (row: QueueRow) => STATUS_LABELS[row.shipment_status ?? ''] ?? 'Nikdy nepodáno'
 
 const badgeClass = (row: QueueRow) =>
-  row.shipment_status === 'failed'
+  row.shipment_status === 'failed' || row.shipment_status === 'submitting'
     ? 'bg-red-50 text-red-900 ring-red-700/40'
     : 'bg-amber-50 text-amber-900 ring-amber-700/40'
+
+// Czech-formatted, not the raw ISO-8601 string the server sends — this table
+// is a Czech-language admin screen, not a machine-readable export.
+const formatPlacedAt = (iso: string) => new Intl.DateTimeFormat('cs-CZ', {
+  dateStyle: 'short',
+  timeStyle: 'short',
+}).format(new Date(iso))
 
 const columns: Column[] = [
   { key: 'select', label: 'Výběr' },
@@ -136,10 +152,6 @@ const canPrintLabels = computed(() => selectedShipmentIds.value.length > 0)
       <h1 class="text-xl font-semibold text-gray-900">Expedice — Zásilkovna</h1>
     </template>
 
-    <p v-if="flashStatus" role="status" class="mb-4 rounded-md bg-emerald-50 px-4 py-3 text-sm text-emerald-900 ring-1 ring-inset ring-emerald-600/30">
-      {{ flashStatus }}
-    </p>
-
     <p v-if="carrierError" role="alert" class="mb-4 rounded-md bg-red-50 px-4 py-3 text-sm text-red-900 ring-1 ring-inset ring-red-700/40">
       {{ carrierError }}
     </p>
@@ -231,7 +243,7 @@ const canPrintLabels = computed(() => selectedShipmentIds.value.length > 0)
       <template #cell-total="{ row }">{{ money((row as QueueRow).total, (row as QueueRow).currency) }}</template>
 
       <template #cell-placed_at="{ row }">
-        <span v-if="(row as QueueRow).placed_at">{{ (row as QueueRow).placed_at }}</span>
+        <span v-if="(row as QueueRow).placed_at">{{ formatPlacedAt((row as QueueRow).placed_at as string) }}</span>
         <span v-else class="text-gray-700">—</span>
       </template>
     </DataTable>
