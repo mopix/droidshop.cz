@@ -63,6 +63,13 @@ class DiscountAllocatorTest extends TestCase
 
         $allocation = $allocator->allocate(new Money(1000, 'CZK'), [$this->line(1, 0)]);
 
+        // Documented exception: when every line is worth nothing, the allocation
+        // returns zeros (sum is 0, not $amount) because there is no proportion
+        // to follow. This is unreachable in practice since the discount amount
+        // is derived from these same line totals.
+        $this->assertSame([1], array_keys($allocation));
         $this->assertSame(0, $allocation[1]->amount);
+        $sum = array_sum(array_map(fn (Money $m): int => $m->amount, $allocation));
+        $this->assertSame(0, $sum);
     }
 }

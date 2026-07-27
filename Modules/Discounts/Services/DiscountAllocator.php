@@ -19,10 +19,23 @@ use App\Core\Money\Money;
  * Money::allocateByRatios() already guarantees the parts sum back to the
  * original — remainder goes to the earliest buckets — so this class never
  * does its own rounding arithmetic.
+ *
+ * Exception: when every eligible line is worth nothing (line totals sum to zero),
+ * the method cannot follow any proportion and returns zeros for every line (total
+ * sum is 0, not $amount). This case is unreachable in practice: the discount
+ * amount itself is derived from these same line totals, so a zero base yields
+ * a zero discount.
  */
 final class DiscountAllocator
 {
     /**
+     * Allocates the discount across eligible lines proportionally.
+     *
+     * The returned parts sum exactly to $amount, EXCEPT when every eligible
+     * line is worth nothing — in that case every part is zero (no proportion
+     * to follow; would cause division by zero; unreachable in practice since
+     * the discount amount is derived from these same totals).
+     *
      * @param  list<DiscountLine>  $eligibleLines
      * @return array<int, Money> keyed by DiscountLine::$itemId
      */
