@@ -3,6 +3,7 @@
 namespace Tests\Feature\Modules\Checkout;
 
 use App\Core\Checkout\Contracts\CartRepository;
+use App\Core\Shipping\Contracts\CarrierRegistry;
 use App\Core\Tax\TaxRates;
 use App\Core\Tenancy\TenantContext;
 use App\Models\Tenant;
@@ -12,6 +13,7 @@ use Modules\Products\Models\Product;
 use Modules\Products\Services\ProductWriter;
 use Modules\Shipping\Models\ShippingMethod;
 use Tests\Concerns\ActivatesModules;
+use Tests\Support\FakeCarrierRegistry;
 use Tests\TestCase;
 
 class PickupPointSelectionTest extends TestCase
@@ -81,6 +83,14 @@ class PickupPointSelectionTest extends TestCase
     public function test_switching_to_a_method_without_pickup_clears_the_point(): void
     {
         $this->activateModule($this->tenant, 'shipping');
+
+        // EloquentShippingOptions::available() (wave 2.5 Task 7) only offers
+        // a Packeta method while its carrier driver actually resolves — a
+        // fake stands in here for the real driver, which is bound in a
+        // later task of this same wave.
+        $carriers = new FakeCarrierRegistry;
+        $carriers->enable(ShippingMethod::PROVIDER_PACKETA);
+        $this->app->instance(CarrierRegistry::class, $carriers);
 
         $packeta = $this->context->runAs($this->tenant, fn () => ShippingMethod::create([
             'provider' => ShippingMethod::PROVIDER_PACKETA,

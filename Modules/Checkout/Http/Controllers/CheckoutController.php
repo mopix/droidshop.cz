@@ -15,6 +15,7 @@ use App\Core\Payments\Contracts\PaymentGatewayRegistry;
 use App\Core\Payments\Exceptions\GatewayError;
 use App\Core\Shipping\Contracts\PaymentOption;
 use App\Core\Shipping\Contracts\PaymentOptions;
+use App\Core\Shipping\Contracts\PickupPointCatalog;
 use App\Core\Shipping\Contracts\ShippingOption;
 use App\Core\Shipping\Contracts\ShippingOptions;
 use Illuminate\Contracts\View\View;
@@ -55,6 +56,7 @@ class CheckoutController
         private readonly OrderPlacement $orders,
         private readonly PaymentGatewayRegistry $gateways,
         private readonly OrderSettlement $settlement,
+        private readonly PickupPointCatalog $points,
     ) {}
 
     public function shipping(Request $request): Response|RedirectResponse
@@ -110,6 +112,14 @@ class CheckoutController
             $total = $total->plus($paymentFee);
         }
 
+        // Only the code is ever stored on the cart (rozhodnutí wave 2.5);
+        // name and address are always re-read from the catalogue here, so a
+        // renamed or deactivated point never shows a stale address on this
+        // page either.
+        $pickupPoint = $cart->cartPickupPointCode() === null
+            ? null
+            : $this->points->find(ShippingMethod::PROVIDER_PACKETA, $cart->cartPickupPointCode());
+
         $view = view('checkout::checkout.shipping', [
             'cart' => $priced,
             'usingFallback' => $usingFallback,
@@ -119,6 +129,7 @@ class CheckoutController
             'selectedPayment' => $selectedPayment,
             'shippingCost' => $shippingCost,
             'total' => $total,
+            'pickupPoint' => $pickupPoint,
             'seo' => new Seo(title: 'Doprava a platba', noindex: true),
         ]);
 
