@@ -14,8 +14,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 /**
  * One way a shop delivers an order (spec §16.5).
  *
- * Personal pickup or a flat-rate carrier in this wave; the provider column
- * leaves room for API-backed carriers later without a schema change.
+ * Personal pickup, a flat-rate carrier, or an API-backed carrier (Packeta,
+ * wave 2.5); the enum provider column widens with a migration per new
+ * carrier, it does not accept arbitrary keys.
  *
  * Implements the kernel's read-only ShippingOption shape directly, the way
  * Customer implements CustomerAccount, so checkout never touches this model.
@@ -27,6 +28,8 @@ class ShippingMethod extends Model implements ShippingOption
     public const PROVIDER_PICKUP = 'pickup';
 
     public const PROVIDER_FLAT = 'flat';
+
+    public const PROVIDER_PACKETA = 'packeta';
 
     protected $guarded = [];
 
@@ -75,5 +78,13 @@ class ShippingMethod extends Model implements ShippingOption
     public function taxRateId(): ?int
     {
         return $this->tax_rate_id;
+    }
+
+    public function provider(): string
+    {
+        // Reads the raw attribute, not $this->provider: a method named the
+        // same as the column would otherwise shadow Eloquent's __get and
+        // return itself instead of the stored value.
+        return $this->attributes['provider'];
     }
 }

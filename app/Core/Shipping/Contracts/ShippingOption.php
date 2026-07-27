@@ -24,4 +24,13 @@ interface ShippingOption
     public function freeFrom(): ?Money;
 
     public function taxRateId(): ?int;
+
+    /**
+     * The carrier key behind this option (`pickup`, `flat`, `packeta`).
+     *
+     * Checkout needs it to ask CarrierRegistry whether the option requires a
+     * pickup point; it deliberately does not ask the shipping module, which
+     * knows nothing about carriers' APIs.
+     */
+    public function provider(): string;
 }
