@@ -42,14 +42,28 @@ const STATUS_LABELS: Record<string, string> = {
   // without a label here it fell through to the generic "never submitted"
   // text, which is simply false for a row that already tried once.
   submitting: 'Podání se zaseklo — zkuste znovu',
+  // A cancelled shipment is resubmittable (Shipment::isResubmittable()) and
+  // so belongs in this same queue — without its own label it fell through
+  // to the generic "never submitted" text, which is simply false for a row
+  // an admin explicitly cancelled (final review, wave 2.5).
+  cancelled: 'Zrušeno — lze podat znovu',
 }
 
 const statusLabel = (row: QueueRow) => STATUS_LABELS[row.shipment_status ?? ''] ?? 'Nikdy nepodáno'
 
-const badgeClass = (row: QueueRow) =>
-  row.shipment_status === 'failed' || row.shipment_status === 'submitting'
+// A distinct colour from `failed`/`submitting`, not just distinct text:
+// state must not be conveyed by colour alone (WCAG 1.4.1), and `cancelled`
+// is neither an error needing attention nor a stuck in-flight call — it is
+// a deliberate admin action, so it gets its own neutral grey.
+const badgeClass = (row: QueueRow) => {
+  if (row.shipment_status === 'cancelled') {
+    return 'bg-gray-100 text-gray-900 ring-gray-500/40'
+  }
+
+  return row.shipment_status === 'failed' || row.shipment_status === 'submitting'
     ? 'bg-red-50 text-red-900 ring-red-700/40'
     : 'bg-amber-50 text-amber-900 ring-amber-700/40'
+}
 
 // Czech-formatted, not the raw ISO-8601 string the server sends — this table
 // is a Czech-language admin screen, not a machine-readable export.
