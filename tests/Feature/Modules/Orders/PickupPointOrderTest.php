@@ -295,6 +295,88 @@ class PickupPointOrderTest extends TestCase
         $this->assertSame(5, $this->stockQty($product));
     }
 
+    /**
+     * Final review, wave 2.5 (merge blocker): products.weight_g defaults to
+     * 0, so a shop that never fills in product weights would otherwise hand
+     * the carrier a literal <weight>0</weight> and ship nothing. The
+     * shipping method's own "default_weight_g" (settings, admin-facing as
+     * "Použije se, pokud produkt hmotnost neuvádí") must actually be read
+     * somewhere — before this fix it had zero call sites anywhere in the
+     * codebase.
+     */
+    public function test_a_zero_weight_product_falls_back_to_the_methods_default_weight(): void
+    {
+        $this->carriers()->enable(ShippingMethod::PROVIDER_PACKETA);
+
+        // No weight_g override: the product carries the column default, 0.
+        $product = $this->context->runAs($this->tenant, fn () => app(ProductWriter::class)->create([
+            'name' => 'Klávesnice Acme',
+            'price' => 100_000,
+            'status' => Product::STATUS_ACTIVE,
+            'tax_rate_id' => $this->rateId(),
+        ]));
+
+        $shipping = $this->makePacketaShipping(['settings' => ['default_weight_g' => 850]]);
+
+        $this->addToCart($product);
+        $token = $this->cartToken();
+        $this->chooseShipping($token, $shipping->id);
+        $this->choosePickupPoint($token, '1001');
+
+        $checkoutToken = $this->checkoutToken($token);
+
+        $response = $this->withCookie('cart_token', $token)
+            ->post($this->url('/pokladna/udaje'), $this->detailsPayload($checkoutToken));
+
+        $order = $this->context->runAs($this->tenant, fn () => Order::query()->firstOrFail());
+
+        $response->assertRedirect($this->url('/dekujeme/'.$order->uuid));
+
+        $point = $order->shipping_snapshot['pickup_point'] ?? null;
+        $this->assertNotNull($point, 'shipping_snapshot must carry a pickup_point key.');
+        $this->assertSame(850, $point['weight_grams'], 'A zero-weight order must fall back to the method\'s default_weight_g, not 0.');
+    }
+
+    /**
+     * Final review, wave 2.5: ShippingOptions::find() (unlike available())
+     * does not filter on whether the method's carrier driver still resolves.
+     * Without a gate at placement, an order can end up with the Zásilkovna
+     * method in its snapshot and no pickup point anyone could ever act on —
+     * invisible to OrderBook::forShippingProvider() and unsubmittable.
+     */
+    public function test_an_order_is_rejected_when_the_carrier_driver_disappears_before_submit(): void
+    {
+        $this->carriers()->enable(ShippingMethod::PROVIDER_PACKETA);
+
+        $product = $this->makeProduct();
+        $shipping = $this->makePacketaShipping();
+
+        $this->addToCart($product);
+        $token = $this->cartToken();
+        $this->chooseShipping($token, $shipping->id);
+        $this->choosePickupPoint($token, '1001');
+
+        // Credentials removed, or the module deactivated, between the
+        // shipping step and submit — the row still exists (ShippingOptions::
+        // find() reads it regardless), but nothing can ever hand it to a
+        // carrier any more.
+        $this->carriers()->disable(ShippingMethod::PROVIDER_PACKETA);
+
+        $checkoutToken = $this->checkoutToken($token);
+
+        $response = $this->withCookie('cart_token', $token)
+            ->post($this->url('/pokladna/udaje'), $this->detailsPayload($checkoutToken));
+
+        $response->assertRedirect($this->url('/pokladna/doprava'));
+        $response->assertSessionHasErrors('shipping_method_id');
+
+        $this->assertSame(0, $this->context->runAs($this->tenant, fn () => Order::query()->count()));
+
+        // The gate fired before decrementStock(): the unit taken by nothing
+        // is still on the shelf.
+        $this->assertSame(5, $this->stockQty($product));
+    }
+
     public function test_a_method_without_a_carrier_needs_no_pickup_point(): void
     {
         // Packeta driver deliberately never enabled on the fake registry —

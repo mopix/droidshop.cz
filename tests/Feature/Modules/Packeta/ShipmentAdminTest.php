@@ -487,6 +487,57 @@ class ShipmentAdminTest extends TestCase
         );
     }
 
+    /**
+     * Final review, wave 2.5: Shipment::isResubmittable() used to exclude
+     * `cancelled` outright, and the unique (tenant_id, order_id) index means
+     * there is no second row to fall back to — a cancelled shipment (a
+     * misclick, or a genuine change of mind) was an order nobody could ever
+     * hand to the carrier again through any admin action.
+     */
+    public function test_a_cancelled_shipment_can_be_resubmitted(): void
+    {
+        $order = $this->placeOrder($this->tenant, 'KB-1');
+
+        // A true sequence (see fakeCarrierHttp()'s own note on why a second
+        // Http::fake() call never overrides an earlier '*' stub): call 1 is
+        // the initial submit's createPacket, call 2 is cancel()'s
+        // cancelPacket, call 3 is the resubmit's createPacket — deliberately
+        // different identifiers than call 1's, so an unconditional re-use of
+        // the old row would be unmistakable.
+        Http::fake(['*' => Http::sequence()
+            ->push(self::OK_RESPONSE)
+            ->push(self::OK_RESPONSE)
+            ->push('<response><status>ok</status><result><id>888</id><barcode>Z999</barcode></result></response>')]);
+
+        $shipment = $this->context->runAs(
+            $this->tenant,
+            fn () => app(ShipmentSubmitter::class)->submit($order->uuid),
+        );
+
+        $this->actingAs($this->owner)
+            ->delete($this->url('/zasilky/'.$shipment->id))
+            ->assertRedirect();
+
+        $this->context->runAs(
+            $this->tenant,
+            fn () => $this->assertSame(Shipment::STATUS_CANCELLED, $shipment->fresh()->shipmentStatus()),
+        );
+
+        $resubmit = $this->actingAs($this->owner)
+            ->post($this->url('/zasilky/podat'), ['order_uuids' => [$order->uuid]]);
+
+        $resubmit->assertRedirect();
+        $this->assertSame('Podáno 1 zásilek.', (string) session('status'));
+
+        $this->context->runAs($this->tenant, function () use ($shipment) {
+            $fresh = $shipment->fresh();
+            $this->assertSame(Shipment::STATUS_SUBMITTED, $fresh->shipmentStatus());
+            $this->assertSame('888', $fresh->packet_id);
+            $this->assertSame('Z999', $fresh->barcode);
+            $this->assertSame(1, Shipment::query()->count());
+        });
+    }
+
     public function test_a_shipment_of_another_tenant_is_not_reachable(): void
     {
         $other = Tenant::factory()->withDomain('shop2.droidshop')->create(['name' => 'Shop Two']);

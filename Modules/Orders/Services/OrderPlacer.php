@@ -12,6 +12,7 @@ use App\Core\Orders\Contracts\PlacedOrder;
 use App\Core\Orders\Exceptions\OrderPlacementUnavailable;
 use App\Core\Orders\Exceptions\PickupPointMissing;
 use App\Core\Orders\Exceptions\PriceChanged;
+use App\Core\Orders\Exceptions\ShippingMethodUnavailable;
 use App\Core\Orders\PlacementRequest;
 use App\Core\Sequences\SequenceService;
 use App\Core\Shipping\Contracts\CarrierRegistry;
@@ -27,6 +28,7 @@ use Illuminate\Support\Facades\DB;
 use Modules\Orders\Events\OrderPlaced;
 use Modules\Orders\Models\Order;
 use Modules\Orders\Models\OrderEvent;
+use Modules\Shipping\Models\ShippingMethod;
 use Modules\Storefront\Support\ShopModules;
 
 /**
@@ -390,6 +392,25 @@ class OrderPlacer implements OrderPlacement
             return [null, new Money(0, $currency)];
         }
 
+        // ShippingOptions::find() reads the raw row regardless of whether its
+        // carrier driver still resolves — unlike available(), which excludes
+        // exactly this method from what a shopper could ever pick on
+        // /pokladna/doprava (final review, wave 2.5). Without this check, a
+        // stale or crafted shipping_method_id for a broken carrier method
+        // would sail through resolvePickupPoint() below for exactly the
+        // wrong reason: no carrier resolves, so it looks identical to "this
+        // method needs no branch at all", and the order would be written
+        // with Zásilkovna in its snapshot and no pickup point anyone could
+        // ever act on.
+        $builtIn = in_array($option->provider(), [
+            ShippingMethod::PROVIDER_PICKUP,
+            ShippingMethod::PROVIDER_FLAT,
+        ], true);
+
+        if (! $builtIn && $this->carriers->for($option->provider()) === null) {
+            throw ShippingMethodUnavailable::make();
+        }
+
         // The free-shipping threshold is decided here, from the server's own
         // items_total — never from anything the client sent (spec §16.3).
         $freeFrom = $option->freeFrom();
@@ -433,6 +454,24 @@ class OrderPlacer implements OrderPlacement
             throw PickupPointMissing::make();
         }
 
+        $weightGrams = array_sum(array_column($lines, 'weight_grams'));
+
+        if ($weightGrams <= 0) {
+            // products.weight_g defaults to 0, so a shop that never fills in
+            // product weights would otherwise hand the carrier a literal
+            // <weight>0</weight> and, per PacketaClient/PacketaCarrier, ship
+            // nothing at all (final review, wave 2.5: this was the merge
+            // blocker — ShippingMethod::packetaDefaultWeightG() had zero call
+            // sites even though the admin form promises "used when the
+            // product carries none"). Resolved HERE, not in
+            // ShipmentSubmitter: shipping_snapshot['pickup_point'] is an
+            // order-time snapshot (spec §16.4), so a later edit to the
+            // method's configured default must not silently reweigh an
+            // already-placed parcel — the fallback is captured once, at
+            // placement, exactly like every other figure on this snapshot.
+            $weightGrams = $shipping->defaultWeightGrams() ?? 1000;
+        }
+
         return [
             'code' => $point->pointCode(),
             'name' => $point->pointName(),
@@ -444,7 +483,7 @@ class OrderPlacer implements OrderPlacement
             // driver a weight without re-touching the cart or the catalogue
             // (rozhodnutí wave 2.5, task-8 brief extension).
             'provider' => $carrier->key(),
-            'weight_grams' => array_sum(array_column($lines, 'weight_grams')),
+            'weight_grams' => $weightGrams,
         ];
     }
 

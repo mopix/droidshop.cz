@@ -33,4 +33,12 @@ interface ShippingOption
      * knows nothing about carriers' APIs.
      */
     public function provider(): string;
+
+    /**
+     * The parcel weight (grams) to fall back to when every line on the order
+     * carries none — `products.weight_g` defaults to 0, and a carrier cannot
+     * be handed a real 0 g parcel. Null when this option has no configured
+     * fallback (only Packeta methods do today).
+     */
+    public function defaultWeightGrams(): ?int;
 }

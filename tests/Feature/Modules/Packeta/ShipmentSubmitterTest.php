@@ -111,14 +111,14 @@ class ShipmentSubmitterTest extends TestCase
         ]);
     }
 
-    private function product(): Product
+    private function product(int $weightG = 200): Product
     {
         return app(ProductWriter::class)->create([
             'name' => 'Klávesnice Acme',
             'price' => 100_000, // 1 000,00 Kč
             'status' => Product::STATUS_ACTIVE,
             'tax_rate_id' => app(TaxRates::class)->default()->id,
-            'weight_g' => 200,
+            'weight_g' => $weightG,
         ]);
     }
 
@@ -127,9 +127,9 @@ class ShipmentSubmitterTest extends TestCase
      * delivery with pickup point `1001` already chosen, unless the caller
      * passes null for a shipping method that needs no branch at all.
      */
-    private function placeOrder(ShippingMethod $shipping, PaymentMethod $payment, ?string $pickupCode = '1001'): Order
+    private function placeOrder(ShippingMethod $shipping, PaymentMethod $payment, ?string $pickupCode = '1001', int $productWeightG = 200): Order
     {
-        $product = $this->product();
+        $product = $this->product($productWeightG);
 
         $cart = app(CartRepository::class)->forToken(null);
         app(CartRepository::class)->addItem($cart, $product->id, 1);
@@ -470,6 +470,80 @@ class ShipmentSubmitterTest extends TestCase
         $this->assertTrue($shipment->shipmentCodAmount()->isZero());
 
         Http::assertSent(fn ($request) => ! str_contains($request->body(), '<cod>'));
+    }
+
+    /**
+     * Final review, wave 2.5 (merge blocker): products.weight_g defaults to
+     * 0, so an order made up entirely of zero-weight lines must not reach the
+     * carrier at <weight>0</weight> — Modules\Orders\Services\OrderPlacer::
+     * resolvePickupPoint() is where the fallback actually lands (an
+     * order-time snapshot), and this proves it survives all the way to the
+     * XML PacketaClient sends.
+     */
+    public function test_a_zero_weight_order_sends_the_methods_default_weight_to_the_carrier(): void
+    {
+        $tenant = $this->tenant();
+        $this->context->set($tenant);
+
+        $this->pickupPoint();
+        $shipping = ShippingMethod::create([
+            'provider' => ShippingMethod::PROVIDER_PACKETA,
+            'name' => 'Zásilkovna',
+            'price' => 5_900,
+            'is_active' => true,
+            'settings' => ['api_password' => 's3cr3t', 'eshop' => 'esh-1', 'default_weight_g' => 850],
+        ]);
+        $payment = $this->paymentMethod(PaymentMethod::PROVIDER_COD, 'Dobírka');
+
+        // weight_g deliberately left at its column default (0).
+        $order = $this->placeOrder($shipping, $payment, productWeightG: 0);
+
+        $this->assertSame(850, $order->shipping_snapshot['pickup_point']['weight_grams']);
+
+        Http::fake(['*' => Http::response(self::OK_RESPONSE)]);
+
+        app(ShipmentSubmitter::class)->submit($order->uuid);
+
+        Http::assertSent(fn ($request) => str_contains($request->body(), '<weight>0.85</weight>'));
+    }
+
+    /**
+     * Final review, wave 2.5: cod_amount was only ever snapshotted once, at
+     * the shipment row's first claim — a retry after the order's total
+     * changed (Modules\Orders\Services\OrderEditor) must carry the CURRENT
+     * total to the door, not the stale one, since PacketaCarrier::submit()
+     * derives `value` from the same order's live orderTotal().
+     */
+    public function test_retrying_after_the_order_total_changed_sends_the_new_cod_amount(): void
+    {
+        $tenant = $this->tenant();
+        $this->context->set($tenant);
+        $order = $this->readyOrder();
+
+        Http::fake(['*' => Http::sequence()
+            ->push(self::FAULT_RESPONSE)
+            ->push(self::OK_RESPONSE)]);
+
+        try {
+            app(ShipmentSubmitter::class)->submit($order->uuid);
+            $this->fail('Expected a CarrierError for a fault response.');
+        } catch (CarrierError) {
+            // expected — the shipment is now `failed`, cod_amount still the
+            // order's original total.
+        }
+
+        // The order is edited after the failed attempt (a price correction);
+        // its total changes.
+        $newTotal = $order->total->amount + 10_000;
+        Order::query()->whereKey($order->id)->update(['total' => $newTotal]);
+        $order->refresh();
+
+        $retried = app(ShipmentSubmitter::class)->submit($order->uuid);
+
+        $this->assertTrue($retried->shipmentCodAmount()->equals($order->total));
+
+        $expectedCrowns = number_format($newTotal / 100, 2, '.', '');
+        Http::assertSent(fn ($request) => str_contains($request->body(), '<cod>'.$expectedCrowns.'</cod>'));
     }
 
     public function test_a_shipment_of_another_tenant_cannot_be_submitted(): void

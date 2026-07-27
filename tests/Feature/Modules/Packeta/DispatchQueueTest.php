@@ -342,6 +342,39 @@ class DispatchQueueTest extends TestCase
             });
     }
 
+    /**
+     * Final review, wave 2.5: isResubmittable() now counts `cancelled` as
+     * eligible again (mirrors Modules\Packeta\Services\ShipmentSubmitter::
+     * claimForSubmission()'s own WHERE clause) — a cancelled shipment must
+     * reappear here, the only admin surface that can ever submit an order to
+     * the carrier again.
+     */
+    public function test_a_cancelled_shipment_belongs_in_the_queue(): void
+    {
+        $order = $this->placeOrder($this->tenant, 'KB-1');
+
+        $this->context->runAs($this->tenant, fn () => Shipment::create([
+            'order_id' => $order->id,
+            'carrier' => ShippingMethod::PROVIDER_PACKETA,
+            'status' => Shipment::STATUS_CANCELLED,
+            'packet_id' => '999',
+            'barcode' => 'Z1234567890',
+            'cod_amount' => Money::fromMajor(0, 'CZK'),
+            'currency' => 'CZK',
+            'weight_grams' => 200,
+        ]));
+
+        $this->actingAs($this->owner)
+            ->get($this->url('/expedice'))
+            ->assertInertia(function (AssertableInertia $page) use ($order) {
+                $page->where('orders', function ($orders) use ($order) {
+                    $this->assertTrue(collect($orders)->pluck('uuid')->contains($order->uuid));
+
+                    return true;
+                });
+            });
+    }
+
     public function test_the_queue_requires_the_ship_permission(): void
     {
         $staff = $this->staffWith([]);

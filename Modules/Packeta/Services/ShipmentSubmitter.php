@@ -138,6 +138,18 @@ final class ShipmentSubmitter
             return $shipment->refresh();
         }
 
+        // cod_amount was only ever snapshotted once, at the row's first
+        // claim() (below) — a retry after the order was edited (Modules\
+        // Orders\Services\OrderEditor can change the total) must not carry
+        // that stale figure to the carrier, while PacketaCarrier::submit()
+        // derives its `value` field from the SAME order's live
+        // orderTotal(). Recomputed here, exclusively: claimForSubmission()
+        // just won this row via its atomic compare-and-swap, so no other
+        // request can be mid-flight on it, and this still runs before the
+        // HTTP call on a genuinely first attempt too (same figure, one
+        // extra idempotent write).
+        $shipment = $this->refreshCodAmount($shipment, $order);
+
         try {
             $result = $carrier->submit(
                 $order,
@@ -196,6 +208,14 @@ final class ShipmentSubmitter
                 'status' => Shipment::STATUS_PENDING,
                 'cod_amount' => $this->codAmount($order),
                 'currency' => $order->orderCurrency(),
+                // Modules\Orders\Services\OrderPlacer::resolvePickupPoint()
+                // already applies the shipping method's own configured
+                // fallback (or a last-resort 1000g) whenever every line's
+                // product carries no weight, so weight_grams here is never
+                // actually 0 for an order placed after that fix. The `?? 1000`
+                // is kept only as a guard for an order snapshot written before
+                // this fix shipped (final review, wave 2.5) — it must never be
+                // the thing that actually supplies a real order's weight.
                 'weight_grams' => (int) ($pickupPoint['weight_grams'] ?? 1000),
             ]);
         } catch (UniqueConstraintViolationException) {
@@ -240,7 +260,12 @@ final class ShipmentSubmitter
         $affected = Shipment::query()
             ->whereKey($shipment->getKey())
             ->where(function (Builder $query) use ($staleBefore): void {
-                $query->whereIn('status', [Shipment::STATUS_PENDING, Shipment::STATUS_FAILED])
+                // STATUS_CANCELLED joins pending/failed here (final review,
+                // wave 2.5): ShipmentAdminController::cancel() is the only
+                // other writer of this row, and without this a cancelled
+                // shipment could never be reclaimed — Shipment::isResubmittable()
+                // mirrors the exact same set for the same reason.
+                $query->whereIn('status', [Shipment::STATUS_PENDING, Shipment::STATUS_FAILED, Shipment::STATUS_CANCELLED])
                     ->orWhere(function (Builder $query) use ($staleBefore): void {
                         $query->where('status', Shipment::STATUS_SUBMITTING)
                             ->where('claimed_at', '<', $staleBefore);
@@ -291,6 +316,26 @@ final class ShipmentSubmitter
         }
 
         $shipment->forceFill($attributes);
+
+        return $shipment;
+    }
+
+    /**
+     * Writes the order's CURRENT COD figure onto the row this request
+     * exclusively holds (a plain UPDATE, not a compare-and-swap: nothing else
+     * may be touching this row between claimForSubmission() and writeOutcome(),
+     * so there is no race to fence against here). The raw minor-unit amount,
+     * not the Money object, goes into the query builder's update() array —
+     * Eloquent's mass update() does not run attribute casts, only
+     * Connection::prepareBindings()'s special cases (DateTimeInterface,
+     * bool), so a Money object would bind as an unusable value.
+     */
+    private function refreshCodAmount(Shipment $shipment, OrderView $order): Shipment
+    {
+        $codAmount = $this->codAmount($order);
+
+        Shipment::query()->whereKey($shipment->getKey())->update(['cod_amount' => $codAmount->amount]);
+        $shipment->setAttribute('cod_amount', $codAmount);
 
         return $shipment;
     }

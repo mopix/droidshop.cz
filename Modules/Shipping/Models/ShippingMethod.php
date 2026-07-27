@@ -94,6 +94,11 @@ class ShippingMethod extends Model implements ShippingOption
         return $this->attributes['provider'];
     }
 
+    public function defaultWeightGrams(): ?int
+    {
+        return $this->packetaDefaultWeightG();
+    }
+
     /**
      * The Packeta API key — not a secret, shown in the admin so the shop can
      * see which account is wired. Null for any other provider.

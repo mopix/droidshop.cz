@@ -121,11 +121,20 @@ class Shipment extends Model implements ShipmentView
 
     /**
      * True when Modules\Packeta\Services\ShipmentSubmitter::submit() would
-     * actually accept another attempt at this row: `pending`/`failed`
-     * unconditionally, or a `submitting` row whose claim is older than
-     * staleBefore() — mirroring claimForSubmission()'s own WHERE clause so
-     * the two can never quietly disagree about which shipments are still
+     * actually accept another attempt at this row: `pending`/`failed`/
+     * `cancelled` unconditionally, or a `submitting` row whose claim is older
+     * than staleBefore() — mirroring claimForSubmission()'s own WHERE clause
+     * so the two can never quietly disagree about which shipments are still
      * retryable.
+     *
+     * `cancelled` counts on purpose (final review, wave 2.5): before this, a
+     * shipment cancelled through ShipmentAdminController::cancel() — a
+     * misclick, or a genuine change of mind that the order should ship after
+     * all — could never be handed to the carrier again. The dispatch queue
+     * excludes anything not resubmittable, and the unique (tenant_id,
+     * order_id) index means there is no second row to fall back to, so a
+     * cancelled shipment was an order silently stuck outside every admin
+     * action forever.
      *
      * Deliberately NOT itself a claim: this is a plain read over an
      * already-loaded model, used by the dispatch queue listing to decide
@@ -136,7 +145,7 @@ class Shipment extends Model implements ShipmentView
      */
     public function isResubmittable(): bool
     {
-        if (in_array($this->shipmentStatus(), [self::STATUS_PENDING, self::STATUS_FAILED], true)) {
+        if (in_array($this->shipmentStatus(), [self::STATUS_PENDING, self::STATUS_FAILED, self::STATUS_CANCELLED], true)) {
             return true;
         }
 
