@@ -316,6 +316,68 @@ class ShipmentSubmitterTest extends TestCase
         Http::assertNothingSent();
     }
 
+    /**
+     * Fix round 3/5: staleness reclaim (fix round 2/5) opened a write-side
+     * gap of its own. Request A's claim can go stale — and be legitimately
+     * reclaimed and finished by request B — without A ever having crashed:
+     * A might just be slower than submit_stale_after_minutes (a stalled
+     * worker, a GC pause, or a misconfigured PACKETA_TIMEOUT above the
+     * threshold). When A's own delayed HTTP answer finally comes back, its
+     * write must not land on a row B already finished.
+     *
+     * Time travel (not an actual sleep) simulates the wall-clock gap: the
+     * fake HTTP handler for request A's own call is where, mid-flight, time
+     * jumps forward past the staleness threshold and request B runs to
+     * completion — exactly the moment A's claim is old enough for B to
+     * legitimately reclaim it. A's own (late) answer is deliberately a
+     * different packet_id/barcode than B's, so an unconditional write would
+     * be unmistakable.
+     */
+    public function test_a_delayed_write_after_being_reclaimed_does_not_overwrite_the_winner(): void
+    {
+        $tenant = $this->tenant();
+        $this->context->set($tenant);
+        $order = $this->readyOrder();
+
+        $threshold = (int) config('packeta.submit_stale_after_minutes');
+        $winnerRan = false;
+
+        Http::fake(function () use ($threshold, $order, &$winnerRan) {
+            if (! $winnerRan) {
+                $winnerRan = true;
+
+                // Request A's claim (made moments ago, at real "now") is now
+                // old enough for request B to legitimately reclaim it — A is
+                // simply slower than the threshold, not crashed.
+                $this->travelTo(now()->addMinutes($threshold + 5));
+
+                $winner = app(ShipmentSubmitter::class)->submit($order->uuid);
+                $this->assertSame(Shipment::STATUS_SUBMITTED, $winner->shipmentStatus());
+                $this->assertSame('777', $winner->shipmentPacketId());
+
+                // A's own answer, arriving after B has already finished —
+                // deliberately different identifiers than B's.
+                return Http::response(
+                    '<response><status>ok</status><result><id>999</id><barcode>LATE</barcode></result></response>'
+                );
+            }
+
+            return Http::response(self::OK_RESPONSE);
+        });
+
+        $delayed = app(ShipmentSubmitter::class)->submit($order->uuid);
+
+        $this->assertTrue($winnerRan, 'The reclaiming submit() never ran inside the fake HTTP handler.');
+
+        // The delayed request's own write must be a no-op: it hands back the
+        // winner's row (B's packet_id/barcode), never its own late answer.
+        $this->assertSame('777', $delayed->shipmentPacketId());
+        $this->assertSame('Z123', $delayed->shipmentBarcode());
+        $this->assertSame(Shipment::STATUS_SUBMITTED, $delayed->shipmentStatus());
+        $this->assertSame(1, Shipment::count());
+        Http::assertSentCount(2);
+    }
+
     public function test_a_carrier_error_marks_the_shipment_failed_and_keeps_it_retryable(): void
     {
         $tenant = $this->tenant();

@@ -50,6 +50,22 @@ use Modules\Shipping\Models\PaymentMethod;
  * exactly like a `pending`/`failed` one. A fresh `submitting` row (a live
  * request still genuinely in flight) stays excluded, so the exclusivity fix
  * round 1/5 added is unaffected: at most one request wins per claim window.
+ *
+ * Fix round 3/5: staleness reclaim opened its own gap. A request does not
+ * have to crash to outlive the threshold — a stalled worker, a GC pause, or
+ * simply PACKETA_TIMEOUT configured above submit_stale_after_minutes (this
+ * class does not validate that the two stay ordered) lets a request survive
+ * past the point another request is allowed to reclaim its row. If that
+ * second request finishes first, the original request's own final write was,
+ * until this fix, unconditional — its forceFill()->save() would land on the
+ * primary key regardless of what happened in between, silently overwriting a
+ * second real packet_id or resurrecting an already-submitted shipment back to
+ * `failed`. writeOutcome() below closes this the same way claimForSubmission()
+ * closes the call side: a write only lands if the row still holds the exact
+ * `submitting` + `claimed_at` pair this request's own claim produced: a
+ * conditional UPDATE, not another read-then-write. A write that loses this
+ * race is a no-op; the caller gets the row's actual current state back
+ * instead of its own now-irrelevant answer.
  */
 final class ShipmentSubmitter
 {
@@ -114,23 +130,25 @@ final class ShipmentSubmitter
                 (int) $shipment->weight_grams,
             );
         } catch (CarrierError $e) {
-            $shipment->forceFill([
+            // The write is best-effort here: this request's own outcome is
+            // "carrier rejected it" regardless of whether the write below
+            // actually lands, so $e is always rethrown even when
+            // writeOutcome() finds the row already moved on.
+            $this->writeOutcome($shipment, [
                 'status' => Shipment::STATUS_FAILED,
                 'error' => $e->getMessage(),
-            ])->save();
+            ]);
 
             throw $e;
         }
 
-        $shipment->forceFill([
+        return $this->writeOutcome($shipment, [
             'status' => Shipment::STATUS_SUBMITTED,
             'packet_id' => $result->packetId,
             'barcode' => $result->barcode,
             'error' => null,
             'submitted_at' => now(),
-        ])->save();
-
-        return $shipment;
+        ]);
     }
 
     /**
@@ -220,6 +238,40 @@ final class ShipmentSubmitter
         $shipment->setAttribute('claimed_at', $now);
 
         return true;
+    }
+
+    /**
+     * Writes this request's carrier outcome (success or failure) only if the
+     * row still holds exactly the `submitting` + `claimed_at` pair this
+     * request's own claimForSubmission() produced — the write-side half of
+     * the same compare-and-swap (fix round 3/5). `claimed_at` is the
+     * discriminator, not just `status`: a third request could have reclaimed
+     * and be mid-flight again by the time this one finally writes, and that
+     * row is `submitting` too, just with a newer `claimed_at` this request
+     * never earned.
+     *
+     * A losing write means some other request's outcome — completed
+     * (`submitted`/`failed`) or in flight (`submitting` again) — is the
+     * current truth, so the fresh row from the database is returned rather
+     * than the caller's own (now stale) answer.
+     *
+     * @param  array<string, mixed>  $attributes
+     */
+    private function writeOutcome(Shipment $shipment, array $attributes): Shipment
+    {
+        $affected = Shipment::query()
+            ->whereKey($shipment->getKey())
+            ->where('status', Shipment::STATUS_SUBMITTING)
+            ->where('claimed_at', $shipment->claimed_at)
+            ->update($attributes);
+
+        if ($affected !== 1) {
+            return $shipment->refresh();
+        }
+
+        $shipment->forceFill($attributes);
+
+        return $shipment;
     }
 
     private function codAmount(OrderView $order): Money
