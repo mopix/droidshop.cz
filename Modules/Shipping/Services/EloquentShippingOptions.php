@@ -37,13 +37,21 @@ class EloquentShippingOptions implements ShippingOptions
         // would have no way to pick a branch. The tenant's own configuration
         // stays untouched — switch the carrier back on and the method
         // returns, since this filters the read, not the row.
-        return $methods->filter(function (ShippingMethod $method) {
+        //
+        // available() (not a per-method for() call) is exactly "provider keys
+        // that are both running and configured" — its own docblock — computed
+        // once outside the filter rather than once per method (final review,
+        // wave 2.5: CarrierRegistry::available() had zero call sites before
+        // this).
+        $activeProviders = $this->carriers->available();
+
+        return $methods->filter(function (ShippingMethod $method) use ($activeProviders) {
             $builtIn = in_array($method->provider(), [
                 ShippingMethod::PROVIDER_PICKUP,
                 ShippingMethod::PROVIDER_FLAT,
             ], true);
 
-            return $builtIn || $this->carriers->for($method->provider()) !== null;
+            return $builtIn || in_array($method->provider(), $activeProviders, true);
         })->values();
     }
 

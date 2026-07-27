@@ -156,6 +156,12 @@ function initPacketaWidget() {
     };
 
     button.addEventListener('click', () => {
+        // A previous attempt's failure text (set in the .catch() below) must
+        // never linger past the shopper trying again — every click starts by
+        // clearing it back to the original label first, so a retry that also
+        // fails still visibly restarted rather than looking permanently
+        // stuck on the same error message.
+        button.textContent = idleText;
         button.disabled = true;
         // A bare aria-busy toggle is not reliably announced by screen
         // readers; the mount carries aria-live="polite", so changing the
