@@ -82,4 +82,17 @@ interface CartRepository
      * the option itself, read fresh, wherever a total is shown.
      */
     public function chooseShipping(CartShape $cart, ?int $shippingMethodId, ?int $paymentMethodId): void;
+
+    /**
+     * Persists the pickup point chosen for a carrier that requires one.
+     *
+     * The caller has already resolved the code against PickupPointCatalog;
+     * this method writes what it is given and nothing else. Null clears the
+     * choice. This method deliberately gains no dependency on ShippingOptions
+     * to clear the point itself when the shopper switches away from a carrier
+     * that needs one — that comparison belongs to the caller (e.g.
+     * CheckoutController::chooseShipping(), which already holds
+     * ShippingOptions), not to this repository.
+     */
+    public function choosePickupPoint(CartShape $cart, ?string $code): void;
 }

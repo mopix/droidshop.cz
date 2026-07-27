@@ -102,4 +102,9 @@ class Cart extends Model implements CartShape
     {
         return $this->payment_method_id !== null ? (int) $this->payment_method_id : null;
     }
+
+    public function cartPickupPointCode(): ?string
+    {
+        return $this->pickup_point_code;
+    }
 }

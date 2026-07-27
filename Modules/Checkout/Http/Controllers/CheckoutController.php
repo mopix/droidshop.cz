@@ -29,6 +29,7 @@ use Modules\Checkout\Http\Requests\PlaceOrderRequest;
 use Modules\Checkout\Services\CartPricer;
 use Modules\Checkout\Support\CartCookie;
 use Modules\Checkout\Support\PricedCart;
+use Modules\Shipping\Models\ShippingMethod;
 use Modules\Storefront\Support\Seo;
 
 /**
@@ -136,6 +137,19 @@ class CheckoutController
         $paymentId = $request->filled('payment_method_id') ? $request->integer('payment_method_id') : null;
 
         $this->carts->chooseShipping($cart, $shippingId, $paymentId);
+
+        // A pickup point belongs to the method it was chosen for. Leaving it
+        // behind when the shopper switches to a carrier that does not use one
+        // would carry a stale branch into an order nobody selected for it.
+        // CartRepository::chooseShipping() deliberately does not do this
+        // itself (it would need a new dependency on ShippingOptions just to
+        // look the method up) — this controller already holds that contract,
+        // so the comparison lives here instead.
+        $method = $shippingId !== null ? $this->shippingOptions->find($shippingId) : null;
+
+        if ($method?->provider() !== ShippingMethod::PROVIDER_PACKETA) {
+            $this->carts->choosePickupPoint($cart, null);
+        }
 
         return CartCookie::attach(
             redirect()->route('storefront.checkout.shipping'),
