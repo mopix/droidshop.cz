@@ -16,7 +16,6 @@
     ],
     "listens": [],
     "permissions": [
-        "packeta.manage",
         "packeta.ship"
     ],
     "settings_schema": null,
