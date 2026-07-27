@@ -12,6 +12,7 @@ use App\Models\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use LogicException;
 use Modules\Orders\Models\Order;
 use Modules\Packeta\Models\PickupPoint;
 use Modules\Packeta\Models\Shipment;
@@ -491,5 +492,38 @@ class ShipmentSubmitterTest extends TestCase
 
         $this->assertSame(0, DB::table('shipments')->count());
         Http::assertNothingSent();
+    }
+
+    /**
+     * Fix round 4/5: staleness reclaim is only safe because
+     * packeta.submit_stale_after_minutes sits comfortably above
+     * packeta.timeout (30s vs 15min by default). Configuring the threshold
+     * below the timeout would let a call still genuinely in flight be
+     * reclaimed and submitted a second time — the exact bug fix round 1/5
+     * closed, reopened behind a config knob. ShipmentSubmitter refuses to
+     * construct at all in that case, before touching the database or the
+     * carrier.
+     */
+    public function test_a_stale_threshold_below_the_http_timeout_fails_fast_before_any_http_call(): void
+    {
+        $tenant = $this->tenant();
+        $this->context->set($tenant);
+        $order = $this->readyOrder();
+
+        // packeta.timeout defaults to 30s; a 0-minute threshold is nowhere
+        // near double that.
+        config()->set('packeta.submit_stale_after_minutes', 0);
+
+        Http::fake(['*' => Http::response(self::OK_RESPONSE)]);
+
+        try {
+            app(ShipmentSubmitter::class)->submit($order->uuid);
+            $this->fail('Expected a LogicException for a staleness threshold below the HTTP timeout.');
+        } catch (LogicException) {
+            // expected — a configuration error, not a carrier error.
+        }
+
+        Http::assertNothingSent();
+        $this->assertSame(0, Shipment::count());
     }
 }

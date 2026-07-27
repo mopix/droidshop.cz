@@ -9,6 +9,7 @@ use App\Core\Shipping\Contracts\CarrierRegistry;
 use App\Core\Shipping\Exceptions\CarrierError;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\UniqueConstraintViolationException;
+use LogicException;
 use Modules\Packeta\Models\Shipment;
 use Modules\Shipping\Models\PaymentMethod;
 
@@ -66,13 +67,28 @@ use Modules\Shipping\Models\PaymentMethod;
  * conditional UPDATE, not another read-then-write. A write that loses this
  * race is a no-op; the caller gets the row's actual current state back
  * instead of its own now-irrelevant answer.
+ *
+ * Fix round 4/5: fix round 3/5 protects the database — exactly one row ever
+ * holds the truth — but the note left in fix round 3/5's own docblock is a
+ * real operational hole, not just a comment: if a call is genuinely still
+ * running when the staleness threshold lets a second request reclaim it, the
+ * CARRIER — not just our database — ends up holding two real parcels for one
+ * order, one of them orphaned (no packet_id ever lands here, and a COD one
+ * bills the shopper twice at the door). That can only happen if
+ * submit_stale_after_minutes is not safely above packeta.timeout, so
+ * assertStalenessThresholdIsSafe() below refuses to construct this class at
+ * all when the two are not ordered with a comfortable margin, rather than
+ * letting a bad deploy config quietly reopen fix round 0/1's bug in
+ * production.
  */
 final class ShipmentSubmitter
 {
     public function __construct(
         private readonly OrderBook $orders,
         private readonly CarrierRegistry $carriers,
-    ) {}
+    ) {
+        $this->assertStalenessThresholdIsSafe();
+    }
 
     public function submit(string $orderUuid): Shipment
     {
@@ -280,5 +296,48 @@ final class ShipmentSubmitter
         $isCod = ($payment['provider'] ?? null) === PaymentMethod::PROVIDER_COD;
 
         return $isCod ? $order->orderTotal() : new Money(0, $order->orderCurrency());
+    }
+
+    /**
+     * Fail-fast guard (fix round 4/5): refuses to let this class run at all
+     * unless the staleness threshold sits comfortably above the HTTP
+     * timeout — checked once per instantiation (this class is resolved
+     * fresh per submit() call, so the cost is one config read, not a hot
+     * loop), before anything ever touches the database or the carrier.
+     *
+     * Doubling the timeout, not just clearing it by a second or two, is the
+     * margin: a request's actual wall-clock exposure is the HTTP call itself
+     * PLUS whatever claim()/claimForSubmission() took before it and
+     * writeOutcome() takes after it, PLUS ordinary scheduling delay on a
+     * busy worker — none of which this class can bound, and none of which
+     * the staleness threshold is allowed to ignore. A margin of "a few
+     * seconds" would work today and fail the first time a deploy is slow.
+     *
+     * A plain LogicException, not CarrierError: the tenant did nothing
+     * wrong here and "the carrier failed" would be the wrong story to tell
+     * them — this is an ops misconfiguration (packeta.timeout and
+     * packeta.submit_stale_after_minutes disagreeing) that has to be fixed
+     * in the deploy, not retried by a shopper, so it must not be caught by
+     * whatever a caller's CarrierError handler does.
+     */
+    private function assertStalenessThresholdIsSafe(): void
+    {
+        $timeoutSeconds = (int) config('packeta.timeout');
+        $staleAfterMinutes = (int) config('packeta.submit_stale_after_minutes');
+        $thresholdSeconds = $staleAfterMinutes * 60;
+        $requiredSeconds = $timeoutSeconds * 2;
+
+        if ($thresholdSeconds < $requiredSeconds) {
+            throw new LogicException(sprintf(
+                'packeta.submit_stale_after_minutes (%d min = %d s) is not comfortably above '.
+                'packeta.timeout (%d s): a carrier call still within its timeout could be reclaimed '.
+                'and submitted a second time, billing the shopper twice at the door for a COD parcel. '.
+                'Raise submit_stale_after_minutes to at least %d minutes, or lower packeta.timeout.',
+                $staleAfterMinutes,
+                $thresholdSeconds,
+                $timeoutSeconds,
+                (int) ceil($requiredSeconds / 60),
+            ));
+        }
     }
 }
