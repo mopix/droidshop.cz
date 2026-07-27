@@ -79,10 +79,20 @@ form.transform((data) => {
     settings: data.provider === PROVIDER_PICKUP ? data.settings : null,
   }
 
-  // The stored Packeta password must never be blanked by saving an untouched
-  // form: an empty value is dropped from the payload, so the server keeps the
-  // one it holds. On create, dropping it lets the required rule fire.
-  if (typeof out.api_password !== 'string' || (out.api_password as string).trim() === '') {
+  // Packeta credentials belong to that provider only. ShippingMethod has no
+  // $fillable guard, so stray api_key/eshop/default_weight_g reaching the
+  // writer for a flat/pickup method would hit an "Unknown column" SQL error —
+  // these are not table columns, only settings the writer folds for packeta.
+  if (data.provider !== PROVIDER_PACKETA) {
+    delete out.api_key
+    delete out.eshop
+    delete out.default_weight_g
+    delete out.api_password
+  } else if (typeof out.api_password !== 'string' || (out.api_password as string).trim() === '') {
+    // The stored Packeta password must never be blanked by saving an
+    // untouched form: an empty value is dropped from the payload, so the
+    // server keeps the one it holds. On create, dropping it lets the
+    // required rule fire.
     delete out.api_password
   }
 

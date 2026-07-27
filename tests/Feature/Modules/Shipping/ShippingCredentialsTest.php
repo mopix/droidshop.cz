@@ -180,4 +180,44 @@ class ShippingCredentialsTest extends TestCase
             )
             ->assertDontSee('super-secret-password');
     }
+
+    /**
+     * The admin form's fields for api_key/eshop/default_weight_g/api_password
+     * are bound in Vue state regardless of the chosen provider (only their
+     * visibility toggles). If the request transform ever fails to strip them
+     * for a non-packeta provider, these are not columns on shipping_methods —
+     * and the model has no $fillable guard — so create()/fill() blows up with
+     * an "Unknown column" SQL error. This posts exactly what an unguarded
+     * form would send for a flat method and asserts the write still succeeds.
+     */
+    public function test_a_flat_method_survives_stray_packeta_fields_in_the_request(): void
+    {
+        $strayFields = [
+            'provider' => ShippingMethod::PROVIDER_FLAT,
+            'name' => 'Kurýr',
+            'price' => 9900,
+            'is_active' => true,
+            'api_key' => 'stray-key',
+            'eshop' => 'stray-eshop',
+            'default_weight_g' => 750,
+            'api_password' => 'stray-password',
+        ];
+
+        $this->actingAs($this->owner)
+            ->post($this->url('/zpusoby-dopravy'), $strayFields)
+            ->assertRedirect()
+            ->assertSessionHasNoErrors();
+
+        $method = $this->context->runAs(
+            $this->tenant,
+            fn () => ShippingMethod::query()->where('name', 'Kurýr')->firstOrFail(),
+        );
+
+        $this->assertSame(ShippingMethod::PROVIDER_FLAT, $method->provider());
+
+        $this->actingAs($this->owner)
+            ->put($this->url('/zpusoby-dopravy/'.$method->id), $strayFields)
+            ->assertRedirect()
+            ->assertSessionHasNoErrors();
+    }
 }

@@ -70,6 +70,14 @@ class ShippingMethodWriter
             $attributes['settings'] = null;
         }
 
+        // Packeta credentials are not table columns — foldSettings() is the
+        // only place that ever folds them into settings. The request rules
+        // still accept them for a flat/pickup method (they are nullable, not
+        // scoped to provider=packeta), and the model has no $fillable guard.
+        // Left in place, a stray api_key/eshop/default_weight_g/api_password
+        // would reach create()/fill() and fail as an unknown column.
+        unset($attributes['api_key'], $attributes['eshop'], $attributes['default_weight_g'], $attributes['api_password']);
+
         return $attributes;
     }
 
