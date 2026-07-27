@@ -11,6 +11,9 @@ namespace Modules\Shipping\Http\Requests;
  */
 class UpdatePaymentMethodRequest extends StorePaymentMethodRequest
 {
+    // account and secret are excluded from session flash app-wide
+    // (bootstrap/app.php); see StorePaymentMethodRequest.
+
     /**
      * @return array<int, mixed>
      */

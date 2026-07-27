@@ -46,4 +46,9 @@ final class NullOrderBook implements OrderBook
     {
         return null;
     }
+
+    public function forShippingProvider(string $provider): Collection
+    {
+        return new Collection;
+    }
 }

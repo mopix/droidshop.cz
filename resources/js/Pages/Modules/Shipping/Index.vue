@@ -17,6 +17,7 @@ const props = defineProps<{
 const SHIPPING_PROVIDERS: Record<string, string> = {
   pickup: 'Osobní odběr',
   flat: 'Dopravce (pevná cena)',
+  packeta: 'Zásilkovna',
 }
 
 const PAYMENT_PROVIDERS: Record<string, string> = {

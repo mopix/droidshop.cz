@@ -41,4 +41,23 @@ interface OrderBook
      * every read here.
      */
     public function findByReference(string $reference): ?OrderView;
+
+    /**
+     * Placed, not-cancelled orders whose recorded shipping choice pins them to
+     * the given carrier provider key (e.g. "packeta") — read straight off the
+     * order's own `shipping_snapshot['pickup_point']['provider']` (see
+     * Modules\Orders\Services\OrderPlacer::resolvePickupPoint()).
+     *
+     * Wave 2.5, task 14 (dispatch queue): deliberately answers only "which
+     * orders picked this carrier", never "which of those still need a parcel
+     * handed over". The latter needs Modules\Packeta\Models\Shipment's own
+     * status, and that table belongs to the packeta module, not to orders —
+     * teaching OrderBook to join against it would tie the kernel's read
+     * contract, and every future carrier module, to one carrier's schema.
+     * Modules\Packeta\Http\Controllers\DispatchQueueController narrows this
+     * collection further against its own Shipment rows instead.
+     *
+     * @return Collection<int, OrderView>
+     */
+    public function forShippingProvider(string $provider): Collection;
 }

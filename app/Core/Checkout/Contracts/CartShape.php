@@ -53,4 +53,13 @@ interface CartShape
 
     /** The payment method chosen alongside the shipping method, or null. */
     public function cartPaymentMethodId(): ?int;
+
+    /**
+     * The carrier code of the chosen pickup point, or null.
+     *
+     * Only the code is ever stored: the point's name and address are re-read
+     * from the catalogue wherever they are shown, so a renamed or moved point
+     * never leaves a stale address in a live cart.
+     */
+    public function cartPickupPointCode(): ?string;
 }

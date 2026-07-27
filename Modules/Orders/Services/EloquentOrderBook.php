@@ -99,4 +99,27 @@ class EloquentOrderBook implements OrderBook
 
         return Order::query()->where('payment_reference', $reference)->first();
     }
+
+    /**
+     * @return Collection<int, OrderView>
+     */
+    public function forShippingProvider(string $provider): Collection
+    {
+        if (! $this->modules->has('orders')) {
+            return new Collection;
+        }
+
+        // The provider key sits inside the JSON snapshot, nested under
+        // pickup_point (only carriers that deliver to a branch have one —
+        // see Order::orderShippingSnapshot()'s docblock), so the path has to
+        // be walked with Eloquent's `->` JSON operator rather than a plain
+        // column match. Cancelled orders are excluded: nothing is left to
+        // hand over once an order was called off, so a cancelled order must
+        // never surface as something the shop still owes the carrier.
+        return Order::query()
+            ->where('fulfillment_status', '!=', Order::FULFILLMENT_CANCELLED)
+            ->where('shipping_snapshot->pickup_point->provider', $provider)
+            ->oldest('placed_at')
+            ->get();
+    }
 }

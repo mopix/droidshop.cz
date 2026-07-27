@@ -30,7 +30,8 @@ const user = computed(() => (page.props.auth as { user?: { name: string } }).use
 const tenant = computed(() => (page.props.tenant as TenantProps | null) ?? null)
 
 const flash = computed(
-  () => (page.props.flash as { success?: string; error?: string } | undefined) ?? {},
+  () =>
+    (page.props.flash as { success?: string; error?: string; status?: string } | undefined) ?? {},
 )
 
 const impersonating = computed(
@@ -194,6 +195,25 @@ const stopImpersonating = (url: string) => router.post(url)
           class="mb-6 rounded-md border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm text-emerald-900"
         >
           {{ flash.success }}
+        </p>
+        <p
+          v-else-if="flash.status"
+          role="status"
+          aria-live="polite"
+          aria-atomic="true"
+          class="mb-6 rounded-md border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm text-emerald-900"
+        >
+          <!--
+            Modules\Packeta\Http\Controllers\ShipmentAdminController flashes
+            its batch-submit outcome under 'status' (the Blade-page
+            convention, shared with Laravel's own auth controllers), not
+            'success' — every page that submits a shipment (the dispatch
+            queue AND the order detail's own "Podat do Zásilkovny" button)
+            now gets one place that shows it, rather than each Inertia page
+            re-implementing its own banner (final review, wave 2.5: the order
+            detail button gave no feedback at all before this).
+          -->
+          {{ flash.status }}
         </p>
         <p
           v-if="flash.error"

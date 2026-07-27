@@ -87,6 +87,18 @@ interface OrderView
     public function orderPaymentSnapshot(): ?array;
 
     /**
+     * The chosen shipping method's snapshot as it was recorded at placement —
+     * id, name, price charged, tax rate, currency, and, for a carrier that
+     * delivers to a branch, a nested `pickup_point` (code, name, address,
+     * the carrier's provider key, and the order's total weight in grams —
+     * see Modules\Orders\Services\OrderPlacer::resolvePickupPoint()). Null
+     * when no shipping method was chosen.
+     *
+     * @return array<string, mixed>|null
+     */
+    public function orderShippingSnapshot(): ?array;
+
+    /**
      * The billing party as it was recorded at placement — name, address, and
      * (when the buyer is a company) ico/dic. A snapshot, never re-read from a
      * customer profile that may have changed since.

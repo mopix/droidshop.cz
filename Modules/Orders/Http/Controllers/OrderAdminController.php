@@ -7,6 +7,8 @@ use App\Core\Documents\Contracts\DocumentView;
 use App\Core\Orders\Contracts\OrderBook;
 use App\Core\Orders\Contracts\OrderView;
 use App\Core\Orders\OrderFilter;
+use App\Core\Shipping\Contracts\CarrierRegistry;
+use App\Core\Shipping\Contracts\ShipmentBook;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use Inertia\Response;
@@ -50,6 +52,15 @@ class OrderAdminController
     public function __construct(
         private readonly OrderBook $orders,
         private readonly DocumentBook $documents,
+        // Same read-only pattern as $documents above, and the same one
+        // Modules\Customers\Http\Controllers\AccountOrdersController already
+        // uses for the customer-facing tracking block (wave 2.5 task 13):
+        // never Modules\Packeta\Models\Shipment directly. An inactive
+        // carrier module, or an order with no parcel handed over yet, is
+        // simply a null shipment — the "Doprava" block degrades instead of
+        // erroring (wave 2.5 task 15).
+        private readonly ShipmentBook $shipments,
+        private readonly CarrierRegistry $carriers,
     ) {}
 
     public function index(Request $request): Response
@@ -100,6 +111,12 @@ class OrderAdminController
 
         $isReversed = $order->fulfillment_status === Order::FULFILLMENT_CANCELLED
             || $order->payment_status === Order::PAYMENT_REFUNDED;
+
+        // Rendered only when a carrier module is running; the kernel's null
+        // book answers null and the shipment half of the "Doprava" block
+        // disappears — exactly how documents reach this same screen
+        // (wave 1.5).
+        $shipment = $this->shipments->forOrder($order->orderInternalId());
 
         return inertia('Modules/Orders/Show', [
             'order' => [
@@ -158,6 +175,31 @@ class OrderAdminController
                         'downloadable' => $document->documentPdfPath() !== null,
                     ])->values()->all(),
             ],
+            // The pickup point chosen at placement, read straight off the
+            // order's own snapshot — present regardless of whether the
+            // carrier module that filled it in is still active, same as any
+            // other placement-time snapshot (billing, VAT recap).
+            'pickupPoint' => $order->orderShippingSnapshot()['pickup_point'] ?? null,
+            'shipment' => $shipment === null ? null : [
+                'id' => $shipment->shipmentId(),
+                'status' => $shipment->shipmentStatus(),
+                // Only a shipment that has a packet_id was ever actually
+                // handed to the carrier — the label and cancel actions have
+                // nothing to act on before that (mirrors
+                // ShipmentAdminController::labels()'s own whereNotNull).
+                'packet_id' => $shipment->shipmentPacketId(),
+                'barcode' => $shipment->shipmentBarcode(),
+                'error' => $shipment->shipmentError(),
+                'submitted_at' => $shipment->shipmentSubmittedAt()?->toIso8601String(),
+                // Mirrors Shipment::isResubmittable() through the kernel
+                // contract — a genuinely in-flight `submitting` row must not
+                // offer a "Podat" button that would just no-op against
+                // ShipmentSubmitter's own compare-and-swap claim.
+                'resubmittable' => $shipment->shipmentIsResubmittable(),
+                'tracking_url' => $shipment->shipmentBarcode() === null
+                    ? null
+                    : $this->carriers->for($shipment->shipmentCarrier())?->trackingUrl($shipment->shipmentBarcode()),
+            ],
             'can' => [
                 'edit' => $request->user('web')->can('orders.edit'),
                 'cancel' => $request->user('web')->can('orders.cancel'),
@@ -177,6 +219,14 @@ class OrderAdminController
                 // tax document, so any order (whatever its status) may get
                 // one (ProformaIssuer::build() has no gate to mirror).
                 'proforma' => (bool) $request->user('web')?->can('docs.manage'),
+                // Gates every shipment action in the "Doprava" block (submit,
+                // print label, cancel) — a separate module's permission, same
+                // reasoning as issueDocument above. `packeta.ship` resolves to
+                // false on its own once the module is off (rozhodnutí
+                // 2026-07-20: a disabled module's permission belongs to no
+                // one), so this alone already hides the buttons in that case
+                // without needing to also check $shipment/$pickupPoint here.
+                'ship' => (bool) $request->user('web')?->can('packeta.ship'),
             ],
         ]);
     }

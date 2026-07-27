@@ -42,6 +42,20 @@
                             <span class="flex-1 text-slate-800">{{ $option->name() }}</span>
                             <span class="font-medium text-slate-900">{{ $option->price()->format() }}</span>
                         </label>
+
+                        @if (in_array($option->id(), $pickupPointOptionIds, true))
+                            <div class="ml-7 mt-2 text-sm">
+                                @if ($pickupPoint !== null)
+                                    <p class="text-slate-700">
+                                        <span class="font-medium">{{ $pickupPoint->pointName() }}</span>,
+                                        {{ $pickupPoint->pointStreet() }}, {{ $pickupPoint->pointZip() }} {{ $pickupPoint->pointCity() }}
+                                    </p>
+                                    <a href="{{ route('storefront.checkout.pickupPoint') }}" class="text-brand underline">Změnit výdejní místo</a>
+                                @else
+                                    <a href="{{ route('storefront.checkout.pickupPoint') }}" class="text-brand underline">Vybrat výdejní místo</a>
+                                @endif
+                            </div>
+                        @endif
                     @endforeach
                 </div>
             </fieldset>

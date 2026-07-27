@@ -125,6 +125,15 @@ $app = Application::configure(basePath: dirname(__DIR__))
         $exceptions->render(function (NotFoundHttpException $e, Request $request) {
             return app(RedirectResponder::class)->respond($request);
         });
+
+        // Credential fields that a failed FormRequest validation must not
+        // flash back into the session as old input (wave 2.5 shipping/payment
+        // review finding). Laravel 11+ moved $dontFlash off FormRequest and
+        // onto this app-wide exception handler config — a per-FormRequest
+        // property is silently ignored on this framework version. The
+        // built-in password fields stay in the default list; this only adds
+        // to it, it does not replace it.
+        $exceptions->dontFlash(['api_password', 'account', 'secret']);
     })->create();
 
 // Local development uses .env.local so the shared .env stays untouched.

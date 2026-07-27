@@ -66,4 +66,9 @@ final class NullCartRepository implements CartRepository
     {
         // No-op: nowhere to persist a choice without the module.
     }
+
+    public function choosePickupPoint(CartShape $cart, ?string $code): void
+    {
+        // No-op.
+    }
 }

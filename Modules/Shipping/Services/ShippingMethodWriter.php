@@ -16,7 +16,7 @@ class ShippingMethodWriter
      */
     public function create(array $attributes): ShippingMethod
     {
-        return ShippingMethod::query()->create($this->prepare($attributes));
+        return ShippingMethod::query()->create($this->prepare($attributes, null));
     }
 
     /**
@@ -24,7 +24,7 @@ class ShippingMethodWriter
      */
     public function update(ShippingMethod $method, array $attributes): ShippingMethod
     {
-        $method->fill($this->prepare($attributes))->save();
+        $method->fill($this->prepare($attributes, $method))->save();
 
         return $method;
     }
@@ -56,13 +56,64 @@ class ShippingMethodWriter
      * @param  array<string, mixed>  $attributes
      * @return array<string, mixed>
      */
-    private function prepare(array $attributes): array
+    private function prepare(array $attributes, ?ShippingMethod $existing): array
     {
+        $provider = $attributes['provider'] ?? $existing?->provider();
+
+        if ($provider === ShippingMethod::PROVIDER_PACKETA) {
+            return $this->foldSettings($attributes, $existing);
+        }
+
         // Settings (address, opening hours) belong to pickup only. A flat
         // carrier carries none, so stray settings never linger on it.
-        if (($attributes['provider'] ?? null) !== ShippingMethod::PROVIDER_PICKUP) {
+        if ($provider !== ShippingMethod::PROVIDER_PICKUP) {
             $attributes['settings'] = null;
         }
+
+        // Packeta credentials are not table columns — foldSettings() is the
+        // only place that ever folds them into settings. The request rules
+        // still accept them for a flat/pickup method (they are nullable, not
+        // scoped to provider=packeta), and the model has no $fillable guard.
+        // Left in place, a stray api_key/eshop/default_weight_g/api_password
+        // would reach create()/fill() and fail as an unknown column.
+        unset($attributes['api_key'], $attributes['eshop'], $attributes['default_weight_g'], $attributes['api_password']);
+
+        return $attributes;
+    }
+
+    /**
+     * Folds submitted carrier credentials into the encrypted settings.
+     *
+     * A blank api_password on update means "keep the stored one": the admin
+     * only ever sees a mask, so re-typing the password just to rename the
+     * method would be a trap that silently wipes it.
+     *
+     * @param  array<string, mixed>  $attributes
+     * @return array<string, mixed>
+     */
+    private function foldSettings(array $attributes, ?ShippingMethod $existing): array
+    {
+        $settings = [
+            'api_key' => (string) ($attributes['api_key'] ?? ''),
+            'eshop' => (string) ($attributes['eshop'] ?? ''),
+            'default_weight_g' => (int) ($attributes['default_weight_g'] ?? 1000),
+        ];
+
+        $submitted = trim((string) ($attributes['api_password'] ?? ''));
+
+        if ($submitted !== '') {
+            $settings['api_password'] = $submitted;
+        } else {
+            $stored = $existing?->settings['api_password'] ?? null;
+
+            if ($stored !== null) {
+                $settings['api_password'] = $stored;
+            }
+        }
+
+        unset($attributes['api_key'], $attributes['eshop'], $attributes['default_weight_g'], $attributes['api_password']);
+
+        $attributes['settings'] = $settings;
 
         return $attributes;
     }

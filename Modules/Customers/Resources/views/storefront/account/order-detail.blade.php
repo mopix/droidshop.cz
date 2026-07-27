@@ -21,6 +21,32 @@
             <dd><span class="badge bg-slate-100 text-slate-800">{{ \Modules\Customers\Support\OrderStatusLabels::payment($order->orderPaymentStatus()) }}</span></dd>
         </dl>
 
+        @if ($pickupPoint !== null)
+            <section class="card mt-6 p-4" aria-label="Výdejní místo">
+                <h2 class="text-lg font-medium text-slate-900">Výdejní místo</h2>
+                <p class="mt-1 text-sm text-slate-700">
+                    <span class="font-medium">{{ $pickupPoint['name'] }}</span><br>
+                    {{ $pickupPoint['street'] }}, {{ $pickupPoint['zip'] }} {{ $pickupPoint['city'] }}
+                </p>
+            </section>
+        @endif
+
+        @if ($shipment !== null && $trackingUrl !== null)
+            <section class="card mt-6 p-4" aria-label="Sledování zásilky">
+                <h2 class="text-lg font-medium text-slate-900">Sledování zásilky</h2>
+                <p class="mt-1 text-sm text-slate-600">Číslo zásilky: {{ $shipment->shipmentBarcode() }}</p>
+                <a
+                    href="{{ $trackingUrl }}"
+                    rel="nofollow noopener"
+                    target="_blank"
+                    class="mt-2 inline-block text-brand underline"
+                >
+                    Sledovat zásilku
+                    <span class="sr-only">(odkaz se otevře v novém okně na webu dopravce)</span>
+                </a>
+            </section>
+        @endif
+
         @if ($documents->isNotEmpty())
             <section class="mt-6" aria-label="Doklady">
                 <h2 class="text-lg font-medium text-slate-900">Doklady</h2>

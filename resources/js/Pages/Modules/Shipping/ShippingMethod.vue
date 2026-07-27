@@ -20,6 +20,12 @@ export type ShippingMethodRow = {
     zip?: string | null
     opening_hours?: string | null
   } | null
+  /** Zásilkovna (Packeta). api_key and eshop are not secret and are shown. */
+  packeta_api_key?: string | null
+  packeta_eshop?: string | null
+  packeta_default_weight_g?: number | null
+  /** The Packeta API password is a credential: only its presence is exposed. */
+  has_api_password?: boolean
 }
 
 type TaxRate = { id: number; name: string; percent: number }
@@ -35,6 +41,7 @@ const emit = defineEmits<{ (e: 'close'): void }>()
 
 const PROVIDER_PICKUP = 'pickup'
 const PROVIDER_FLAT = 'flat'
+const PROVIDER_PACKETA = 'packeta'
 
 // The shop enters money in haléře, exactly as the product card does; the
 // integer travels to the server untouched and never becomes a float.
@@ -53,16 +60,49 @@ const build = () => ({
     zip: props.method?.settings?.zip ?? '',
     opening_hours: props.method?.settings?.opening_hours ?? '',
   },
+  // Zásilkovna. api_key and eshop are not secret and are pre-filled;
+  // api_password is a credential, handled like the Comgate secret (empty =
+  // keep the stored one).
+  api_key: props.method?.packeta_api_key ?? '',
+  eshop: props.method?.packeta_eshop ?? '',
+  default_weight_g: props.method?.packeta_default_weight_g ?? null,
+  api_password: '',
 })
 
 const form = useForm(build())
 
 // Settings (address, hours) belong to personal pickup only; a flat carrier
 // sends none, and the writer drops any that lingered from a provider switch.
-form.transform((data) => ({
-  ...data,
-  settings: data.provider === PROVIDER_PICKUP ? data.settings : null,
-}))
+form.transform((data) => {
+  const out: Record<string, unknown> = {
+    ...data,
+    settings: data.provider === PROVIDER_PICKUP ? data.settings : null,
+  }
+
+  // Packeta credentials belong to that provider only. ShippingMethod has no
+  // $fillable guard, so stray api_key/eshop/default_weight_g reaching the
+  // writer for a flat/pickup method would hit an "Unknown column" SQL error —
+  // these are not table columns, only settings the writer folds for packeta.
+  if (data.provider !== PROVIDER_PACKETA) {
+    delete out.api_key
+    delete out.eshop
+    delete out.default_weight_g
+    delete out.api_password
+  } else if (typeof out.api_password !== 'string' || (out.api_password as string).trim() === '') {
+    // The stored Packeta password must never be blanked by saving an
+    // untouched form: an empty value is dropped from the payload, so the
+    // server keeps the one it holds. On create, dropping it lets the
+    // required rule fire.
+    delete out.api_password
+  }
+
+  return out
+})
+
+// Whether the password input is shown. For an existing Packeta method with a
+// password already set, it stays hidden behind a "změnit" affordance so the
+// admin does not have to retype a secret they cannot see.
+const changingPassword = ref(false)
 
 // Reopening the modal for a different row must not carry the last one's values.
 watch(
@@ -72,11 +112,17 @@ watch(
 
     Object.assign(form, build())
     form.clearErrors()
+    changingPassword.value = false
   },
 )
 
 const isPickup = computed(() => form.provider === PROVIDER_PICKUP)
+const isPacketa = computed(() => form.provider === PROVIDER_PACKETA)
 const isEdit = computed(() => props.method !== null)
+const passwordAlreadySet = computed(() => props.method?.has_api_password ?? false)
+const showPasswordInput = computed(
+  () => isPacketa.value && (!passwordAlreadySet.value || changingPassword.value),
+)
 const titleId = 'shipping-form-title'
 
 const money = (haler: number) =>
@@ -115,6 +161,7 @@ const submit = () => {
           >
             <option :value="PROVIDER_FLAT">Dopravce (pevná cena)</option>
             <option :value="PROVIDER_PICKUP">Osobní odběr</option>
+            <option :value="PROVIDER_PACKETA">Zásilkovna</option>
           </select>
           <p v-if="form.errors.provider" class="mt-1 text-sm text-red-700">{{ form.errors.provider }}</p>
         </div>
@@ -310,6 +357,122 @@ const submit = () => {
             <p v-if="form.errors['settings.opening_hours']" class="mt-1 text-sm text-red-700">
               {{ form.errors['settings.opening_hours'] }}
             </p>
+          </div>
+        </div>
+      </fieldset>
+
+      <!-- Zásilkovna (Packeta). api_key and eshop are not secret and are
+           shown; api_password is a credential, stored encrypted and never
+           handed back — changing it means typing it again. -->
+      <fieldset v-show="isPacketa" class="mt-6 rounded-md border border-gray-200 p-4">
+        <legend class="px-1 text-sm font-medium text-gray-700">Nastavení Zásilkovny</legend>
+
+        <div class="grid gap-4 sm:grid-cols-2">
+          <div>
+            <label for="s-packeta-api-key" class="block text-sm font-medium text-gray-700">API klíč</label>
+            <input
+              id="s-packeta-api-key"
+              v-model="form.api_key"
+              type="text"
+              maxlength="64"
+              autocomplete="off"
+              :required="isPacketa"
+              class="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-gray-900 focus:ring-gray-900"
+              aria-describedby="s-packeta-api-key-hint"
+              :aria-invalid="form.errors.api_key ? 'true' : undefined"
+            />
+            <p id="s-packeta-api-key-hint" class="mt-1 text-sm text-gray-600">
+              Najdete v klientské sekci Zásilkovny. Není tajné.
+            </p>
+            <p v-if="form.errors.api_key" class="mt-1 text-sm text-red-700">{{ form.errors.api_key }}</p>
+          </div>
+
+          <div>
+            <label for="s-packeta-eshop" class="block text-sm font-medium text-gray-700">Označení e-shopu</label>
+            <input
+              id="s-packeta-eshop"
+              v-model="form.eshop"
+              type="text"
+              maxlength="64"
+              autocomplete="off"
+              :required="isPacketa"
+              class="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-gray-900 focus:ring-gray-900"
+              aria-describedby="s-packeta-eshop-hint"
+              :aria-invalid="form.errors.eshop ? 'true' : undefined"
+            />
+            <p id="s-packeta-eshop-hint" class="mt-1 text-sm text-gray-600">
+              Označení odesílatele (eshop) z klientské sekce Zásilkovny — Nastavení e-shopu → API. Není tajné.
+            </p>
+            <p v-if="form.errors.eshop" class="mt-1 text-sm text-red-700">{{ form.errors.eshop }}</p>
+          </div>
+
+          <div>
+            <label for="s-packeta-weight" class="block text-sm font-medium text-gray-700">
+              Výchozí hmotnost zásilky (g)
+            </label>
+            <input
+              id="s-packeta-weight"
+              v-model.number="form.default_weight_g"
+              type="number"
+              min="1"
+              max="30000"
+              step="1"
+              class="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-gray-900 focus:ring-gray-900"
+              aria-describedby="s-packeta-weight-hint"
+              :aria-invalid="form.errors.default_weight_g ? 'true' : undefined"
+            />
+            <p id="s-packeta-weight-hint" class="mt-1 text-sm text-gray-600">
+              Použije se, pokud produkt hmotnost neuvádí. Prázdné = výchozí hodnota 1000 g.
+            </p>
+            <p v-if="form.errors.default_weight_g" class="mt-1 text-sm text-red-700">
+              {{ form.errors.default_weight_g }}
+            </p>
+          </div>
+
+          <div>
+            <div v-if="passwordAlreadySet && !changingPassword" class="flex flex-wrap items-center gap-3">
+              <p class="text-sm text-gray-700">Heslo API je uloženo.</p>
+              <button
+                type="button"
+                class="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-900"
+                @click="changingPassword = true"
+              >
+                Změnit heslo
+              </button>
+            </div>
+
+            <div v-else-if="showPasswordInput">
+              <label for="s-packeta-password" class="block text-sm font-medium text-gray-700">Heslo API</label>
+              <input
+                id="s-packeta-password"
+                v-model="form.api_password"
+                type="password"
+                maxlength="255"
+                autocomplete="off"
+                :required="isPacketa && !passwordAlreadySet"
+                class="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-gray-900 focus:ring-gray-900"
+                aria-describedby="s-packeta-password-hint"
+                :aria-invalid="form.errors.api_password ? 'true' : undefined"
+              />
+              <p id="s-packeta-password-hint" class="mt-1 text-sm text-gray-600">
+                <template v-if="passwordAlreadySet">Ponechte prázdné = beze změny.</template>
+                <template v-else>
+                  Heslo pro API Zásilkovny z klientské sekce. Ukládá se šifrovaně a zpět se nezobrazí.
+                </template>
+              </p>
+              <p v-if="form.errors.api_password" class="mt-1 text-sm text-red-700">
+                {{ form.errors.api_password }}
+              </p>
+
+              <button
+                v-if="passwordAlreadySet"
+                type="button"
+                class="mt-2 text-sm font-medium text-gray-700 underline hover:no-underline focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-900"
+                @click="((changingPassword = false), (form.api_password = ''), form.clearErrors('api_password'))"
+              >
+                Ponechat stávající heslo
+              </button>
+            </div>
           </div>
         </div>
       </fieldset>

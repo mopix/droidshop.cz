@@ -5,6 +5,8 @@ namespace Modules\Customers\Http\Controllers;
 use App\Core\Documents\Contracts\DocumentBook;
 use App\Core\Orders\Contracts\OrderBook;
 use App\Core\Orders\Contracts\OrderView;
+use App\Core\Shipping\Contracts\CarrierRegistry;
+use App\Core\Shipping\Contracts\ShipmentBook;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\Request;
 use Modules\Customers\Models\Customer;
@@ -31,12 +33,19 @@ use Modules\Storefront\Support\Seo;
  * "download invoice" link (wave 1.5 Task 8). Same reasoning as OrderBook:
  * an inactive docs module, or an order with nothing issued yet, is simply an
  * empty collection here, never an error.
+ *
+ * Same again for ShipmentBook (wave 2.5 Task 13): never
+ * Modules\Packeta\Models\Shipment directly. An inactive carrier module, or an
+ * order with no parcel handed over yet, is simply a null shipment — the
+ * tracking block just does not render.
  */
 class AccountOrdersController
 {
     public function __construct(
         private readonly OrderBook $orders,
         private readonly DocumentBook $documents,
+        private readonly ShipmentBook $shipments,
+        private readonly CarrierRegistry $carriers,
     ) {}
 
     public function index(Request $request): View
@@ -55,10 +64,32 @@ class AccountOrdersController
             abort(404);
         }
 
+        $shipment = $this->shipments->forOrder($order->orderInternalId());
+
+        // A tracking link needs both a barcode (nothing to track before the
+        // carrier hands one back — pending/failed shipments have none) and a
+        // resolvable carrier driver (the module could be active but
+        // unconfigured). Either missing piece means no link, not a broken one.
+        $trackingUrl = null;
+
+        if ($shipment !== null && $shipment->shipmentBarcode() !== null) {
+            $trackingUrl = $this->carriers->for($shipment->shipmentCarrier())?->trackingUrl($shipment->shipmentBarcode());
+        }
+
         return view('customers::storefront.account.order-detail', [
             'seo' => new Seo(title: 'Objednávka č. '.$order->orderNumber(), noindex: true),
             'order' => $order,
             'documents' => $this->documents->forOrder($uuid),
+            'shipment' => $shipment,
+            'trackingUrl' => $trackingUrl,
+            // Read straight off the order's own placement-time snapshot
+            // (mirrors Modules\Orders\Http\Controllers\OrderAdminController's
+            // own 'pickupPoint' prop) — present the moment the order is
+            // placed, regardless of whether a shipment row exists yet or has
+            // a barcode. Final review, wave 2.5: the acceptance criterion is
+            // "the customer sees their pickup point", not "...once it has a
+            // tracking link".
+            'pickupPoint' => $order->orderShippingSnapshot()['pickup_point'] ?? null,
         ]);
     }
 

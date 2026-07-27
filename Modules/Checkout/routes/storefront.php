@@ -4,6 +4,7 @@ use Illuminate\Support\Facades\Route;
 use Modules\Checkout\Http\Controllers\CartController;
 use Modules\Checkout\Http\Controllers\CartSummaryController;
 use Modules\Checkout\Http\Controllers\CheckoutController;
+use Modules\Checkout\Http\Controllers\PickupPointController;
 use Modules\Checkout\Http\Controllers\ThankYouController;
 
 Route::get('/kosik', [CartController::class, 'show'])->name('show');
@@ -13,6 +14,9 @@ Route::delete('/kosik/{item}', [CartController::class, 'remove'])->whereNumber('
 
 Route::get('/pokladna/doprava', [CheckoutController::class, 'shipping'])->name('shipping');
 Route::post('/pokladna/doprava', [CheckoutController::class, 'chooseShipping'])->name('chooseShipping');
+
+Route::get('/pokladna/vydejni-misto', [PickupPointController::class, 'show'])->name('pickupPoint');
+Route::post('/pokladna/vydejni-misto', [PickupPointController::class, 'store'])->name('choosePickupPoint');
 
 Route::get('/pokladna/udaje', [CheckoutController::class, 'details'])->name('details');
 Route::post('/pokladna/udaje', [CheckoutController::class, 'place'])->name('place');

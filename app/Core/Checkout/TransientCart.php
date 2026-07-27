@@ -58,4 +58,9 @@ final class TransientCart implements CartShape
     {
         return null;
     }
+
+    public function cartPickupPointCode(): ?string
+    {
+        return null;
+    }
 }

@@ -200,6 +200,17 @@ class EloquentCartRepository implements CartRepository
         ]);
     }
 
+    public function choosePickupPoint(CartShape $cart, ?string $code): void
+    {
+        if (! $this->modules->has('checkout')) {
+            return;
+        }
+
+        $cart = $this->persisted($cart);
+
+        $cart->update(['pickup_point_code' => $code]);
+    }
+
     private function transientCart(): Cart
     {
         return new Cart([

@@ -47,6 +47,25 @@ type DocumentRow = {
   downloadable: boolean
 }
 
+type PickupPoint = {
+  code: string
+  name: string
+  street?: string
+  city?: string
+  zip?: string
+} | null
+
+type ShipmentDetail = {
+  id: number
+  status: string
+  packet_id: string | null
+  barcode: string | null
+  error: string | null
+  submitted_at: string | null
+  resubmittable: boolean
+  tracking_url: string | null
+} | null
+
 type OrderDetail = {
   uuid: string
   number: string
@@ -78,7 +97,9 @@ type OrderDetail = {
 
 const props = defineProps<{
   order: OrderDetail
-  can: { edit: boolean; cancel: boolean; issueDocument: boolean; creditNote: boolean; proforma: boolean }
+  pickupPoint: PickupPoint
+  shipment: ShipmentDetail
+  can: { edit: boolean; cancel: boolean; issueDocument: boolean; creditNote: boolean; proforma: boolean; ship: boolean }
 }>()
 
 const FULFILLMENT_LABELS: Record<string, string> = {
@@ -225,6 +246,84 @@ const proformaForm = useForm({ order_uuid: props.order.uuid })
 
 const issueProforma = () => {
   proformaForm.post(route('admin.docs.proforma'), { preserveScroll: true })
+}
+
+// --- Shipping (Zásilkovna) ---------------------------------------------------
+//
+// Everything here reads App\Core\Shipping\Contracts\ShipmentView through the
+// `shipment` prop — never a Modules\Packeta model — so this page renders the
+// same whether or not the carrier module is even installed (`shipment` and
+// `pickupPoint` are simply null then, and `can.ship` is false).
+
+const SHIPMENT_STATUS_LABELS: Record<string, string> = {
+  pending: 'Čeká na podání',
+  submitting: 'Podává se…',
+  submitted: 'Podáno',
+  failed: 'Podání selhalo',
+  cancelled: 'Zrušeno',
+}
+
+const shipmentStatusLabel = computed(
+  () => SHIPMENT_STATUS_LABELS[props.shipment?.status ?? ''] ?? props.shipment?.status ?? '',
+)
+
+// A submit is only offered when there is nothing to submit yet, or the
+// existing shipment is one ShipmentSubmitter::submit() would actually accept
+// another attempt at (resubmittable, server-derived) — never for a shipment
+// that is already submitted, or one genuinely in flight right now, since
+// either click would just no-op against the carrier's own compare-and-swap
+// claim.
+const canSubmitShipment = computed(
+  () => props.can.ship && props.pickupPoint !== null && (props.shipment === null || props.shipment.resubmittable),
+)
+
+// Printing a label or cancelling only make sense once the carrier actually
+// handed back a packet id — mirrors ShipmentAdminController::labels()'s own
+// whereNotNull('packet_id') and cancel()'s no-op branch when it is absent.
+const hasPacketId = computed(() => !!props.shipment?.packet_id)
+const shipmentId = computed(() => props.shipment?.id ?? null)
+const canPrintShipmentLabel = computed(() => props.can.ship && hasPacketId.value)
+const canCancelShipment = computed(
+  () => props.can.ship && hasPacketId.value && props.shipment?.status !== 'cancelled',
+)
+
+const submitShipmentForm = useForm<{ order_uuids: string[] }>({ order_uuids: [] })
+
+const submitShipment = () => {
+  submitShipmentForm.order_uuids = [props.order.uuid]
+
+  submitShipmentForm.post(route('admin.packeta.shipments.submit'), { preserveScroll: true })
+}
+
+// A plain (non-Inertia) form submission, not router.post(): labels() streams
+// a PDF response body straight into the response, which Inertia's XHR-based
+// visit cannot render — same reasoning as Modules/Packeta/Dispatch.vue's own
+// label form. target="_blank" opens the PDF in a new tab and leaves this page
+// untouched either way.
+const csrfToken = (document.querySelector('meta[name="csrf-token"]') as HTMLMetaElement | null)?.content ?? ''
+
+const LABEL_FORMATS = ['A7 on A4', 'A6 on A4', 'A6', 'A7']
+
+const labelFormat = ref(LABEL_FORMATS[0])
+
+// --- Shipment cancellation (cancel with the carrier) -------------------------
+//
+// A destructive action against a third party (the carrier), not just our own
+// database — every mazací akce gets a confirmation dialog (CLAUDE.md), same
+// as the order storno below.
+
+const cancellingShipment = ref(false)
+const shipmentCancelForm = useForm({})
+
+const submitCancelShipment = () => {
+  if (props.shipment === null) return
+
+  shipmentCancelForm.delete(route('admin.packeta.shipments.cancel', props.shipment.id), {
+    preserveScroll: true,
+    onSuccess: () => {
+      cancellingShipment.value = false
+    },
+  })
 }
 
 // --- Item / address edit ----------------------------------------------------
@@ -446,6 +545,111 @@ const formatAddress = (address: Address) => {
           <p v-if="order.note" class="mt-4 rounded-md bg-gray-100 px-3 py-2 text-sm text-gray-800">
             <span class="font-medium">Poznámka zákazníka:</span> {{ order.note }}
           </p>
+        </section>
+
+        <!-- ===================== Shipping (Zásilkovna) ===================== -->
+        <section
+          v-if="pickupPoint || shipment"
+          aria-labelledby="shipping-heading"
+          class="rounded-lg border border-gray-200 bg-white p-4 shadow-sm"
+        >
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <h2 id="shipping-heading" class="text-sm font-semibold text-gray-900">Doprava</h2>
+
+            <div v-if="can.ship" class="flex flex-wrap items-center gap-2">
+              <button
+                v-if="canSubmitShipment"
+                type="button"
+                :disabled="submitShipmentForm.processing"
+                class="rounded-md bg-gray-900 px-3 py-2 text-sm font-semibold text-white hover:bg-gray-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-900 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-gray-400 disabled:text-gray-700"
+                @click="submitShipment"
+              >
+                Podat do Zásilkovny
+              </button>
+
+              <form
+                v-if="canPrintShipmentLabel"
+                method="POST"
+                :action="route('admin.packeta.shipments.labels')"
+                target="_blank"
+                class="flex flex-wrap items-end gap-2"
+              >
+                <input type="hidden" name="_token" :value="csrfToken" />
+                <input type="hidden" name="shipment_ids[]" :value="shipmentId ?? undefined" />
+
+                <div>
+                  <label :for="`label-format-${shipmentId}`" class="sr-only">Formát štítku</label>
+                  <select
+                    :id="`label-format-${shipmentId}`"
+                    v-model="labelFormat"
+                    name="format"
+                    class="rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-900 focus:ring-gray-900"
+                  >
+                    <option v-for="option in LABEL_FORMATS" :key="option" :value="option">{{ option }}</option>
+                  </select>
+                </div>
+
+                <button
+                  type="submit"
+                  class="rounded-md border border-gray-300 px-3 py-2 text-sm font-medium text-gray-800 hover:bg-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-900"
+                >
+                  Štítek
+                </button>
+              </form>
+
+              <button
+                v-if="canCancelShipment"
+                type="button"
+                class="rounded-md border border-red-300 px-3 py-2 text-sm font-medium text-red-800 hover:bg-red-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-800"
+                @click="cancellingShipment = true"
+              >
+                Zrušit zásilku
+              </button>
+            </div>
+          </div>
+
+          <dl v-if="pickupPoint" class="mt-3 text-sm">
+            <dt class="font-medium text-gray-700">Výdejní místo</dt>
+            <dd class="text-gray-900">
+              {{ pickupPoint.name }}
+              <span v-if="pickupPoint.street || pickupPoint.city" class="block text-gray-700">
+                {{ [pickupPoint.street, pickupPoint.zip, pickupPoint.city].filter(Boolean).join(', ') }}
+              </span>
+            </dd>
+          </dl>
+
+          <div v-if="shipment" class="mt-3 flex flex-wrap items-center gap-3 text-sm">
+            <span class="font-medium text-gray-700">Stav zásilky:</span>
+            <span
+              class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ring-inset"
+              :class="
+                shipment.status === 'failed'
+                  ? 'bg-red-50 text-red-900 ring-red-700/40'
+                  : shipment.status === 'submitted'
+                    ? 'bg-emerald-50 text-emerald-900 ring-emerald-700/40'
+                    : 'bg-amber-50 text-amber-900 ring-amber-700/40'
+              "
+            >
+              {{ shipmentStatusLabel }}
+            </span>
+
+            <span v-if="shipment.barcode" class="text-gray-700">
+              Čárový kód: <span class="font-mono text-gray-900">{{ shipment.barcode }}</span>
+            </span>
+
+            <a
+              v-if="shipment.tracking_url"
+              :href="shipment.tracking_url"
+              rel="nofollow noopener"
+              target="_blank"
+              class="underline hover:no-underline focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-900"
+            >
+              Sledovat zásilku
+              <span class="sr-only">(odkaz se otevře v novém okně na webu dopravce)</span>
+            </a>
+          </div>
+
+          <p v-if="shipment?.error" class="mt-2 text-sm text-red-800">{{ shipment.error }}</p>
         </section>
 
         <!-- ===================== Documents (invoices) ===================== -->
@@ -928,6 +1132,11 @@ const formatAddress = (address: Address) => {
             Objednávku zruší a nastaví stav vyřízení na „Zrušená“. Tuto akci nelze vrátit zpět.
           </p>
 
+          <p v-if="shipment?.status === 'submitted'" class="mt-2 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-900 ring-1 ring-inset ring-amber-700/40">
+            Zásilka byla už podána Zásilkovně — storno objednávky ji samo nezruší. Pokud ji nemá dopravce vyzvednout,
+            zrušte ji zvlášť tlačítkem „Zrušit zásilku“ v bloku Doprava.
+          </p>
+
           <button
             type="button"
             class="mt-3 rounded-md border border-red-300 bg-white px-4 py-2 text-sm font-semibold text-red-800 hover:bg-red-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-800"
@@ -972,5 +1181,16 @@ const formatAddress = (address: Address) => {
         </label>
       </div>
     </ConfirmDialog>
+
+    <ConfirmDialog
+      :show="cancellingShipment"
+      title="Zrušit zásilku"
+      :message="`Opravdu zrušit zásilku u Zásilkovny${shipment?.barcode ? ` (čárový kód ${shipment.barcode})` : ''}? Zásilka se stáhne od dopravce a akci nelze vrátit zpět.`"
+      confirm-label="Zrušit zásilku"
+      danger
+      :processing="shipmentCancelForm.processing"
+      @cancel="cancellingShipment = false"
+      @confirm="submitCancelShipment"
+    />
   </AdminLayout>
 </template>

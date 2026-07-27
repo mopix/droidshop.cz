@@ -11,6 +11,28 @@ Pravidla: [`.claude/skills/versioning/SKILL.md`](.claude/skills/versioning/SKILL
 
 > CHANGELOG vede milníky (minor/major). Detail patchů je v `git log`.
 
+## [0.23.0] – 2026-07-27
+
+**Fáze 2 / vlna 2.5 — Zásilkovna.** Nájemce prodává s dopravou na výdejní místo a celý životní cyklus zásilky odbaví z adminu: zákazník si místo vybere v pokladně i s vypnutým JavaScriptem, nájemce objednávku podá do Zásilkovny přes API, stáhne štítek a zákazník dostane sledovací odkaz. 1359 testů (4653 assertions).
+
+### Jádro a nový modul
+- Kontrakty `Carrier`, `CarrierRegistry`, `PickupPointCatalog`, `ShipmentBook` + guest-safe null bindingy v `app/Core/Shipping/` — vzor `PaymentGatewayRegistry` z vlny 1.4, takže druhý dopravce je další driver, ne zásah do checkoutu. `ShippingOption` rozšířen o `provider()` a `defaultWeightGrams()`.
+- Nový modul `Modules/Packeta` (bez manifestového `requires`, runtime gate přes `ShopModules`, tarif base): REST/XML klient přes `Http` fasádu **bez SOAP a bez composer balíčku**, driver, registry, sync katalogu, podání, štítky.
+
+### Výdejní místa
+- Netenantová sdílená tabulka `pickup_points` (allowlist v `SchemaConventionTest`) plněná denním `packeta:sync-points`. Guard odmítne prázdný nebo useknutý feed — jedna špatná odpověď nesmí deaktivovat výdejní místa všem nájemcům.
+- Server-rendered výběr místa (`/pokladna/vydejni-misto`) je **primární cesta**, ne fallback; oficiální widget je vanilla ostrůvek načítaný **až na kliknutí**, takže do té doby checkout nedělá žádný request na cizí doménu. Klient posílá jen kód, adresa se vždy čte z katalogu.
+
+### Zásilky
+- `shipments` s unique `(tenant_id, order_id)`; podání je idempotentní přes compare-and-swap claim, staleness reclaim vrací zásilku zaseknutou po pádu procesu, a fail-fast guard hlídá, že práh reclaimu nikdy nevyprší nad ještě běžícím voláním. Cizí HTTP nikdy uvnitř transakce.
+- Hromadné podání nespadne na první chybě, štítky se streamují bez ukládání na disk, zrušení volá `cancelPacket`. Expediční fronta `/admin/m/packeta/expedice`, blok Doprava v detailu objednávky, sledovací odkaz v účtu zákazníka.
+
+### Bezpečnost
+- `shipping_methods.settings` je nově `encrypted:array` — revize rozhodnutí z 2026-07-21, které platilo jen dokud sloupec nenesl credential. Migrace re-encryptuje existující řádky; `api_password` se nikdy nevrací do adminu ani neflashuje do session.
+
+### Odloženo
+- AK §16.5 „další dopravce bez zásahu do checkoutu" **není splněné** — dvě místa v `PickupPointController` a `PickupPointCatalog::search()` drží Zásilkovnu natvrdo. Adresné doručení kurýrem, polling stavu zásilky, zpáteční zásilky, e-mail „odesláno" — vše v `docs/future/zasilkovna-dalsi-dopravci.md`.
+
 ## [0.22.0] – 2026-07-26
 
 **Fáze 2 / vlna 2.4 — varianty produktu (víceosá matice).** Nájemce prodává jeden produkt ve více variantách (Velikost × Barva) s vlastní cenou, skladem a SKU per kombinace; zákazník variantu vybere a koupí i s vypnutým JavaScriptem. 1252 testů (4094 assertions).
