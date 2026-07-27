@@ -1,0 +1,50 @@
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+/**
+ * Parcels handed to a carrier (wave 2.5).
+ *
+ * order_id is deliberately not a foreign key: orders belongs to another
+ * module, the same boundary carts.shipping_method_id keeps.
+ */
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::create('shipments', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('tenant_id')->constrained()->cascadeOnDelete();
+
+            $table->unsignedBigInteger('order_id');
+
+            $table->string('carrier', 20);
+            $table->string('packet_id', 40)->nullable();
+            $table->string('barcode', 60)->nullable();
+
+            $table->enum('status', ['pending', 'submitted', 'failed', 'cancelled'])->default('pending');
+
+            $table->unsignedInteger('cod_amount')->default(0);
+            $table->string('currency', 3)->default('CZK');
+            $table->unsignedInteger('weight_grams')->default(0);
+
+            $table->text('error')->nullable();
+            $table->timestamp('submitted_at')->nullable();
+            $table->timestamp('label_printed_at')->nullable();
+
+            $table->timestamps();
+
+            // One parcel per order. Without this a double click bills the
+            // tenant for two parcels and prints two labels for one box.
+            $table->unique(['tenant_id', 'order_id'], 'shipment_order_unique');
+            $table->index(['tenant_id', 'status']);
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::dropIfExists('shipments');
+    }
+};

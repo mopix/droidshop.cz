@@ -171,6 +171,11 @@ class Order extends Model implements OrderView
         return $this->payment_snapshot;
     }
 
+    public function orderShippingSnapshot(): ?array
+    {
+        return $this->shipping_snapshot;
+    }
+
     public function orderBilling(): array
     {
         return $this->billing ?? [];
