@@ -13,6 +13,27 @@
         </div>
     @endif
 
+    @if ($widgetApiKey !== null)
+        {{--
+            Enhancement only. The widget script lives on Packeta's domain and
+            is fetched on click, never on load: until the shopper asks for the
+            map, checkout makes no third-party request at all (performance,
+            ePrivacy, CSP). Everything below — search and the list — works
+            without it. The container ships hidden and JS reveals it, so a
+            shopper without JavaScript never sees a button that would do
+            nothing.
+
+            The @csrf field lives here, not only inside the results form
+            below, because that form only renders once a search has matches
+            — the widget button must carry a valid token on its own.
+        --}}
+        <div class="mt-6" data-packeta-widget data-api-key="{{ $widgetApiKey }}"
+             data-action="{{ route('storefront.checkout.choosePickupPoint') }}" aria-live="polite" hidden>
+            @csrf
+            <button type="button" data-packeta-open class="btn btn-secondary">Vybrat na mapě</button>
+        </div>
+    @endif
+
     <form method="GET" action="{{ route('storefront.checkout.pickupPoint') }}" class="mt-6 flex gap-2">
         <label for="q" class="sr-only">Hledat výdejní místo</label>
         <input id="q" name="q" value="{{ $query }}" placeholder="Město, PSČ nebo název"

@@ -37,6 +37,7 @@ class PickupPointController
             'points' => $query === '' ? collect() : $this->points->search($query),
             'selected' => $cart->cartPickupPointCode(),
             'seo' => new Seo(title: 'Výdejní místo', noindex: true),
+            'widgetApiKey' => $this->widgetApiKey(),
         ]);
 
         return CartCookie::attach($this->uncached($view), $cart, $request);
@@ -81,5 +82,21 @@ class PickupPointController
     private function uncached(View $view): Response
     {
         return response($view)->withHeaders(['Cache-Control' => 'private, no-store']);
+    }
+
+    /**
+     * The public widget key of the active Packeta method, if any — never the
+     * `api_password` credential sitting next to it in the same encrypted
+     * `settings` column. `ShippingMethod::packetaApiKey()` already returns
+     * null for any other provider, so this stays a plain pass-through.
+     */
+    private function widgetApiKey(): ?string
+    {
+        $method = ShippingMethod::query()
+            ->where('provider', ShippingMethod::PROVIDER_PACKETA)
+            ->where('is_active', true)
+            ->first();
+
+        return $method?->packetaApiKey();
     }
 }
