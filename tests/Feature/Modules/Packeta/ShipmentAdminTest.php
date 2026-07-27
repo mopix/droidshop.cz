@@ -298,8 +298,14 @@ class ShipmentAdminTest extends TestCase
         ]);
 
         $response->assertRedirect();
-        $status = (string) session('status');
-        $this->assertStringContainsString('Podáno 2 z 3', $status);
+
+        // Final review, wave 2.5: a batch with ANY failure flashes under
+        // 'error' (AdminLayout renders it as a red role="alert" box), not
+        // under 'status' (a green role="status" success box) — a partial
+        // failure must never read as good news.
+        $this->assertSame('', (string) session('status'));
+        $error = (string) session('error');
+        $this->assertStringContainsString('Podáno 2 z 3', $error);
 
         $this->context->runAs($this->tenant, function () use ($first, $second, $third) {
             $this->assertSame(2, Shipment::query()->where('status', Shipment::STATUS_SUBMITTED)->count());
@@ -325,7 +331,11 @@ class ShipmentAdminTest extends TestCase
             ->post($this->url('/zasilky/podat'), ['order_uuids' => [$order->uuid]]);
 
         $response->assertRedirect();
-        $this->assertStringContainsString('Podáno 0 z 1', (string) session('status'));
+
+        // Final review, wave 2.5: a total failure (0 of 1) must flash under
+        // 'error', not the green 'status' success box.
+        $this->assertSame('', (string) session('status'));
+        $this->assertStringContainsString('Podáno 0 z 1', (string) session('error'));
 
         $this->context->runAs($this->tenant, function () use ($order) {
             $shipment = Shipment::query()->where('order_id', $order->id)->firstOrFail();
@@ -536,6 +546,73 @@ class ShipmentAdminTest extends TestCase
             $this->assertSame('Z999', $fresh->barcode);
             $this->assertSame(1, Shipment::query()->count());
         });
+    }
+
+    /**
+     * Final review, wave 2.5 (this fix): before it, cancel()'s
+     * forceFill()->save() overwrote `status` unconditionally, with no
+     * compare-and-swap of its own. A resubmit of a cancelled shipment claims
+     * the row (status `submitting`) and THEN calls the carrier — a
+     * concurrent cancel landing in that window used to succeed regardless,
+     * and because `cancelled` is immediately reclaimable, a THIRD request
+     * could then claim the row and call the carrier again before the first
+     * call's own real answer ever arrived: two live parcels at the carrier
+     * for one order. This test simulates the concurrent cancel from inside
+     * the fake HTTP handler for the resubmit's own createPacket call — the
+     * exact window between claimForSubmission() and the carrier's answer —
+     * and asserts the cancel is rejected and never reaches the carrier at
+     * all, so only the resubmit's own single call is ever sent.
+     */
+    public function test_cancelling_a_shipment_while_its_own_resubmission_is_in_flight_is_rejected(): void
+    {
+        $order = $this->placeOrder($this->tenant, 'KB-1');
+
+        // First submission succeeds normally, then the admin cancels it —
+        // an ordinary, safe cancel with nothing in flight.
+        $this->fakeCarrierHttp();
+        $shipment = $this->context->runAs(
+            $this->tenant,
+            fn () => app(ShipmentSubmitter::class)->submit($order->uuid),
+        );
+
+        $this->actingAs($this->owner)
+            ->delete($this->url('/zasilky/'.$shipment->id))
+            ->assertRedirect();
+
+        $concurrentCancelAttempted = false;
+
+        Http::fake(function (HttpRequest $request) use (&$concurrentCancelAttempted, $shipment) {
+            if (! $concurrentCancelAttempted && str_contains($request->body(), '<createPacket>')) {
+                $concurrentCancelAttempted = true;
+
+                // The row is `submitting` with a claim made moments ago —
+                // this request's own compare-and-swap has already won, but
+                // the carrier has not answered yet. A concurrent cancel
+                // right now must be refused, not race writeOutcome().
+                $response = $this->actingAs($this->owner)
+                    ->delete($this->url('/zasilky/'.$shipment->id));
+
+                $response->assertSessionHasErrors('carrier');
+            }
+
+            return Http::response(self::OK_RESPONSE);
+        });
+
+        $resubmit = $this->actingAs($this->owner)
+            ->post($this->url('/zasilky/podat'), ['order_uuids' => [$order->uuid]]);
+
+        $resubmit->assertRedirect();
+        $this->assertTrue($concurrentCancelAttempted, 'The concurrent cancel never ran inside the fake HTTP handler.');
+
+        $this->context->runAs($this->tenant, function () use ($shipment) {
+            $this->assertSame(Shipment::STATUS_SUBMITTED, $shipment->fresh()->shipmentStatus());
+            $this->assertSame(1, Shipment::query()->count());
+        });
+
+        // Exactly one createPacket call landed: the resubmit's own. The
+        // concurrent cancel was rejected before it ever called the carrier —
+        // it never got to attempt a cancelPacket call either.
+        Http::assertSentCount(1);
     }
 
     public function test_a_shipment_of_another_tenant_is_not_reachable(): void

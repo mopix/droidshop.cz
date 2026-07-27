@@ -201,6 +201,23 @@ final class ShipmentSubmitter
             return $existing;
         }
 
+        // Modules\Orders\Services\OrderPlacer::resolvePickupPoint() already
+        // applies the shipping method's own configured fallback (or a
+        // last-resort 1000g) whenever every line's product carries no
+        // weight, so weight_grams here is never actually 0 for an order
+        // placed after that fix. The `?: 1000` below is kept only as a guard
+        // for an order snapshot written before this fix shipped (final
+        // review, wave 2.5) — it must never be the thing that actually
+        // supplies a real order's weight.
+        //
+        // `?:` on purpose, not `??`: an older snapshot does not merely omit
+        // the key, it carries it PRESENT with a value of 0 (the column's own
+        // pre-fix default) — `??` only substitutes on a missing/null key, so
+        // it silently let a real 0 through and this guard never actually
+        // fired for the one snapshot shape it exists to catch (final review,
+        // wave 2.5).
+        $weightGrams = (int) ($pickupPoint['weight_grams'] ?? 0) ?: 1000;
+
         try {
             return Shipment::create([
                 'order_id' => $orderId,
@@ -208,15 +225,7 @@ final class ShipmentSubmitter
                 'status' => Shipment::STATUS_PENDING,
                 'cod_amount' => $this->codAmount($order),
                 'currency' => $order->orderCurrency(),
-                // Modules\Orders\Services\OrderPlacer::resolvePickupPoint()
-                // already applies the shipping method's own configured
-                // fallback (or a last-resort 1000g) whenever every line's
-                // product carries no weight, so weight_grams here is never
-                // actually 0 for an order placed after that fix. The `?? 1000`
-                // is kept only as a guard for an order snapshot written before
-                // this fix shipped (final review, wave 2.5) — it must never be
-                // the thing that actually supplies a real order's weight.
-                'weight_grams' => (int) ($pickupPoint['weight_grams'] ?? 1000),
+                'weight_grams' => $weightGrams,
             ]);
         } catch (UniqueConstraintViolationException) {
             // Another request won the race; use its row rather than failing.
@@ -246,6 +255,20 @@ final class ShipmentSubmitter
      * True only for the request that just won the claim; on true, the
      * in-memory $shipment is updated to match without an extra round trip,
      * since we already know what the UPDATE just wrote.
+     *
+     * Also clears packet_id/barcode/error in the same statement (final
+     * review, wave 2.5): the only route into this method carrying a
+     * non-null packet_id is a `cancelled` row (ShipmentAdminController::
+     * cancel() never clears it — it only flips `status`), and without this
+     * the resubmit attempt this claim is about to make would leave that
+     * OLD, already-cancelled packet_id sitting on the row through a
+     * `submitting` state and, if the resubmit itself then fails, forever
+     * after in `failed` — a zombie identifier pointing at a parcel that no
+     * longer exists, exposed to both the admin (the "Zrušit zásilku" /
+     * "Štítek" buttons gate on packet_id alone) and the customer's own
+     * order page ("Sledovat zásilku"). A genuinely fresh claim (pending/
+     * failed row, or a stale `submitting` one) already has none of these
+     * set, so clearing them here is a no-op in every other case.
      */
     private function claimForSubmission(Shipment $shipment): bool
     {
@@ -274,6 +297,9 @@ final class ShipmentSubmitter
             ->update([
                 'status' => Shipment::STATUS_SUBMITTING,
                 'claimed_at' => $now,
+                'packet_id' => null,
+                'barcode' => null,
+                'error' => null,
             ]);
 
         if ($affected !== 1) {
@@ -282,6 +308,9 @@ final class ShipmentSubmitter
 
         $shipment->setAttribute('status', Shipment::STATUS_SUBMITTING);
         $shipment->setAttribute('claimed_at', $now);
+        $shipment->setAttribute('packet_id', null);
+        $shipment->setAttribute('barcode', null);
+        $shipment->setAttribute('error', null);
 
         return true;
     }

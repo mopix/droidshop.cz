@@ -412,6 +412,56 @@ class ShipmentSubmitterTest extends TestCase
         $this->assertSame(1, Shipment::count());
     }
 
+    /**
+     * Final review, wave 2.5: Modules\Packeta\Http\Controllers\
+     * ShipmentAdminController::cancel() flips a row to `cancelled` without
+     * ever clearing packet_id/barcode — it only ever touches `status`. A
+     * cancelled row is resubmittable (Shipment::isResubmittable()), so a
+     * resubmit attempt claims it via claimForSubmission(); if that resubmit
+     * itself then fails, the row settles in `failed` still carrying the OLD,
+     * already-cancelled parcel's packet_id/barcode — a zombie identifier for
+     * a parcel that no longer exists, exposed by both
+     * ShipmentAdminController::labels()/cancel() (gate on packet_id alone)
+     * and the customer's own order page ("Sledovat zásilku"). The claim
+     * itself must clear all three so a failed resubmit never leaves one
+     * behind.
+     */
+    public function test_a_failed_resubmit_of_a_cancelled_shipment_does_not_keep_the_old_packet_id(): void
+    {
+        $tenant = $this->tenant();
+        $this->context->set($tenant);
+        $order = $this->readyOrder();
+
+        // Simulates ShipmentAdminController::cancel()'s own write: a row
+        // that was once submitted (real packet_id/barcode from the carrier)
+        // and then cancelled, WITHOUT those identifiers ever being cleared —
+        // exactly what that controller method does today.
+        $cancelled = Shipment::create([
+            'order_id' => $order->id,
+            'carrier' => ShippingMethod::PROVIDER_PACKETA,
+            'status' => Shipment::STATUS_CANCELLED,
+            'packet_id' => '555',
+            'barcode' => 'OLDCODE',
+            'cod_amount' => 0,
+            'currency' => 'CZK',
+            'weight_grams' => 200,
+        ]);
+
+        Http::fake(['*' => Http::response(self::FAULT_RESPONSE)]);
+
+        try {
+            app(ShipmentSubmitter::class)->submit($order->uuid);
+            $this->fail('Expected a CarrierError for a fault response.');
+        } catch (CarrierError) {
+            // expected
+        }
+
+        $shipment = $cancelled->fresh();
+        $this->assertSame(Shipment::STATUS_FAILED, $shipment->shipmentStatus());
+        $this->assertNull($shipment->packet_id, 'A failed resubmit must not keep the old, already-cancelled packet_id.');
+        $this->assertNull($shipment->barcode, 'A failed resubmit must not keep the old, already-cancelled barcode.');
+    }
+
     public function test_a_pending_shipment_is_retried_not_duplicated(): void
     {
         $tenant = $this->tenant();

@@ -67,11 +67,24 @@ class ShipmentAdminController
             }
         }
 
-        $message = $errors === []
-            ? sprintf('Podáno %d zásilek.', $done)
-            : sprintf('Podáno %d z %d. Chyby: %s', $done, count($uuids), implode(' | ', array_unique($errors)));
+        // A non-empty $errors means at least one order was NOT handed over —
+        // that is a failure the tenant must be told about with the same
+        // urgency as any other carrier error, not a success banner just
+        // because some other order in the same batch went through
+        // (final review, wave 2.5: 'status' renders as a green, polite
+        // success box in AdminLayout, so a "0 of 3 submitted" outcome was
+        // being announced as good news, which is a WCAG 4.1.3 violation as
+        // much as it is simply wrong).
+        if ($errors !== []) {
+            return back()->with('error', sprintf(
+                'Podáno %d z %d. Chyby: %s',
+                $done,
+                count($uuids),
+                implode(' | ', array_unique($errors)),
+            ));
+        }
 
-        return back()->with('status', $message);
+        return back()->with('status', sprintf('Podáno %d zásilek.', $done));
     }
 
     /**
@@ -145,6 +158,26 @@ class ShipmentAdminController
     public function cancel(Request $request, Shipment $shipment): RedirectResponse
     {
         abort_unless((bool) $request->user('web')?->can('packeta.ship'), 403);
+
+        // A `submitting` row still inside the staleness window is a request
+        // genuinely in flight to the carrier right now (see
+        // ShipmentSubmitter::claimForSubmission()'s own docblock) — this
+        // method's forceFill()->save() below is unconditional and does not
+        // go through that class's compare-and-swap, so overwriting the row
+        // here would race the in-flight request's own writeOutcome(). Worse:
+        // `cancelled` is immediately reclaimable (Shipment::isResubmittable()),
+        // so a resubmit landing right after this cancel could claim the row
+        // and call the carrier a SECOND time before the first call's real
+        // answer ever arrives — two live parcels at the carrier for one
+        // order (final review, wave 2.5). Refusing the cancel here, rather
+        // than making claimForSubmission() require staleness for `cancelled`
+        // too, keeps every OTHER case exactly as reachable as before: a
+        // `submitted`/`failed`/`pending` shipment, or a `submitting` one
+        // that is stale enough to already count as abandoned, still cancels
+        // normally.
+        if ($shipment->shipmentStatus() === Shipment::STATUS_SUBMITTING && ! $shipment->isResubmittable()) {
+            return back()->withErrors(['carrier' => 'Podání zásilky právě probíhá, zkuste zrušení znovu za chvíli.']);
+        }
 
         $carrier = $this->carriers->for($shipment->shipmentCarrier());
 
