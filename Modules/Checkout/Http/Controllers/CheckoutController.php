@@ -11,9 +11,11 @@ use App\Core\Orders\Contracts\OrderSettlement;
 use App\Core\Orders\Exceptions\OrderPlacementUnavailable;
 use App\Core\Orders\Exceptions\PickupPointMissing;
 use App\Core\Orders\Exceptions\PriceChanged;
+use App\Core\Orders\Exceptions\ShippingMethodUnavailable;
 use App\Core\Orders\PlacementRequest;
 use App\Core\Payments\Contracts\PaymentGatewayRegistry;
 use App\Core\Payments\Exceptions\GatewayError;
+use App\Core\Shipping\Contracts\CarrierRegistry;
 use App\Core\Shipping\Contracts\PaymentOption;
 use App\Core\Shipping\Contracts\PaymentOptions;
 use App\Core\Shipping\Contracts\PickupPointCatalog;
@@ -31,7 +33,6 @@ use Modules\Checkout\Http\Requests\PlaceOrderRequest;
 use Modules\Checkout\Services\CartPricer;
 use Modules\Checkout\Support\CartCookie;
 use Modules\Checkout\Support\PricedCart;
-use Modules\Shipping\Models\ShippingMethod;
 use Modules\Storefront\Support\Seo;
 
 /**
@@ -58,6 +59,7 @@ class CheckoutController
         private readonly PaymentGatewayRegistry $gateways,
         private readonly OrderSettlement $settlement,
         private readonly PickupPointCatalog $points,
+        private readonly CarrierRegistry $carriers,
     ) {}
 
     public function shipping(Request $request): Response|RedirectResponse
@@ -116,10 +118,22 @@ class CheckoutController
         // Only the code is ever stored on the cart (rozhodnutí wave 2.5);
         // name and address are always re-read from the catalogue here, so a
         // renamed or deactivated point never shows a stale address on this
-        // page either.
-        $pickupPoint = $cart->cartPickupPointCode() === null
-            ? null
-            : $this->points->find(ShippingMethod::PROVIDER_PACKETA, $cart->cartPickupPointCode());
+        // page either. Gated through requiresPickupPoint(), not a hardcoded
+        // provider string (final review, wave 2.5) — see that method's own
+        // docblock.
+        $pickupPoint = ($this->requiresPickupPoint($selectedShipping) && $cart->cartPickupPointCode() !== null)
+            ? $this->points->find($selectedShipping->provider(), $cart->cartPickupPointCode())
+            : null;
+
+        // Which of the offered methods need the "Vybrat výdejní místo" link
+        // under their radio button — resolved once here, not with a hardcoded
+        // provider check inside the Blade template (final review, wave 2.5):
+        // the view has no business asking CarrierRegistry a question itself.
+        $pickupPointOptionIds = $available
+            ->filter(fn (ShippingOption $option) => $this->requiresPickupPoint($option))
+            ->map(fn (ShippingOption $option) => $option->id())
+            ->values()
+            ->all();
 
         $view = view('checkout::checkout.shipping', [
             'cart' => $priced,
@@ -131,6 +145,7 @@ class CheckoutController
             'shippingCost' => $shippingCost,
             'total' => $total,
             'pickupPoint' => $pickupPoint,
+            'pickupPointOptionIds' => $pickupPointOptionIds,
             'seo' => new Seo(title: 'Doprava a platba', noindex: true),
         ]);
 
@@ -159,7 +174,7 @@ class CheckoutController
         // so the comparison lives here instead.
         $method = $shippingId !== null ? $this->shippingOptions->find($shippingId) : null;
 
-        if ($method?->provider() !== ShippingMethod::PROVIDER_PACKETA) {
+        if (! $this->requiresPickupPoint($method)) {
             $this->carts->choosePickupPoint($cart, null);
         }
 
@@ -320,6 +335,18 @@ class CheckoutController
                 $cart,
                 $request,
             );
+        } catch (ShippingMethodUnavailable $e) {
+            // The cart's chosen method no longer has a resolvable carrier —
+            // credentials removed, or the module deactivated, since the
+            // shipping step. Sent back there so the shopper can pick a
+            // method that is actually offered; nothing was written.
+            return CartCookie::attach(
+                redirect()
+                    ->route('storefront.checkout.shipping')
+                    ->withErrors(['shipping_method_id' => $e->getMessage()]),
+                $cart,
+                $request,
+            );
         }
 
         // Placed. If the chosen method is an online gateway this shop actually
@@ -424,5 +451,22 @@ class CheckoutController
     private function uncached(View $view): Response
     {
         return response($view)->withHeaders(['Cache-Control' => 'private, no-store']);
+    }
+
+    /**
+     * Whether checkout must collect a pickup point before this method can be
+     * used — asked through CarrierRegistry, the exact contract Modules\
+     * Orders\Services\OrderPlacer::resolvePickupPoint() uses to decide the
+     * same question at placement, rather than a hardcoded provider string
+     * (final review, wave 2.5: this controller and the Blade view it renders
+     * used to compare against ShippingMethod::PROVIDER_PACKETA in four
+     * places, which spec AK §16.5 — "another carrier without touching
+     * checkout" — cannot survive). A method whose provider has no resolvable
+     * carrier driver needs no pickup point either, the same as a built-in
+     * one: nothing here could ever collect a branch for it anyway.
+     */
+    private function requiresPickupPoint(?ShippingOption $option): bool
+    {
+        return $option !== null && $this->carriers->for($option->provider())?->requiresPickupPoint() === true;
     }
 }

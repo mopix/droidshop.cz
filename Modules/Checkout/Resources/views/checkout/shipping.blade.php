@@ -43,7 +43,7 @@
                             <span class="font-medium text-slate-900">{{ $option->price()->format() }}</span>
                         </label>
 
-                        @if ($option->provider() === \Modules\Shipping\Models\ShippingMethod::PROVIDER_PACKETA)
+                        @if (in_array($option->id(), $pickupPointOptionIds, true))
                             <div class="ml-7 mt-2 text-sm">
                                 @if ($pickupPoint !== null)
                                     <p class="text-slate-700">
