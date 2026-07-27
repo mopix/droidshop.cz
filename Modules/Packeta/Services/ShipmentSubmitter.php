@@ -230,7 +230,12 @@ final class ShipmentSubmitter
     private function claimForSubmission(Shipment $shipment): bool
     {
         $now = now();
-        $staleBefore = $now->clone()->subMinutes((int) config('packeta.submit_stale_after_minutes'));
+        // Shipment::staleBefore() is the single source of truth for this
+        // cutoff (wave 2.5, task 14, fix round 1/5) — Shipment::isResubmittable()
+        // uses the exact same call, so the dispatch queue listing and this
+        // atomic claim can never quietly disagree about which `submitting`
+        // rows count as abandoned.
+        $staleBefore = Shipment::staleBefore();
 
         $affected = Shipment::query()
             ->whereKey($shipment->getKey())

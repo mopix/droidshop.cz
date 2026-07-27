@@ -52,11 +52,23 @@ class DispatchQueueController
 
     /**
      * Every order using Zásilkovna that still needs a parcel handed over:
-     * no shipment row yet, or one stuck at `pending`/`failed` — both
-     * retryable. A `submitted` shipment (already handed over) and a
-     * `submitting`/`cancelled` one (mid-flight, or called off on purpose)
-     * are left out on purpose; only pending/failed are documented by this
-     * task as belonging in the queue.
+     * no shipment row yet, one stuck at `pending`/`failed`, or a `submitting`
+     * one old enough to count as abandoned rather than in flight.
+     *
+     * Fix round 1/5: a fresh `submitting` row (a real hand-over currently
+     * running) was originally excluded outright, same as `submitted` and
+     * `cancelled` — but this queue is the ONLY admin surface that can ever
+     * submit an order again, so excluding a `submitting` row unconditionally
+     * meant a process that crashed mid-hand-over made that order vanish from
+     * the queue forever: nothing else shows or resets that status, and
+     * ShipmentSubmitter::claimForSubmission()'s whole staleness-reclaim
+     * mechanism (four rounds of fixes) had no UI path that could ever reach
+     * it. Shipment::isResubmittable() below is the fix — it mirrors
+     * claimForSubmission()'s own eligibility check via the shared
+     * Shipment::staleBefore() cutoff, so a `submitting` row reappears here
+     * exactly when ShipmentSubmitter would actually accept resubmitting it,
+     * and not a moment sooner (a genuinely in-flight request must not look
+     * clickable).
      *
      * @return list<array<string, mixed>>
      */
@@ -79,11 +91,7 @@ class DispatchQueueController
             ->reject(function (OrderView $order) use ($shipmentsByOrderId) {
                 $shipment = $shipmentsByOrderId->get($order->orderInternalId());
 
-                return $shipment !== null && ! in_array(
-                    $shipment->shipmentStatus(),
-                    [Shipment::STATUS_PENDING, Shipment::STATUS_FAILED],
-                    true,
-                );
+                return $shipment !== null && ! $shipment->isResubmittable();
             })
             ->map(function (OrderView $order) use ($shipmentsByOrderId): array {
                 $shipment = $shipmentsByOrderId->get($order->orderInternalId());

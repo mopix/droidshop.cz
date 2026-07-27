@@ -13,6 +13,7 @@ use App\Models\Tenant;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request as HttpRequest;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Http;
 use Inertia\Testing\AssertableInertia;
 use Modules\Orders\Models\Order;
@@ -222,6 +223,26 @@ class DispatchQueueTest extends TestCase
         });
     }
 
+    /**
+     * A shipment stuck at `submitting` with a given claim age — the state a
+     * crashed hand-over leaves behind (Modules\Packeta\Services\
+     * ShipmentSubmitter::claimForSubmission()'s own docblock). Bypasses
+     * ShipmentSubmitter entirely: the point of these tests is what the queue
+     * shows given a row already in this state, not how a row gets there.
+     */
+    private function submittingShipment(Tenant $tenant, Order $order, Carbon $claimedAt): Shipment
+    {
+        return $this->context->runAs($tenant, fn () => Shipment::create([
+            'order_id' => $order->id,
+            'carrier' => ShippingMethod::PROVIDER_PACKETA,
+            'status' => Shipment::STATUS_SUBMITTING,
+            'claimed_at' => $claimedAt,
+            'cod_amount' => Money::fromMajor(0, 'CZK'),
+            'currency' => 'CZK',
+            'weight_grams' => 200,
+        ]));
+    }
+
     // --- listing ---------------------------------------------------------------
 
     public function test_the_queue_lists_only_unshipped_packeta_orders(): void
@@ -266,6 +287,55 @@ class DispatchQueueTest extends TestCase
                     $this->assertTrue($uuids->contains($failedOrder->uuid));
                     $this->assertFalse($uuids->contains($personal->uuid));
                     $this->assertFalse($uuids->contains($submittedOrder->uuid));
+
+                    return true;
+                });
+            });
+    }
+
+    /**
+     * Fix round 1/5: this queue is the only admin surface that can ever
+     * submit an order to the carrier again — so a `submitting` row left
+     * behind by a process that crashed mid-hand-over must resurface here
+     * once it is old enough that ShipmentSubmitter::claimForSubmission()
+     * would itself accept reclaiming it, or that order can never ship at
+     * all through the UI.
+     */
+    public function test_a_stale_submitting_shipment_belongs_in_the_queue(): void
+    {
+        $order = $this->placeOrder($this->tenant, 'KB-1');
+
+        $threshold = (int) config('packeta.submit_stale_after_minutes');
+        $this->submittingShipment($this->tenant, $order, now()->subMinutes($threshold + 5));
+
+        $this->actingAs($this->owner)
+            ->get($this->url('/expedice'))
+            ->assertInertia(function (AssertableInertia $page) use ($order) {
+                $page->where('orders', function ($orders) use ($order) {
+                    $this->assertTrue(collect($orders)->pluck('uuid')->contains($order->uuid));
+
+                    return true;
+                });
+            });
+    }
+
+    /**
+     * The other half of fix round 1/5: a `submitting` row that is still
+     * fresh is a hand-over genuinely in progress right now — showing it as
+     * clickable in the queue would invite a second, concurrent submit
+     * attempt on an order already mid-flight.
+     */
+    public function test_a_fresh_submitting_shipment_is_not_in_the_queue(): void
+    {
+        $order = $this->placeOrder($this->tenant, 'KB-1');
+
+        $this->submittingShipment($this->tenant, $order, now());
+
+        $this->actingAs($this->owner)
+            ->get($this->url('/expedice'))
+            ->assertInertia(function (AssertableInertia $page) use ($order) {
+                $page->where('orders', function ($orders) use ($order) {
+                    $this->assertFalse(collect($orders)->pluck('uuid')->contains($order->uuid));
 
                     return true;
                 });

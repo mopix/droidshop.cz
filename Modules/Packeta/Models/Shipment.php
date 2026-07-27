@@ -89,4 +89,50 @@ class Shipment extends Model implements ShipmentView
     {
         return $this->submitted_at;
     }
+
+    /**
+     * The instant before which a `submitting` row counts as abandoned rather
+     * than genuinely in flight — the single source of truth for
+     * config('packeta.submit_stale_after_minutes'), so that config read never
+     * happens in two places with any chance of drifting apart.
+     *
+     * Modules\Packeta\Services\ShipmentSubmitter::claimForSubmission() uses
+     * this as the cutoff in its atomic compare-and-swap UPDATE (the actual
+     * authority on which request may call the carrier); isResubmittable()
+     * below uses the exact same cutoff to decide whether an already-loaded
+     * row LOOKS reclaimable, for a read-only listing that never claims
+     * anything itself (wave 2.5, task 14, fix round 1/5).
+     */
+    public static function staleBefore(): Carbon
+    {
+        return now()->subMinutes((int) config('packeta.submit_stale_after_minutes'));
+    }
+
+    /**
+     * True when Modules\Packeta\Services\ShipmentSubmitter::submit() would
+     * actually accept another attempt at this row: `pending`/`failed`
+     * unconditionally, or a `submitting` row whose claim is older than
+     * staleBefore() — mirroring claimForSubmission()'s own WHERE clause so
+     * the two can never quietly disagree about which shipments are still
+     * retryable.
+     *
+     * Deliberately NOT itself a claim: this is a plain read over an
+     * already-loaded model, used by the dispatch queue listing to decide
+     * what to show, not to decide who may call the carrier. A row can look
+     * resubmittable here and still lose the actual claim a moment later to a
+     * concurrent request — claimForSubmission()'s atomic UPDATE remains the
+     * only real authority on that.
+     */
+    public function isResubmittable(): bool
+    {
+        if (in_array($this->shipmentStatus(), [self::STATUS_PENDING, self::STATUS_FAILED], true)) {
+            return true;
+        }
+
+        if ($this->shipmentStatus() !== self::STATUS_SUBMITTING || $this->claimed_at === null) {
+            return false;
+        }
+
+        return $this->claimed_at->lt(self::staleBefore());
+    }
 }
