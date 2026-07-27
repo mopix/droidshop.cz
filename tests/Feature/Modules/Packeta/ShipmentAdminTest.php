@@ -395,6 +395,61 @@ class ShipmentAdminTest extends TestCase
         }
     }
 
+    public function test_labels_requires_the_ship_permission(): void
+    {
+        $this->fakeAllStorageDisks();
+
+        $staff = $this->staffWith([]);
+        [, $shipment] = $this->submittedShipment($this->tenant, 'KB-1');
+
+        $this->actingAs($staff)
+            ->post($this->url('/zasilky/stitky'), ['shipment_ids' => [$shipment->id]])
+            ->assertForbidden();
+
+        $this->context->runAs(
+            $this->tenant,
+            fn () => $this->assertNull($shipment->fresh()->label_printed_at),
+        );
+    }
+
+    /**
+     * Important finding 1 (fix round 1/5): the only cross-tenant test on this
+     * controller targeted cancel()'s route-model binding — labels() relies on
+     * a DIFFERENT mechanism (Shipment's own BelongsToTenant global scope
+     * filtering a body-supplied id list, not route-model binding), and that
+     * claim was undemonstrated. A foreign shop's shipment id must not print
+     * that parcel's label, must not leak anything about it, and must not
+     * even touch its label_printed_at timestamp.
+     */
+    public function test_labels_of_another_tenants_shipment_are_not_reachable(): void
+    {
+        $this->fakeAllStorageDisks();
+
+        $other = Tenant::factory()->withDomain('shop2.droidshop')->create(['name' => 'Shop Two']);
+        foreach (['checkout', 'shipping', 'orders', 'packeta'] as $module) {
+            $this->activateModule($other, $module);
+        }
+
+        [, $foreignShipment] = $this->submittedShipment($other, 'KB-1');
+
+        // Requested against shop1's own host: Shipment's BelongsToTenant
+        // scope drops shop2's id from the query entirely, so nothing is left
+        // to print — the response must be an error, never a PDF built from
+        // another shop's parcel.
+        $response = $this->actingAs($this->owner)->post($this->url('/zasilky/stitky'), [
+            'shipment_ids' => [$foreignShipment->id],
+        ]);
+
+        $response->assertRedirect();
+        $response->assertSessionHasErrors('carrier');
+        $this->assertNotSame(200, $response->status());
+
+        $this->context->runAs(
+            $other,
+            fn () => $this->assertNull($foreignShipment->fresh()->label_printed_at),
+        );
+    }
+
     // --- cancel ----------------------------------------------------------------
 
     public function test_cancelling_marks_the_shipment_cancelled(): void
@@ -408,6 +463,27 @@ class ShipmentAdminTest extends TestCase
         $this->context->runAs(
             $this->tenant,
             fn () => $this->assertSame(Shipment::STATUS_CANCELLED, $shipment->fresh()->shipmentStatus()),
+        );
+    }
+
+    /**
+     * Important finding 2 (fix round 1/5): submit()'s permission gate is a
+     * FormRequest::authorize(), cancel()'s is an inline abort_unless() — the
+     * two are consistent today, but that shape mismatch is exactly why it
+     * needs its own test rather than trusting "it looks the same".
+     */
+    public function test_cancelling_requires_the_ship_permission(): void
+    {
+        $staff = $this->staffWith([]);
+        [, $shipment] = $this->submittedShipment($this->tenant, 'KB-1');
+
+        $this->actingAs($staff)
+            ->delete($this->url('/zasilky/'.$shipment->id))
+            ->assertForbidden();
+
+        $this->context->runAs(
+            $this->tenant,
+            fn () => $this->assertSame(Shipment::STATUS_SUBMITTED, $shipment->fresh()->shipmentStatus()),
         );
     }
 
