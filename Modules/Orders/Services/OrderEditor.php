@@ -5,6 +5,7 @@ namespace Modules\Orders\Services;
 use App\Core\Catalog\Contracts\CatalogProduct;
 use App\Core\Catalog\Contracts\ProductCatalog;
 use App\Core\Catalog\Exceptions\InsufficientStock;
+use App\Core\Discounts\Contracts\DiscountRedemption;
 use App\Core\Mail\Contracts\MailService;
 use App\Core\Mail\MailKind;
 use App\Core\Money\Money;
@@ -67,6 +68,7 @@ class OrderEditor
         private readonly OrderWorkflow $workflow,
         private readonly MailService $mail,
         private readonly TenantContext $context,
+        private readonly DiscountRedemption $redemptions,
     ) {}
 
     /**
@@ -373,6 +375,16 @@ class OrderEditor
                     }
                 }
             }
+
+            // Lock ordering (OrderPlacer's docblock): products first, discount
+            // row last. This release runs AFTER the stock above, in the same
+            // transaction — reversing it would take the discount lock before
+            // the product lock and deadlock a concurrent placement on the
+            // same popular coupon. A cancelled order gives back everything it
+            // took: the stock above (when $returnStock), and the coupon
+            // allowance always — a storno must not leave a shopper locked out
+            // of a coupon they never got to keep the benefit of.
+            $this->redemptions->release((int) $order->id);
         });
 
         if ($sendEmail) {

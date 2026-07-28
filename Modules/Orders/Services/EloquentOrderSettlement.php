@@ -3,6 +3,7 @@
 namespace Modules\Orders\Services;
 
 use App\Core\Catalog\Contracts\ProductCatalog;
+use App\Core\Discounts\Contracts\DiscountRedemption;
 use App\Core\Orders\Contracts\OrderSettlement;
 use Illuminate\Support\Facades\DB;
 use Modules\Orders\Models\Order;
@@ -25,6 +26,7 @@ final class EloquentOrderSettlement implements OrderSettlement
     public function __construct(
         private readonly OrderWorkflow $workflow,
         private readonly ProductCatalog $catalog,
+        private readonly DiscountRedemption $redemptions,
     ) {}
 
     public function attachReference(string $uuid, string $reference): void
@@ -70,6 +72,17 @@ final class EloquentOrderSettlement implements OrderSettlement
                     }
                 }
             }
+
+            // Lock ordering (OrderPlacer's docblock): products first, discount
+            // row last. This release runs AFTER the stock above, in the same
+            // transaction — reversing it would take the discount lock before
+            // the product lock and deadlock a concurrent placement on the
+            // same popular coupon. An order that failed to be paid gives back
+            // everything it took: the stock above, and the coupon allowance
+            // here — without this a coupon limited to one use per e-mail
+            // would lock the shopper out after a gateway timeout they did not
+            // cause.
+            $this->redemptions->release((int) $order->id);
 
             return $this->workflow->transitionPayment($order, Order::PAYMENT_FAILED, OrderEvent::ACTOR_SYSTEM, null, $note);
         });
