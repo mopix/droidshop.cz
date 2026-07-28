@@ -53,6 +53,11 @@ document.querySelectorAll('[data-variant-matrix]').forEach((script) => {
     // and simply leaves the net line untouched further down.
     const netPriceEl = document.querySelector('[data-variant-net-price]');
 
+    // The struck-through nominal price. Present only when the product was
+    // rendered on sale, so switching to a variant that is not discounted has
+    // to hide it rather than leave a stale figure crossed out.
+    const regularPriceEl = document.querySelector('[data-variant-regular-price]');
+
     let variants;
 
     try {
@@ -87,6 +92,13 @@ document.querySelectorAll('[data-variant-matrix]').forEach((script) => {
 
         if (netPriceEl && match.net_price) {
             netPriceEl.textContent = match.net_price;
+        }
+
+        // Only ever swaps strings the server already formatted — no price
+        // arithmetic in JS (spec §16.3).
+        if (regularPriceEl) {
+            regularPriceEl.textContent = match.regular_price || '';
+            regularPriceEl.hidden = !match.on_sale;
         }
 
         const submit = form.querySelector('button[type="submit"]');

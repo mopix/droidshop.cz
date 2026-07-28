@@ -56,7 +56,7 @@
                 $hasVariants = $product->catalogHasVariants();
                 $selectedVariant = $hasVariants ? $variants->first(fn ($v) => $v->catalogVariantIsAvailable()) : null;
                 $preselected = $selectedVariant?->catalogVariantSelection() ?? [];
-                $displayPrice = $selectedVariant?->catalogVariantPrice() ?? $product->price;
+                $displayPrice = $selectedVariant?->catalogVariantPrice() ?? $product->catalogPrice();
                 // Same tax_rate_id either way (a variant never carries its own
                 // VAT rate), so Product::rate() converts a variant's gross
                 // price to net just as well as the product's own — the
@@ -67,13 +67,43 @@
                 // reads catalogIsAvailable() too, and the two must never
                 // disagree about the same product (review fix).
                 $isAvailable = $product->catalogIsAvailable();
+
+                $onSale = $selectedVariant !== null
+                    ? $selectedVariant->catalogVariantIsOnSale()
+                    : $product->catalogIsOnSale();
+                $regularPrice = $selectedVariant?->catalogVariantRegularPrice() ?? $product->catalogRegularPrice();
+                $lowestPrice = $onSale ? $product->catalogLowestPriceIn30Days() : null;
+                // The badge is computed against the 30-day low, not the shelf
+                // price: that is the reference § 12a of the consumer
+                // protection act makes binding. A product launched straight
+                // into a sale has no older history, so the low equals the sale
+                // price and no badge is shown — announcing a discount without
+                // a reference is worse than announcing no percentage.
+                $salePercent = $lowestPrice !== null && $lowestPrice->amount > $displayPrice->amount
+                    ? (int) round(($lowestPrice->amount - $displayPrice->amount) / $lowestPrice->amount * 100)
+                    : null;
             @endphp
 
             <p class="mt-6">
-                <span class="text-3xl font-semibold text-slate-900" data-variant-price>{{ $displayPrice->format() }}</span>
+                <span class="text-3xl font-semibold {{ $onSale ? 'text-red-700' : 'text-slate-900' }}" data-variant-price>{{ $displayPrice->format() }}</span>
+
+                @if ($onSale)
+                    <s class="ml-2 text-lg text-slate-500" data-variant-regular-price>{{ $regularPrice->format() }}</s>
+
+                    @if ($salePercent !== null)
+                        <span class="badge ml-2 bg-red-100 text-red-800" data-sale-badge>−{{ $salePercent }} %</span>
+                    @endif
+                @endif
+
                 <span class="block text-sm text-slate-500">
                     s DPH · bez DPH <span data-variant-net-price>{{ $displayNetPrice->format() }}</span>
                 </span>
+
+                @if ($lowestPrice !== null)
+                    <span class="block text-sm text-slate-500" data-variant-lowest-price>
+                        Nejnižší cena za posledních 30 dní: {{ $lowestPrice->format() }}
+                    </span>
+                @endif
             </p>
 
             <p class="mt-4">
@@ -156,7 +186,10 @@
             : [
                 '@type' => 'Offer',
                 'url' => url($product->url()),
-                'price' => number_format($product->price->amount / 100, 2, '.', ''),
+                // The effective price: structured data must quote what the
+                // shopper is actually charged, or a price-comparison crawler
+                // reports a mismatch against the page it just read.
+                'price' => number_format($product->catalogPrice()->amount / 100, 2, '.', ''),
                 'priceCurrency' => $product->price->currency,
                 'availability' => $product->isAvailable()
                     ? 'https://schema.org/InStock'

@@ -107,7 +107,13 @@ class LowestPriceTest extends TestCase
         });
     }
 
-    public function test_a_running_sale_lowers_the_reported_figure(): void
+    /**
+     * A campaign is never part of its own reference: the statutory figure is
+     * the lowest price of the 30 days BEFORE the discount was granted. Were
+     * the sale price counted in, every reference would equal the sale price
+     * and every announced discount would be 0 %.
+     */
+    public function test_a_running_sale_is_not_part_of_its_own_reference(): void
     {
         $tenant = Tenant::factory()->create();
         $product = $this->makeProduct($tenant);
@@ -119,8 +125,50 @@ class LowestPriceTest extends TestCase
             $fresh = $product->fresh();
 
             $this->assertTrue($fresh->catalogIsOnSale());
-            $this->assertSame(70000, app(LowestPriceCalculator::class)->forProduct($fresh)->amount);
-            $this->assertSame(70000, $fresh->catalogLowestPriceIn30Days()->amount);
+            $this->assertSame(100000, app(LowestPriceCalculator::class)->forProduct($fresh)->amount);
+            $this->assertSame(100000, $fresh->catalogLowestPriceIn30Days()->amount);
+        });
+    }
+
+    /**
+     * An earlier campaign inside the window does count — that is the whole
+     * point of the rule: a shop cannot inflate the shelf price for a day and
+     * announce a discount from it.
+     */
+    public function test_an_earlier_campaign_inside_the_window_sets_the_reference(): void
+    {
+        $tenant = Tenant::factory()->create();
+        $product = $this->makeProduct($tenant);
+
+        Carbon::setTestNow(Carbon::parse('2026-06-05 12:00:00'));
+        $this->context->runAs($tenant, fn () => app(ProductWriter::class)->update($product, [
+            'sale_price' => 75000,
+            'sale_ends_at' => '2026-06-08 12:00:00',
+        ]));
+
+        Carbon::setTestNow(Carbon::parse('2026-06-20 12:00:00'));
+        $this->context->runAs($tenant, fn () => app(ProductWriter::class)->update($product->fresh(), [
+            'sale_price' => 70000,
+            'sale_starts_at' => null,
+            'sale_ends_at' => null,
+        ]));
+
+        $this->context->runAs($tenant, function () use ($product) {
+            $this->assertSame(75000, app(LowestPriceCalculator::class)->forProduct($product->fresh())->amount);
+        });
+    }
+
+    /**
+     * A product put on sale the moment it was created has nothing older than
+     * its own campaign, so the reference falls back to the price it sells at.
+     */
+    public function test_a_product_launched_straight_into_a_sale_reports_its_sale_price(): void
+    {
+        $tenant = Tenant::factory()->create();
+        $product = $this->makeProduct($tenant, ['sale_price' => 70000]);
+
+        $this->context->runAs($tenant, function () use ($product) {
+            $this->assertSame(70000, app(LowestPriceCalculator::class)->forProduct($product->fresh())->amount);
         });
     }
 }
