@@ -194,4 +194,16 @@ class Order extends Model implements OrderView
     {
         return $this->vat_summary ?? [];
     }
+
+    public function orderDiscountTotal(): Money
+    {
+        return $this->discount_total;
+    }
+
+    public function orderDiscounts(): Collection
+    {
+        // A fresh query, not the cached relation — same reasoning as
+        // orderItems() above.
+        return $this->discounts()->get();
+    }
 }

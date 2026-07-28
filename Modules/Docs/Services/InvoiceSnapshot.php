@@ -23,6 +23,7 @@ class InvoiceSnapshot
     public function for(OrderView $order, Tenant $tenant, int $dueDays): array
     {
         $issuedAt = Carbon::now();
+        $discountTotal = $order->orderDiscountTotal();
 
         return [
             'supplier' => [
@@ -49,9 +50,41 @@ class InvoiceSnapshot
             'vat_summary' => $order->orderVatSummary(),
             'total' => $order->orderTotal(),
             'currency' => $order->orderCurrency(),
+            // Informational only — never an input to any total (rozhodnutí
+            // 2026-07-28). The lines already carry discounted amounts, so
+            // without this note the customer cannot tell why the price
+            // differs from the catalogue. Both read the LIVE order, not the
+            // order_discounts snapshot rows: OrderEditor preserves each
+            // surviving line's own discount share and re-derives
+            // orders.discount_total, but never touches order_discounts, so
+            // after an edit that removes every discounted line the snapshot
+            // rows can still name an amount nothing on the order still
+            // charges. A zero live total means no note at all — an
+            // undiscounted (or no-longer-discounted) order must render
+            // exactly as it always has.
+            'discount_total' => $discountTotal,
+            'discount_note' => $discountTotal->amount > 0 ? $this->discountNote($order) : null,
             'issued_at' => $issuedAt,
             'taxable_at' => $issuedAt->copy()->startOfDay(),
             'due_at' => $issuedAt->copy()->addDays($dueDays)->startOfDay(),
         ];
+    }
+
+    /**
+     * Names the discount(s) that fired, from the order_discounts snapshot.
+     * Safe to read even though those rows can be stale about the AMOUNT (see
+     * for()'s docblock): this is only ever reached when the live discount
+     * total says something is still charged at a reduced price, and a
+     * discount named here did genuinely fire on this order at placement.
+     */
+    private function discountNote(OrderView $order): ?string
+    {
+        $note = $order->orderDiscounts()
+            ->map(fn ($discount): string => $discount->code === null
+                ? $discount->name
+                : sprintf('%s (%s)', $discount->name, $discount->code))
+            ->implode(', ');
+
+        return $note === '' ? null : $note;
     }
 }

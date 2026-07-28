@@ -115,4 +115,29 @@ interface OrderView
      * @return array<int, array<string, mixed>>
      */
     public function orderVatSummary(): array;
+
+    /**
+     * What came off the order's items as a whole (orders.discount_total).
+     * Never an input to any total — the lines already carry the reduction
+     * (order_items.line_total is net of it) — a caller reads this only to
+     * report the discount, e.g. a document's informational note. Read live
+     * rather than from a cached snapshot: an order edited after a discount
+     * fired can end up with a smaller (or zero) live total than the discount
+     * rows it still carries (Modules\Orders\Services\OrderEditor preserves
+     * each surviving line's own share but never touches order_discounts), so
+     * a caller that wants money-that-still-applies must come here, not to
+     * orderDiscounts() below.
+     */
+    public function orderDiscountTotal(): Money;
+
+    /**
+     * The discounts that fired on this order, as they were recorded at
+     * placement (order_discounts) — for naming a discount (code, name, type),
+     * never for totalling it: see orderDiscountTotal()'s docblock for why
+     * these rows can disagree with the order's live discount total after an
+     * edit. Freshly read, never a cached relation, matching orderItems().
+     *
+     * @return Collection<int, mixed>
+     */
+    public function orderDiscounts(): Collection;
 }
