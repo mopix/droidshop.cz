@@ -10,6 +10,8 @@ use App\Core\Tax\TaxRates;
 use App\Core\Tenancy\BelongsToTenant;
 use App\Core\Theme\VariantDisplay;
 use App\Models\TaxRate;
+use Carbon\CarbonImmutable;
+use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -58,7 +60,9 @@ class Product extends Model implements CatalogProduct
     {
         return [
             'price' => MoneyCast::class,
-            'compare_at_price' => MoneyCast::class,
+            'sale_price' => MoneyCast::class,
+            'sale_starts_at' => 'datetime',
+            'sale_ends_at' => 'datetime',
             'purchase_price' => MoneyCast::class,
             'stock_tracked' => 'boolean',
             'stock_qty' => 'integer',
@@ -154,14 +158,65 @@ class Product extends Model implements CatalogProduct
         return app(TaxRates::class)->findById($this->tax_rate_id);
     }
 
+    /**
+     * Whether the campaign window is open right now.
+     *
+     * Deliberately independent of sale_price: a shop may run a campaign in
+     * which only one variant is discounted, and that variant's amount still
+     * has to respect the product's dates.
+     */
+    public function saleWindowIsOpen(?CarbonInterface $at = null): bool
+    {
+        $at ??= CarbonImmutable::now();
+
+        if ($this->sale_starts_at !== null && $this->sale_starts_at->greaterThan($at)) {
+            return false;
+        }
+
+        return $this->sale_ends_at === null || $this->sale_ends_at->greaterThan($at);
+    }
+
+    public function saleIsRunning(?CarbonInterface $at = null): bool
+    {
+        return $this->sale_price !== null && $this->saleWindowIsOpen($at);
+    }
+
+    /**
+     * What a customer actually pays for this product right now.
+     *
+     * Every price the rest of the platform reads goes through here, which is
+     * why the cart, orders and documents need no change to charge a sale
+     * price — and why the discount engine (wave 2.6) computes a coupon from
+     * the discounted price rather than the shelf price.
+     */
+    public function effectivePrice(): Money
+    {
+        return $this->saleIsRunning() ? $this->sale_price : $this->price;
+    }
+
+    /**
+     * The same decision as effectivePrice(), expressed in SQL so a listing can
+     * order by what a shopper actually pays. Takes two bindings, both "now".
+     *
+     * Plain CASE WHEN rather than a database function: it has to run on MySQL
+     * in production and on SQLite in tests, identically.
+     */
+    public static function effectivePriceExpression(): string
+    {
+        return '(case when sale_price is not null'
+            .' and (sale_starts_at is null or sale_starts_at <= ?)'
+            .' and (sale_ends_at is null or sale_ends_at > ?)'
+            .' then sale_price else price end)';
+    }
+
     public function netPrice(): Money
     {
-        return $this->rate()->net($this->price);
+        return $this->rate()->net($this->effectivePrice());
     }
 
     public function vat(): Money
     {
-        return $this->rate()->vat($this->price);
+        return $this->rate()->vat($this->effectivePrice());
     }
 
     public function url(): string
@@ -197,7 +252,29 @@ class Product extends Model implements CatalogProduct
 
     public function catalogPrice(): Money
     {
+        return $this->effectivePrice();
+    }
+
+    /**
+     * The nominal price — what gets struck through next to a sale price.
+     */
+    public function catalogRegularPrice(): Money
+    {
         return $this->price;
+    }
+
+    public function catalogIsOnSale(): bool
+    {
+        return $this->saleIsRunning();
+    }
+
+    public function catalogLowestPriceIn30Days(): ?Money
+    {
+        // The history the answer comes from does not exist yet — the recorder
+        // and the calculator land later in this wave. Until then the honest
+        // answer is "no reference known", which the storefront renders as no
+        // line at all rather than as a made-up figure.
+        return null;
     }
 
     public function catalogNetPrice(): Money
