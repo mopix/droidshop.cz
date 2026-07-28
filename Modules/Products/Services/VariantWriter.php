@@ -170,6 +170,71 @@ class VariantWriter
         return $variant;
     }
 
+    /**
+     * The variant for one exact combination of axis values, created if it is
+     * not there yet.
+     *
+     * Axes and values the product does not have are created: unlike
+     * categories, which are a shared tree where a typo pollutes the whole
+     * shop, an axis belongs to a single product and a mistake is visible on
+     * that product's own detail screen.
+     *
+     * @param  array<string, string>  $axes  axis name => value, e.g. ['Velikost' => 'M']
+     * @param  array<string, mixed>  $attributes
+     */
+    public function upsertVariant(Product $product, array $axes, array $attributes): ProductVariant
+    {
+        return DB::transaction(function () use ($product, $axes, $attributes) {
+            $valueIds = [];
+
+            foreach ($axes as $axisName => $value) {
+                $option = ProductOption::query()
+                    ->where('product_id', $product->id)
+                    ->where('name', $axisName)
+                    ->first() ?? $this->addOption($product, $axisName);
+
+                $optionValue = ProductOptionValue::query()
+                    ->where('option_id', $option->id)
+                    ->where('value', $value)
+                    ->first() ?? $this->addValue($option, $value);
+
+                $valueIds[] = (int) $optionValue->id;
+            }
+
+            sort($valueIds);
+
+            $existing = ProductVariant::query()
+                ->where('product_id', $product->id)
+                ->with('optionValues')
+                ->get()
+                ->first(function (ProductVariant $variant) use ($valueIds) {
+                    $ids = $variant->optionValues->pluck('id')->map(fn ($id) => (int) $id)->sort()->values()->all();
+
+                    return $ids === $valueIds;
+                });
+
+            if ($existing !== null) {
+                return $this->updateVariant($existing, $attributes);
+            }
+
+            $position = (int) ProductVariant::query()->where('product_id', $product->id)->max('position');
+
+            $variant = ProductVariant::create([
+                'product_id' => $product->id,
+                'position' => $position + 1,
+                ...array_intersect_key($attributes, array_flip([
+                    'sku', 'ean', 'price', 'sale_price', 'stock_tracked', 'stock_qty', 'stock_policy', 'active',
+                ])),
+            ]);
+
+            $variant->optionValues()->attach($valueIds);
+            $variant->setRelation('product', $product);
+            $this->history->recordVariant($variant);
+
+            return $variant;
+        });
+    }
+
     public function deleteVariant(ProductVariant $variant): void
     {
         $variant->delete();

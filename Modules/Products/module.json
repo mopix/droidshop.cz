@@ -30,6 +30,13 @@
             "route": "admin.products.index",
             "icon": "package",
             "order": 10
+        },
+        {
+            "area": "admin",
+            "label": "Import / export",
+            "route": "admin.products.import.index",
+            "icon": "upload",
+            "order": 15
         }
     ]
 }
