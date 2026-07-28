@@ -82,7 +82,7 @@ Modul `products` je **core**, takže akční ceny dostane každý tarif. Write-f
 
 Index `(tenant_id, product_id, variant_id, starts_at)`; index na `ends_at` kvůli dotazu na překryv.
 
-**Invariant:** řádek, jehož `starts_at` už nastal, se **nikdy nemění**. Přepisují se výhradně dosud nezačaté (plánované) řádky. Historie je doklad pro dozorový orgán — přepsaná minulost je horší než chybějící.
+**Invariant:** **uzavřený** řádek (`ends_at` už nastal) se nikdy nemění. Právě běžícímu řádku se smí posunout konec, který ještě nenastal — jinak by přeplánování kampaně vyrobilo dva překrývající se intervaly pro tytéž minuty. Plánované řádky se přepisují volně. Historie je doklad pro dozorový orgán, takže přepsaná minulost je horší než chybějící.
 
 ## Chování
 
@@ -165,7 +165,7 @@ Varianty: embedded matice v `variant-picker.blade.php` dostane server-formátova
 5. Nejnižší 30denní cena odpovídá skutečnému minimu efektivní ceny v okně, včetně akce, která začala před 30 dny a stále běží.
 6. Varianta bez vlastní ceny dědí produktovou akci; varianta s vlastní cenou a bez vlastní akční ceny se prodává za svou nominální cenu.
 7. Řazení katalogu podle ceny respektuje akční ceny.
-8. Historický řádek, jehož interval už začal, nezmění žádná pozdější editace ceny.
+8. Uzavřený historický řádek nezmění žádná pozdější editace ceny; přeplánování kampaně nevyrobí dva intervaly překrývající se v čase.
 9. Poplatek za dopravu i platbu vstupuje u plátce DPH do rekapitulace; součet rozpisu se rovná celkové částce objednávky.
 10. Nájemce, který není plátcem DPH, uloží dopravu i platbu bez sazby a nic se nerozbije.
 
