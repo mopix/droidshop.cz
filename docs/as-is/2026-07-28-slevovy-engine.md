@@ -1,6 +1,6 @@
 # As-is: Slevový engine (vlna 2.6)
 
-Datum: 2026-07-28 · Verze: **0.24.3** (0.24.0 = uzavření vlny, 0.24.1–0.24.3 = opravy z final review) · Větev: `feature/vlna-26-slevovy-engine` · 1461 testů (5110 assertions) + 6 z final review
+Datum: 2026-07-28 · Verze: **0.24.x** (0.24.0 = uzavření vlny; patch bumpy nad ním jsou opravy z final review, VERSION zvedá pre-commit hook) · Větev: `feature/vlna-26-slevovy-engine` · 1461 testů (5110 assertions) + 6 z final review
 
 Spec: [`docs/superpowers/specs/2026-07-28-vlna-26-slevovy-engine-design.md`](../superpowers/specs/2026-07-28-vlna-26-slevovy-engine-design.md)
 Plán: [`docs/superpowers/plans/2026-07-28-vlna-26-slevovy-engine.md`](../superpowers/plans/2026-07-28-vlna-26-slevovy-engine.md)
