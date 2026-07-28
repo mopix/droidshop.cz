@@ -213,6 +213,51 @@ class CartDiscountFormTest extends TestCase
     }
 
     /**
+     * Final review (wave 2.6): the render that discovers a stored code has gone
+     * stale clears it, so "a code still on the cart at submit" means "it was
+     * valid at the last render" by construction — which is what lets
+     * OrderPlacer refuse on ANY rejection without turning an old code into a
+     * dead end. The reason has to be on that same render: clearing it silently
+     * would be worse than the bug.
+     */
+    public function test_a_render_clears_a_stale_code_and_shows_the_reason(): void
+    {
+        $product = $this->seedProductAndCode();
+
+        $this->post($this->url('/kosik'), ['product_id' => $product->id, 'quantity' => 1]);
+        $token = $this->cartTokenInDb();
+
+        $this->withCookie('cart_token', $token)
+            ->post($this->url('/kosik/sleva'), ['code' => 'SLEVA10'])
+            ->assertRedirect();
+
+        $this->assertSame(
+            'SLEVA10',
+            $this->context->runAs($this->tenant, fn () => Cart::query()->firstOrFail()->coupon_code),
+        );
+
+        // The coupon's validity ends while the cart sits open — the everyday
+        // version of ends_at crossing midnight.
+        $this->context->runAs(
+            $this->tenant,
+            fn () => Discount::query()->firstOrFail()->forceFill(['ends_at' => now()->subMinute()])->save(),
+        );
+
+        $page = $this->withCookie('cart_token', $token)->get($this->url('/kosik'));
+
+        $page->assertOk();
+        $page->assertSee('Slevový kód neplatí');
+        $page->assertSee('platnost kódu skončila.');
+        $page->assertSee($this->czk(100_000), false); // full price again
+        $page->assertDontSee('Uplatněn slevový kód');
+
+        // Gone from the cart, so a submit cannot be refused for it later.
+        $this->assertNull(
+            $this->context->runAs($this->tenant, fn () => Cart::query()->firstOrFail()->coupon_code),
+        );
+    }
+
+    /**
      * Final review (wave 2.6): the endpoint answered an unlimited number of
      * guesses, and its rejection reasons distinguish "takový kód neexistuje"
      * from "kód je vyčerpaný" / "platnost kódu skončila" — a dictionary oracle

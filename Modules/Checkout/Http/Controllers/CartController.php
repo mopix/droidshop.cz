@@ -12,6 +12,7 @@ use Modules\Checkout\Http\Requests\AddCartItemRequest;
 use Modules\Checkout\Http\Requests\UpdateCartItemRequest;
 use Modules\Checkout\Services\CartPricer;
 use Modules\Checkout\Support\CartCookie;
+use Modules\Checkout\Support\StaleCoupon;
 use Modules\Storefront\Support\Seo;
 use Modules\Storefront\Support\ShopModules;
 
@@ -21,6 +22,11 @@ use Modules\Storefront\Support\ShopModules;
  * form submit (POST/PATCH/DELETE via `_method`) that redirects back to a
  * freshly server-rendered page, never a fetch the page depends on to show
  * its own contents.
+ *
+ * show() is the one read here that also writes: a coupon this render finds
+ * rejected is dropped off the cart (StaleCoupon) so "a code still on the cart"
+ * always means "valid at the last render". See that class for why the
+ * invariant is worth a write on a GET.
  */
 class CartController
 {
@@ -34,9 +40,12 @@ class CartController
     public function show(Request $request): Response
     {
         $cart = $this->carts->forToken(CartCookie::read($request));
+        $priced = $this->pricer->price($cart);
+
+        StaleCoupon::clear($this->carts, $cart, $priced);
 
         $view = view('checkout::cart', [
-            'cart' => $this->pricer->price($cart),
+            'cart' => $priced,
             'seo' => new Seo(title: 'Košík', noindex: true),
             // The discount field renders only for a shop that actually runs
             // the module — decided here, once, rather than the partial

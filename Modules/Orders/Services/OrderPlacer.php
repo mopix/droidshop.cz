@@ -10,7 +10,6 @@ use App\Core\Discounts\Contracts\DiscountEngine;
 use App\Core\Discounts\Contracts\DiscountRedemption;
 use App\Core\Discounts\DiscountContext;
 use App\Core\Discounts\DiscountLine;
-use App\Core\Discounts\DiscountRejection;
 use App\Core\Discounts\Exceptions\DiscountNoLongerValid;
 use App\Core\Money\Money;
 use App\Core\Orders\Contracts\OrderPlacement;
@@ -188,7 +187,7 @@ class OrderPlacer implements OrderPlacement
                 shippingCost: $shippingTotal,
             ));
 
-            $this->refuseIfTheEmailChangedTheAnswer($couponCode, $applied);
+            $this->refuseIfTheCouponStoppedApplying($couponCode, $applied);
 
             if ($applied->freeShipping) {
                 // Outranks the method's own free_from threshold: the shop gave
@@ -477,36 +476,34 @@ class OrderPlacer implements OrderPlacement
     }
 
     /**
-     * Refuses the order when the shopper's e-mail is what killed their coupon.
+     * Refuses the order whenever the coupon on the cart no longer applies.
      *
-     * The cart and the checkout recap price the basket with `email: null`
-     * (CartPricer has no address to work with), and DiscountEligibility skips
-     * `usage_limit_per_email` and `first_order_only` entirely when the e-mail
-     * is unknown. Placement is the first time the real address reaches the
-     * engine, so for exactly those two conditions the binding answer can
-     * differ from the one on the page carrying the payment-obligation button —
-     * and charging a total the shopper never saw is not an option (the same
-     * policy PriceChanged has: refuse, explain, let them decide).
+     * The rule (human ruling, wave 2.6): never charge a total other than the
+     * one shown above the payment-obligation button. Any reason at all — the
+     * e-mail-gated ones this used to be narrowed to (`email_limit`,
+     * `first_order_only`, invisible to the recap because CartPricer prices with
+     * `email: null`), but equally `usage_limit` taken by someone else seconds
+     * ago, `expired` crossing midnight, `inactive` after an admin switched the
+     * coupon off, `min_cart` / `no_eligible_items` / `requires_login` — means
+     * the price this placement would write is not the price on the page. That
+     * is exactly the PriceChanged policy: refuse, explain, let the shopper
+     * decide. Silently placing at full price charged people money they never
+     * agreed to.
      *
-     * Deliberately narrowed to those two reasons. A code the recap ALREADY
-     * showed as rejected (expired, exhausted, wrong basket) must stay a
-     * no-op, or an old code sitting in the cart would turn into a dead end at
-     * submit for something the shopper was already told about.
+     * The narrowing existed because a code the recap ALREADY displayed as
+     * rejected must not become a dead end at submit, and nothing in the request
+     * carries what the recap displayed. Modules\Checkout\Support\StaleCoupon
+     * removes that ambiguity at the source instead: every render of the cart and
+     * of the checkout recap clears a rejected code (showing the reason), so a
+     * code still on the cart here was valid at the last render by construction.
      */
-    private function refuseIfTheEmailChangedTheAnswer(?string $couponCode, AppliedDiscount $applied): void
+    private function refuseIfTheCouponStoppedApplying(?string $couponCode, AppliedDiscount $applied): void
     {
         if ($couponCode === null || trim($couponCode) === '' || $applied->rejection === null) {
             return;
         }
 
-        $emailGated = [
-            DiscountRejection::EMAIL_LIMIT,
-            DiscountRejection::FIRST_ORDER_ONLY,
-        ];
-
-        if (in_array($applied->rejection->reason, $emailGated, true)) {
-            throw DiscountNoLongerValid::forCode($applied->rejection->code);
-        }
+        throw DiscountNoLongerValid::forCode($applied->rejection->code);
     }
 
     /**

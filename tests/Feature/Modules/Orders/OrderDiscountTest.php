@@ -211,24 +211,38 @@ class OrderDiscountTest extends TestCase
         });
     }
 
-    public function test_an_exhausted_coupon_stops_applying_and_leaves_no_row(): void
+    /**
+     * Rewritten by the wave's final review. This test used to assert the
+     * opposite — that an exhausted coupon "stops applying" and the order is
+     * placed at full price. That was the bug: a shopper sitting on
+     * /pokladna/udaje showing "Celkem 900,00 Kč" whose coupon's last use was
+     * taken by somebody else a second earlier got charged 1 000,00 Kč, having
+     * agreed to 900. Human ruling: never charge a total other than the one
+     * shown above the payment-obligation button. Any rejection of a typed code
+     * now refuses the order, and StaleCoupon keeps that from becoming a dead
+     * end (a rejected code is cleared on the render that reports it).
+     */
+    public function test_an_exhausted_coupon_refuses_the_order_rather_than_charging_full_price(): void
     {
         $this->context->runAs($this->tenant, function (): void {
-            $product = $this->product(100000);
+            $product = $this->product(100000, ['stock_tracked' => true, 'stock_qty' => 5]);
             $discount = Discount::factory()->code('JEDEN')->percent(100)->create([
                 'usage_limit' => 1,
                 'used_count' => 1,
             ]);
 
-            // The engine rejects it, so the order is placed at full price —
-            // no throw, no discount. The shopper saw the reason on the recap.
-            $order = $this->place($this->cart('JEDEN', [$product->id => 1]));
+            try {
+                $this->place($this->cart('JEDEN', [$product->id => 1]));
+                $this->fail('An exhausted coupon must refuse the order, not charge full price.');
+            } catch (DiscountNoLongerValid $e) {
+                $this->assertSame('Slevový kód JEDEN už není platný.', $e->getMessage());
+            }
 
-            $this->assertSame(0, $order->discount_total->amount);
-            $this->assertSame(100000, $order->total->amount);
-            $this->assertSame(0, $order->discounts()->count());
+            // Nothing written, no stock taken, the counter untouched.
+            $this->assertSame(0, Order::query()->count());
+            $this->assertSame(5, (int) $product->fresh()->stock_qty);
             $this->assertSame(1, (int) $discount->fresh()->used_count);
-            $this->assertDatabaseMissing('discount_redemptions', ['order_id' => $order->id]);
+            $this->assertSame(0, DiscountRedemption::query()->count());
         });
     }
 
@@ -347,11 +361,15 @@ class OrderDiscountTest extends TestCase
     }
 
     /**
-     * A code the recap ALREADY showed as rejected must stay a no-op: turning
-     * it into a dead end at submit would punish the shopper for something they
-     * were told about two screens ago.
+     * Also rewritten by the final review, and for the same reason: an expired
+     * coupon used to place at full price too (ends_at crossing midnight while
+     * the page sat open is the everyday version of it). The concern that
+     * produced the old assertion — a code the recap ALREADY showed as rejected
+     * must not become a dead end at submit — is now handled by clearing the
+     * code on the render that reports it (Modules\Checkout\Support\StaleCoupon),
+     * not by silently repricing the order.
      */
-    public function test_a_coupon_rejected_for_a_non_email_reason_still_places_at_full_price(): void
+    public function test_a_coupon_rejected_for_a_non_email_reason_also_refuses_the_order(): void
     {
         $this->context->runAs($this->tenant, function (): void {
             $product = $this->product(100000);
@@ -359,10 +377,14 @@ class OrderDiscountTest extends TestCase
                 'ends_at' => now()->subDay(),
             ]);
 
-            $order = $this->place($this->cart('PROSLA', [$product->id => 1]));
+            try {
+                $this->place($this->cart('PROSLA', [$product->id => 1]));
+                $this->fail('An expired coupon must refuse the order, not charge full price.');
+            } catch (DiscountNoLongerValid $e) {
+                $this->assertSame('Slevový kód PROSLA už není platný.', $e->getMessage());
+            }
 
-            $this->assertSame(100000, $order->total->amount);
-            $this->assertSame(0, $order->discount_total->amount);
+            $this->assertSame(0, Order::query()->count());
         });
     }
 

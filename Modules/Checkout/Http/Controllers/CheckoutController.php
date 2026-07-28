@@ -34,6 +34,7 @@ use Modules\Checkout\Http\Requests\PlaceOrderRequest;
 use Modules\Checkout\Services\CartPricer;
 use Modules\Checkout\Support\CartCookie;
 use Modules\Checkout\Support\PricedCart;
+use Modules\Checkout\Support\StaleCoupon;
 use Modules\Storefront\Support\Seo;
 use Modules\Storefront\Support\ShopModules;
 
@@ -215,6 +216,14 @@ class CheckoutController
             );
         }
 
+        // A coupon this render finds rejected comes off the cart here, exactly
+        // as it does on /kosik — this page carries the payment-obligation
+        // button, so "the code is still on the cart" has to mean "it was valid
+        // at the last render" before place() may lean on that (StaleCoupon).
+        // $priced still carries the rejection, so the partial below prints the
+        // reason on this very render.
+        StaleCoupon::clear($this->carts, $cart, $priced);
+
         $selection = $this->resolveSelection($cart, $priced);
 
         // Shipping options exist but none is chosen yet: send the shopper to
@@ -314,27 +323,39 @@ class CheckoutController
                 $request,
             );
         } catch (DiscountNoLongerValid $e) {
-            // The coupon stopped applying between this shopper's recap and
+            // The discount stopped applying between this shopper's recap and
             // their submit — the discount's exact counterpart to PriceChanged.
             // Nothing was written and no allowance was consumed (OrderPlacer
             // refuses before any stock moves, and redeems under a row lock
             // inside its transaction).
             //
-            // The code is dropped from the cart here, not merely reported.
-            // CartPricer prices with `email: null`, so the two conditions this
-            // refusal exists for (usage_limit_per_email, first_order_only) are
-            // invisible to it: leaving the code on the cart would re-render
-            // "Uplatněn slevový kód …" and the discounted total directly under
-            // a flash saying it is no longer valid, and every resubmit would
-            // hit the same refusal. The message says so explicitly, because a
-            // shopper who sees the price go up is owed the reason.
-            $this->carts->setCouponCode($cart, null);
+            // A typed code is dropped from the cart here, not merely reported:
+            // leaving it on would re-render "Uplatněn slevový kód …" and the
+            // discounted total directly under a flash saying it is no longer
+            // valid, and every resubmit would hit the same refusal. The message
+            // says so explicitly, because a shopper who sees the price go up is
+            // owed the reason.
+            //
+            // But this exception is also reachable with no code involved at all
+            // — an AUTOMATIC rule losing the redeem() lock race — and then
+            // there is nothing to remove, so promising a removal would be a
+            // lie (final review, wave 2.6). The exception itself does not carry
+            // the distinction (forCode(null) only changes its wording), so it
+            // is taken from the cart, which is the actual authority on whether
+            // a code was there.
+            $storedCode = $cart->cartCouponCode();
+            $hadCode = $storedCode !== null && trim($storedCode) !== '';
+
+            if ($hadCode) {
+                $this->carts->setCouponCode($cart, null);
+            }
+
+            $message = $hadCode
+                ? $e->getMessage().' Odebrali jsme ho z košíku — zkontrolujte prosím cenu a objednávku dokončete znovu.'
+                : $e->getMessage().' Zkontrolujte prosím cenu a objednávku dokončete znovu.';
 
             return CartCookie::attach(
-                redirect()->route('storefront.checkout.show')->with(
-                    'status',
-                    $e->getMessage().' Odebrali jsme ho z košíku — zkontrolujte prosím cenu a objednávku dokončete znovu.',
-                ),
+                redirect()->route('storefront.checkout.show')->with('status', $message),
                 $cart,
                 $request,
             );
