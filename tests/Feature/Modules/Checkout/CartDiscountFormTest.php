@@ -190,4 +190,25 @@ class CartDiscountFormTest extends TestCase
         $page->assertOk();
         $page->assertDontSee('Slevový kód');
     }
+
+    /**
+     * The field being absent from the rendered page is not the same
+     * guarantee as the endpoint refusing to write — /kosik/sleva is only
+     * gated by `module:checkout`, so a direct POST (bypassing the UI
+     * entirely) must be refused by the controller itself, not merely left
+     * unreachable by the missing form (review finding, wave 2.6).
+     */
+    public function test_posting_a_code_is_ignored_when_the_module_is_off(): void
+    {
+        $other = Tenant::factory()->withDomain('shop2.droidshop')->create(['name' => 'Shop Two']);
+
+        foreach (['storefront', 'checkout', 'products'] as $module) {
+            $this->activateModule($other, $module);
+        }
+
+        $apply = $this->post('http://shop2.droidshop/kosik/sleva', ['code' => 'ANYTHING']);
+        $apply->assertRedirect();
+
+        $this->assertDatabaseMissing('carts', ['coupon_code' => 'ANYTHING']);
+    }
 }

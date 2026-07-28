@@ -9,6 +9,7 @@ use Illuminate\Http\Request;
 use Modules\Checkout\Http\Requests\ApplyDiscountRequest;
 use Modules\Checkout\Services\CartPricer;
 use Modules\Checkout\Support\CartCookie;
+use Modules\Storefront\Support\ShopModules;
 
 /**
  * `/kosik/sleva` — applying and clearing a discount code.
@@ -26,17 +27,39 @@ use Modules\Checkout\Support\CartCookie;
  * shopper is told why via the storefront's ordinary $errors/old() flash,
  * the same mechanism every other form here uses, not by leaving a dead code
  * sitting on the cart until they notice nothing changed.
+ *
+ * These routes are only gated by `module:checkout` (ModuleRouteRegistrar
+ * mounts every storefront.php under the module that owns the file), so
+ * without an explicit check here a shop running `checkout` but not
+ * `discounts` could still POST a code straight to `/kosik/sleva` even
+ * though the field itself is never rendered (CartController passes
+ * `discountsEnabled` = false). With the module off, DiscountEngine's null
+ * binding answers `AppliedDiscount::none()` with no rejection, so the
+ * ordinary rollback-on-rejection path below would never fire and a code
+ * would sit on the cart, inert only for as long as the module stays off —
+ * reactivating it later could silently start applying a forgotten code to
+ * an old cart. apply() therefore mirrors the same contract
+ * App\Core\Discounts\NullDiscountEngine documents: with no module, a typed
+ * code is ignored outright, not stored and not evaluated.
  */
 class CartDiscountController
 {
     public function __construct(
         private readonly CartRepository $carts,
         private readonly CartPricer $pricer,
+        private readonly ShopModules $modules,
     ) {}
 
     public function apply(ApplyDiscountRequest $request): RedirectResponse
     {
         $cart = $this->carts->forToken(CartCookie::read($request));
+
+        if (! $this->modules->has('discounts')) {
+            // The field that would have submitted this is not rendered
+            // either (see class docblock) — a direct POST is treated the
+            // same way the null engine treats it: ignored, not persisted.
+            return $this->back($request, $cart);
+        }
 
         $code = mb_strtoupper(trim($request->string('code')->toString()));
 
