@@ -18,6 +18,8 @@ use Modules\Products\Models\ProductVariant;
  */
 class VariantWriter
 {
+    public function __construct(private readonly PriceHistoryRecorder $history) {}
+
     public function addOption(Product $product, string $name): ProductOption
     {
         $max = ProductOption::query()->where('product_id', $product->id)->max('position');
@@ -139,6 +141,12 @@ class VariantWriter
                 ]);
 
                 $variant->optionValues()->attach($combination);
+
+                // A generated variant starts out inheriting the product's
+                // price, and that inherited price is what it is sold at — so
+                // it needs its own row in the series from the first minute.
+                $variant->setRelation('product', $product);
+                $this->history->recordVariant($variant);
             });
 
             $created++;
@@ -154,8 +162,10 @@ class VariantWriter
     {
         // Explicit whitelist into a $guarded=[] model — never $request->all().
         $variant->update(array_intersect_key($attributes, array_flip([
-            'sku', 'ean', 'price', 'stock_tracked', 'stock_qty', 'stock_policy', 'active',
+            'sku', 'ean', 'price', 'sale_price', 'stock_tracked', 'stock_qty', 'stock_policy', 'active',
         ])));
+
+        $this->history->recordVariant($variant);
 
         return $variant;
     }

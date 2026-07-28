@@ -22,6 +22,7 @@ class ProductWriter
     public function __construct(
         private readonly HtmlSanitizer $sanitizer,
         private readonly RedirectRegistry $redirects,
+        private readonly PriceHistoryRecorder $history,
     ) {}
 
     /**
@@ -32,7 +33,11 @@ class ProductWriter
         $attributes = $this->prepare($attributes);
         $attributes['slug'] ??= $this->uniqueSlug($attributes['name']);
 
-        return Product::query()->create($attributes);
+        $product = Product::query()->create($attributes);
+
+        $this->history->record($product);
+
+        return $product;
     }
 
     /**
@@ -48,6 +53,10 @@ class ProductWriter
         }
 
         $product->fill($attributes)->save();
+
+        // After the save, so the timeline records the price that now stands —
+        // including one a scheduled campaign will bring later.
+        $this->history->record($product);
 
         if ($product->slug !== $oldSlug) {
             $this->redirects->record(
