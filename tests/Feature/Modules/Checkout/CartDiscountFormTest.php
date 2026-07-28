@@ -296,4 +296,46 @@ class CartDiscountFormTest extends TestCase
         // Never looked up, so never stored — the valid code did not get in.
         $this->assertDatabaseMissing('carts', ['coupon_code' => 'SLEVA10']);
     }
+
+    /**
+     * Re-review of the final-review fix: one composed key (tenant + cart token
+     * + IP) throttles nothing durable, because changing ANY component mints a
+     * fresh bucket. `POST /kosik` is unthrottled and hands out a brand new
+     * valid cart token, so an attacker spends ten guesses, rotates, and repeats
+     * — about eleven requests per ten guesses, unbounded. Cookie encryption
+     * stops a forged token, not a minted one.
+     *
+     * Two independent limiters now apply and either one refuses: a wide per-IP
+     * ceiling that survives rotation, plus the tight per-cart one.
+     */
+    public function test_rotating_the_cart_token_does_not_buy_a_fresh_allowance(): void
+    {
+        $this->seedProductAndCode();
+
+        // Thirty attempts spread over three cart tokens, ten each — so the
+        // per-cart limiter never fires and every one of them lands on the IP
+        // limiter instead. This is exactly the rotation attack.
+        foreach (['cart-a', 'cart-b', 'cart-c'] as $cartToken) {
+            for ($i = 0; $i < 10; $i++) {
+                $this->withCookie('cart_token', $cartToken)
+                    ->post($this->url('/kosik/sleva'), ['code' => 'HADANKA'.$i])
+                    ->assertRedirect();
+            }
+        }
+
+        // A fourth fresh token — untouched by the per-cart limiter, and under
+        // the old single key this would have been a clean slate.
+        $throttled = $this->withCookie('cart_token', 'cart-d')
+            ->post($this->url('/kosik/sleva'), ['code' => 'SLEVA10']);
+
+        $throttled->assertRedirect();
+        $throttled->assertSessionHasErrors('code');
+
+        $this->assertStringContainsString(
+            'Příliš mnoho pokusů',
+            (string) session('errors')->first('code'),
+        );
+
+        $this->assertDatabaseMissing('carts', ['coupon_code' => 'SLEVA10']);
+    }
 }

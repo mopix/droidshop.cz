@@ -216,14 +216,6 @@ class CheckoutController
             );
         }
 
-        // A coupon this render finds rejected comes off the cart here, exactly
-        // as it does on /kosik — this page carries the payment-obligation
-        // button, so "the code is still on the cart" has to mean "it was valid
-        // at the last render" before place() may lean on that (StaleCoupon).
-        // $priced still carries the rejection, so the partial below prints the
-        // reason on this very render.
-        StaleCoupon::clear($this->carts, $cart, $priced);
-
         $selection = $this->resolveSelection($cart, $priced);
 
         // Shipping options exist but none is chosen yet: send the shopper to
@@ -237,6 +229,24 @@ class CheckoutController
                 $request,
             );
         }
+
+        // A coupon this render finds rejected comes off the cart, exactly as it
+        // does on /kosik — this page carries the payment-obligation button, so
+        // "the code is still on the cart" has to mean "it was valid at the last
+        // render" before place() may lean on that (StaleCoupon). $priced still
+        // carries the rejection, so the partial in the view below prints the
+        // reason on this very render.
+        //
+        // Deliberately AFTER the shipping redirect above, not before it
+        // (re-review finding): /pokladna/doprava does not include the discount
+        // partial, so clearing on a request that redirects there would take the
+        // code away with no page left to say why — and by the next render
+        // discountRejection is null and nothing explains the vanished discount.
+        // StaleCoupon's whole contract is "cleared only where the reason is
+        // shown". The invariant place() leans on is unaffected: place()
+        // requires a checkout_token, and only the full recap render below mints
+        // one.
+        StaleCoupon::clear($this->carts, $cart, $priced);
 
         $view = view('checkout::checkout.details', [
             'cart' => $priced,

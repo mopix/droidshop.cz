@@ -375,6 +375,79 @@ class CheckoutDiscountRecapTest extends TestCase
     }
 
     /**
+     * Re-review of the final-review fix: StaleCoupon::clear() used to run above
+     * the "no shipping method chosen yet" redirect, so a shopper who reached
+     * /pokladna/udaje without a method had their code removed and was sent to
+     * /pokladna/doprava — a page that does not include the discount partial and
+     * therefore printed no reason. By the next render discountRejection is null
+     * and nothing explains the vanished discount, which is exactly the silent
+     * clearing StaleCoupon's own contract forbids.
+     *
+     * The clear now sits immediately above the view, so it only fires on a
+     * render that shows the reason. Placement is unaffected: place() needs a
+     * checkout_token, and only the full recap render mints one.
+     */
+    public function test_the_shipping_redirect_does_not_clear_the_code_before_any_page_can_explain_it(): void
+    {
+        $product = $this->context->runAs($this->tenant, function (): Product {
+            $product = $this->makeProduct();
+
+            Discount::factory()->code('SLEVA10')->percent(100)->create(['name' => 'Sleva 10 %']);
+
+            // A real shipping method exists, so the recap refuses to render
+            // until one is chosen (no free-pickup fallback).
+            ShippingMethod::create([
+                'provider' => ShippingMethod::PROVIDER_FLAT,
+                'name' => 'Kurýr',
+                'price' => 9_900,
+                'is_active' => true,
+            ]);
+
+            return $product;
+        });
+
+        $this->post($this->url('/kosik'), ['product_id' => $product->id, 'quantity' => 1]);
+        $token = $this->cartToken();
+
+        $this->withCookie('cart_token', $token)
+            ->post($this->url('/kosik/sleva'), ['code' => 'SLEVA10', 'return_to' => 'checkout']);
+
+        $this->context->runAs(
+            $this->tenant,
+            fn () => Discount::query()->firstOrFail()->forceFill(['active' => false])->save(),
+        );
+
+        // No shipping method chosen: this request only redirects, it renders
+        // nothing that could carry the reason.
+        $this->withCookie('cart_token', $token)
+            ->get($this->url('/pokladna/udaje'))
+            ->assertRedirect($this->url('/pokladna/doprava'));
+
+        // The code survives, because nothing has explained its removal yet.
+        $this->assertSame(
+            'SLEVA10',
+            $this->context->runAs($this->tenant, fn () => Cart::query()->firstOrFail()->coupon_code),
+        );
+
+        $shippingId = $this->context->runAs($this->tenant, fn () => ShippingMethod::query()->firstOrFail()->id);
+
+        $this->withCookie('cart_token', $token)
+            ->post($this->url('/pokladna/doprava'), ['shipping_method_id' => $shippingId]);
+
+        // Now the recap really renders — and this is the render that both
+        // clears the code and says why.
+        $page = $this->withCookie('cart_token', $token)->get($this->url('/pokladna/udaje'));
+
+        $page->assertOk();
+        $page->assertSee('Slevový kód neplatí');
+        $page->assertSee('kód je vypnutý.');
+
+        $this->assertNull(
+            $this->context->runAs($this->tenant, fn () => Cart::query()->firstOrFail()->coupon_code),
+        );
+    }
+
+    /**
      * Final review (wave 2.6): DiscountNoLongerValid is also reachable with no
      * code involved at all — an AUTOMATIC rule losing the redeem() lock race —
      * and the flash used to promise "Odebrali jsme ho z košíku" regardless,

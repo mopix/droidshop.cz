@@ -30,7 +30,15 @@ use Modules\Checkout\Support\CartCookie;
  */
 class ApplyDiscountRequest extends FormRequest
 {
-    private const MAX_ATTEMPTS = 10;
+    /** Per cart token — the tight bound on one shopper's basket. */
+    private const MAX_ATTEMPTS_PER_CART = 10;
+
+    /**
+     * Per IP — the outer bound that survives cart-token rotation. Higher than
+     * the per-cart ceiling on purpose: a household or an office behind one NAT
+     * address shares it legitimately, so this must not fire on ordinary use.
+     */
+    private const MAX_ATTEMPTS_PER_IP = 30;
 
     /**
      * RateLimiter::hit() defaults to 60 seconds when no decay is given, but it
@@ -65,8 +73,21 @@ class ApplyDiscountRequest extends FormRequest
      * request never reaches the discount lookup at all, which is the whole
      * point: an answer withheld is an answer that leaks nothing.
      *
+     * TWO independent limiters, refused if EITHER trips. One key holding all
+     * three components would not do it (re-review finding): a single
+     * concatenation means changing any one component mints a fresh bucket, so
+     * an attacker just calls the unthrottled `POST /kosik`, gets a brand new
+     * valid cart token, and buys another ten guesses — roughly eleven requests
+     * per ten guesses, unbounded. Cookie encryption stops a FORGED token, not a
+     * minted one. The per-IP limiter is what actually bounds that loop; the
+     * per-cart limiter is the tighter one that stops a single shopper's basket
+     * from grinding through codes.
+     *
+     * Both are checked before either is hit, so a request already refused by
+     * one limiter does not still spend an attempt against the other.
+     *
      * Every attempt counts, successful ones included, and nothing clears the
-     * counter (LoginRequest clears on a successful login; there is no
+     * counters (LoginRequest clears on a successful login; there is no
      * equivalent "you are in now" moment here). Ten codes a minute is far more
      * than a shopper typing one out of a newsletter ever needs, and treating a
      * hit as free would hand an attacker a free probe for every code they
@@ -74,27 +95,51 @@ class ApplyDiscountRequest extends FormRequest
      */
     protected function passedValidation(): void
     {
-        $key = $this->throttleKey();
+        $ipKey = $this->ipThrottleKey();
+        $cartKey = $this->cartThrottleKey();
 
-        if (RateLimiter::tooManyAttempts($key, self::MAX_ATTEMPTS)) {
-            $seconds = RateLimiter::availableIn($key);
+        $this->refuseIfExhausted($ipKey, self::MAX_ATTEMPTS_PER_IP);
+        $this->refuseIfExhausted($cartKey, self::MAX_ATTEMPTS_PER_CART);
 
-            throw ValidationException::withMessages([
-                'code' => "Příliš mnoho pokusů o uplatnění slevového kódu. Zkuste to znovu za {$seconds} s.",
-            ]);
+        RateLimiter::hit($ipKey, self::DECAY_SECONDS);
+        RateLimiter::hit($cartKey, self::DECAY_SECONDS);
+    }
+
+    private function refuseIfExhausted(string $key, int $maxAttempts): void
+    {
+        if (! RateLimiter::tooManyAttempts($key, $maxAttempts)) {
+            return;
         }
 
-        RateLimiter::hit($key, self::DECAY_SECONDS);
+        $seconds = RateLimiter::availableIn($key);
+
+        throw ValidationException::withMessages([
+            // Deliberately the same message for both limiters: which one the
+            // caller tripped is nobody's business but ours, and a distinct
+            // message would tell a bot whether rotating its cart token is
+            // buying it anything.
+            'code' => "Příliš mnoho pokusů o uplatnění slevového kódu. Zkuste to znovu za {$seconds} s.",
+        ]);
     }
 
     /**
-     * Cart token first, then IP. The token is what identifies this shopper's
-     * basket across the whole checkout, so a bot cycling IPs behind one cart
-     * is still counted; the IP is what stops a bot cycling cart cookies
-     * instead. Tenant-scoped as well (same rule as LoginRequest): one shop's
-     * bot must not lock a shopper out of an unrelated shop on the platform.
+     * The outer bound: everything one address may try at this shop, whatever
+     * cart cookie it presents. Higher ceiling than the per-cart one because a
+     * household or an office behind one NAT address legitimately shares it.
+     *
+     * Tenant-scoped (same rule as LoginRequest): one shop's bot must not lock
+     * a shopper out of an unrelated shop on the platform.
      */
-    private function throttleKey(): string
+    private function ipThrottleKey(): string
+    {
+        return 'discount-apply-ip|'.app(TenantContext::class)->id().'|'.$this->ip();
+    }
+
+    /**
+     * The tighter bound, per basket. Catches a bot cycling addresses behind one
+     * cart, which the IP key above would miss.
+     */
+    private function cartThrottleKey(): string
     {
         return 'discount-apply|'
             .app(TenantContext::class)->id().'|'

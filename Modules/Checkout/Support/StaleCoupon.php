@@ -32,6 +32,13 @@ use App\Core\Checkout\Contracts\CartShape;
  * the PricedCart it already computed to the view, and that object still carries
  * $discountRejection (the partial prints it). Clearing the code without saying
  * why would be worse than the bug this fixes.
+ *
+ * That makes the call site binding, not incidental: call this ONLY on a path
+ * that is certain to render the discount partial. Not above an early return, not
+ * above a redirect. CheckoutController::details() learned this the hard way
+ * (re-review) — it used to clear before the "no shipping method chosen yet"
+ * redirect to /pokladna/doprava, a page with no discount partial, so the code
+ * vanished and nothing ever explained it.
  */
 final class StaleCoupon
 {
