@@ -19,6 +19,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Modules\Categories\Models\Category;
+use Modules\Products\Services\LowestPriceCalculator;
 use Modules\Products\Support\SearchText;
 
 class Product extends Model implements CatalogProduct
@@ -270,11 +271,7 @@ class Product extends Model implements CatalogProduct
 
     public function catalogLowestPriceIn30Days(): ?Money
     {
-        // The history the answer comes from does not exist yet — the recorder
-        // and the calculator land later in this wave. Until then the honest
-        // answer is "no reference known", which the storefront renders as no
-        // line at all rather than as a made-up figure.
-        return null;
+        return app(LowestPriceCalculator::class)->forProduct($this);
     }
 
     public function catalogNetPrice(): Money
