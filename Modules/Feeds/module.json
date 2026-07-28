@@ -1,0 +1,29 @@
+{
+    "name": "feeds",
+    "version": "1.0.0",
+    "title": {
+        "cs": "Feedy pro porovnávače"
+    },
+    "description": {
+        "cs": "XML feedy pro Heureku a Zboží.cz — katalog, varianty, dostupnost, doprava."
+    },
+    "core": false,
+    "billable": false,
+    "level": "base",
+    "requires": {},
+    "provides": [],
+    "listens": [],
+    "permissions": [
+        "feeds.manage"
+    ],
+    "settings_schema": null,
+    "nav": [
+        {
+            "area": "admin",
+            "label": "Feedy",
+            "route": "admin.feeds.index",
+            "icon": "rss",
+            "order": 60
+        }
+    ]
+}
