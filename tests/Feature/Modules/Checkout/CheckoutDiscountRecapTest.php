@@ -11,6 +11,7 @@ use App\Models\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Modules\Checkout\Models\Cart;
 use Modules\Discounts\Models\Discount;
+use Modules\Discounts\Models\DiscountRedemption as DiscountRedemptionRow;
 use Modules\Orders\Models\Order;
 use Modules\Products\Models\Product;
 use Modules\Products\Services\ProductWriter;
@@ -244,6 +245,64 @@ class CheckoutDiscountRecapTest extends TestCase
 
         $response->assertRedirect($this->url('/kosik'));
         $response->assertSessionHas('status', 'Slevový kód JEDEN už není platný.');
+
+        $this->assertSame(0, $this->context->runAs($this->tenant, fn (): int => Order::query()->count()));
+    }
+
+    /**
+     * The recap prices with `email: null`, so a per-e-mail limit only bites at
+     * submit — the one case where the binding answer can be worse than the one
+     * on the payment-obligation page. The shopper must land back on the cart
+     * with a Czech reason and no order, never be charged the higher total.
+     */
+    public function test_a_coupon_the_email_disqualifies_sends_the_shopper_back_with_the_reason(): void
+    {
+        $product = $this->context->runAs($this->tenant, function (): Product {
+            $product = $this->makeProduct();
+
+            $discount = Discount::factory()->code('UVITACI')->percent(100)->create([
+                'name' => 'Uvítací sleva',
+                'usage_limit_per_email' => 1,
+            ]);
+
+            // The address has already used it on an earlier order — invisible
+            // to the recap, which has no e-mail to check against.
+            DiscountRedemptionRow::query()->create([
+                'discount_id' => $discount->id,
+                'order_id' => 4242,
+                'email' => 'jana@example.cz',
+                'amount' => 10_000,
+            ]);
+
+            return $product;
+        });
+
+        $this->post($this->url('/kosik'), ['product_id' => $product->id, 'quantity' => 1]);
+        $token = $this->cartToken();
+
+        $this->withCookie('cart_token', $token)
+            ->post($this->url('/kosik/sleva'), ['code' => 'UVITACI', 'return_to' => 'checkout']);
+
+        $page = $this->withCookie('cart_token', $token)->get($this->url('/pokladna/udaje'));
+        $page->assertOk();
+        // The recap still offers it — that is exactly the gap being closed.
+        $page->assertSee('Uvítací sleva');
+        preg_match('/name="checkout_token"\s+value="([^"]+)"/', $page->getContent(), $m);
+
+        $response = $this->withCookie('cart_token', $token)->post($this->url('/pokladna/udaje'), [
+            'checkout_token' => $m[1],
+            'email' => 'jana@example.cz',
+            'phone' => '+420777123456',
+            'name' => 'Jana Nováková',
+            'street' => 'Hlavní 1',
+            'city' => 'Praha',
+            'zip' => '11000',
+            'country' => 'CZ',
+            'terms' => '1',
+        ]);
+
+        $response->assertRedirect($this->url('/kosik'));
+        $response->assertSessionHas('status', 'Slevový kód UVITACI už není platný.');
 
         $this->assertSame(0, $this->context->runAs($this->tenant, fn (): int => Order::query()->count()));
     }

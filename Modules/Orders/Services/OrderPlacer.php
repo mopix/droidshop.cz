@@ -10,6 +10,8 @@ use App\Core\Discounts\Contracts\DiscountEngine;
 use App\Core\Discounts\Contracts\DiscountRedemption;
 use App\Core\Discounts\DiscountContext;
 use App\Core\Discounts\DiscountLine;
+use App\Core\Discounts\DiscountRejection;
+use App\Core\Discounts\Exceptions\DiscountNoLongerValid;
 use App\Core\Money\Money;
 use App\Core\Orders\Contracts\OrderPlacement;
 use App\Core\Orders\Contracts\OrderView;
@@ -51,6 +53,14 @@ use Modules\Storefront\Support\ShopModules;
  * Nothing here trusts the cart's snapshotted unit_price or any figure the
  * caller passed: every amount is recomputed from ProductCatalog::price(),
  * the single pricing authority (spec §16.3, AK 5).
+ *
+ * LOCK ORDERING (load-bearing for anything that touches both): placement
+ * takes the PRODUCT locks first (decrementStock's conditional UPDATE) and the
+ * DISCOUNT row lock last (DiscountRedemption::redeem). Any other transaction
+ * touching both — cancellation returning stock and releasing the redemption —
+ * must acquire them in that same order, i.e. return the stock BEFORE releasing
+ * the redemption. Reversing it would deadlock against concurrent placements on
+ * a popular coupon.
  */
 class OrderPlacer implements OrderPlacement
 {
@@ -165,16 +175,20 @@ class OrderPlacer implements OrderPlacement
             //     stock decrement, for the reason wave 2.4 established:
             //     anything that can refuse the order refuses it before any
             //     stock moves.
+            $couponCode = $request->cart->cartCouponCode();
+
             $applied = $this->discounts->apply(new DiscountContext(
                 lines: $this->discountLines($lines),
                 itemsTotal: $itemsTotal,
                 // The only field on this context that originates with the
                 // shopper, and even it is only a string to look up.
-                couponCode: $request->cart->cartCouponCode(),
+                couponCode: $couponCode,
                 customerId: $request->customerId,
                 email: $request->email,
                 shippingCost: $shippingTotal,
             ));
+
+            $this->refuseIfTheEmailChangedTheAnswer($couponCode, $applied);
 
             if ($applied->freeShipping) {
                 // Outranks the method's own free_from threshold: the shop gave
@@ -460,6 +474,39 @@ class OrderPlacer implements OrderPlacement
         }
 
         return $lines;
+    }
+
+    /**
+     * Refuses the order when the shopper's e-mail is what killed their coupon.
+     *
+     * The cart and the checkout recap price the basket with `email: null`
+     * (CartPricer has no address to work with), and DiscountEligibility skips
+     * `usage_limit_per_email` and `first_order_only` entirely when the e-mail
+     * is unknown. Placement is the first time the real address reaches the
+     * engine, so for exactly those two conditions the binding answer can
+     * differ from the one on the page carrying the payment-obligation button —
+     * and charging a total the shopper never saw is not an option (the same
+     * policy PriceChanged has: refuse, explain, let them decide).
+     *
+     * Deliberately narrowed to those two reasons. A code the recap ALREADY
+     * showed as rejected (expired, exhausted, wrong basket) must stay a
+     * no-op, or an old code sitting in the cart would turn into a dead end at
+     * submit for something the shopper was already told about.
+     */
+    private function refuseIfTheEmailChangedTheAnswer(?string $couponCode, AppliedDiscount $applied): void
+    {
+        if ($couponCode === null || trim($couponCode) === '' || $applied->rejection === null) {
+            return;
+        }
+
+        $emailGated = [
+            DiscountRejection::EMAIL_LIMIT,
+            DiscountRejection::FIRST_ORDER_ONLY,
+        ];
+
+        if (in_array($applied->rejection->reason, $emailGated, true)) {
+            throw DiscountNoLongerValid::forCode($applied->rejection->code);
+        }
     }
 
     /**

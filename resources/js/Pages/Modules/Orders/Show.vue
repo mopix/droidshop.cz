@@ -77,6 +77,9 @@ type OrderDetail = {
   // Gateway transaction reference (Comgate transId), null for offline payments.
   payment_reference: string | null
   items_total: number
+  // What came off the lines; items_total is already net of it. Drives the
+  // "this edit will not recalculate the discount" warning below.
+  discount_total: number
   shipping_total: number
   payment_fee: number
   total: number
@@ -736,6 +739,18 @@ const formatAddress = (address: Address) => {
           </p>
 
           <form v-else-if="editingOrder" class="mt-4 space-y-6" @submit.prevent="submitEdit">
+            <!--
+              The discount is preserved per line, never recalculated
+              (OrderEditor::edit) — a coupon may be expired or used up by now,
+              and an edit must not quietly take a discount away from an order
+              the customer already agreed to. Say so before anything is changed.
+            -->
+            <p v-if="order.discount_total > 0" class="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+              Objednávka obsahuje slevu {{ money(order.discount_total) }}. Sleva se při úpravě
+              znovu nepřepočítává — u zachovaných položek zůstane ve stejné výši, odebraná položka
+              si svou část slevy odnese.
+            </p>
+
             <!-- Items -->
             <fieldset>
               <legend class="text-sm font-medium text-gray-700">Položky</legend>

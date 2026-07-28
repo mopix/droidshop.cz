@@ -130,6 +130,17 @@ class OrderEditor
             $newLines = $this->recomputeLines($resolvedLines);
             $newQuantities = $this->quantitiesFromLines($newLines);
 
+            // The discount a line already carries survives the edit untouched.
+            // The engine is deliberately NOT re-run here (rozhodnutí 2026-07-28:
+            // an admin edit never re-evaluates a coupon — the coupon may be
+            // exhausted, expired or e-mail-gated by now, and an edit must not
+            // silently take a discount away from an order the customer already
+            // agreed to). Without this the edit would re-price every line at
+            // the full catalogue price while orders.discount_total and the
+            // order_discounts snapshot still claimed a discount — an unpaid
+            // order would suddenly ask for more than the customer agreed to.
+            [$newLines, $discountTotal] = $this->carryDiscountsOver($newLines, $existingItems, $order->currency);
+
             // Stock is adjusted before the rows are rewritten: if a raised
             // quantity has no stock behind it, decrementStock throws and the
             // whole transaction rolls back — the order keeps its old lines,
@@ -153,6 +164,7 @@ class OrderEditor
                     'tax_rate' => $line['tax_rate'],
                     'quantity' => $line['quantity'],
                     'line_total' => $line['line_total'],
+                    'discount_total' => $line['discount_total'],
                     'currency' => $currency,
                 ]);
             }
@@ -180,6 +192,11 @@ class OrderEditor
                 'email' => $email,
                 'phone' => $phone,
                 'items_total' => $itemsTotal,
+                // Re-summed from the lines that survived, exactly as
+                // OrderPlacer does at placement, so
+                // `discount_total == Σ item discount_total` still holds after
+                // an edit — a removed line takes its own share with it.
+                'discount_total' => $discountTotal,
                 'total' => $total,
                 'vat_summary' => $vatSummary,
             ])->save();
@@ -481,6 +498,61 @@ class OrderEditor
         }
 
         return $result;
+    }
+
+    /**
+     * Carries each surviving line's discount across the delete/recreate, and
+     * reports what the order's discount_total becomes.
+     *
+     * Matched on (product_id, variant_id) — the same grouping key
+     * recomputeLines() collapses lines onto, so a line that was split or
+     * merged still lands on exactly one share. A line the admin added has no
+     * previous share and gets none: this method preserves a discount, it never
+     * grants one (the engine is not consulted here — see edit()).
+     *
+     * The share is floored at the line's own recomputed total: a product whose
+     * catalogue price dropped below its old discount would otherwise write a
+     * negative line_total into an unsigned column. Charging zero for that line
+     * is the only representable answer, and it is the one that cannot cost the
+     * customer money.
+     *
+     * @param  list<array<string, mixed>>  $newLines
+     * @param  Collection<int, OrderItem>  $existingItems
+     * @return array{0: list<array<string, mixed>>, 1: Money}
+     */
+    private function carryDiscountsOver(array $newLines, Collection $existingItems, string $currency): array
+    {
+        $previous = [];
+
+        foreach ($existingItems as $item) {
+            if ($item->product_id === null) {
+                continue;
+            }
+
+            $key = $this->lineKey((int) $item->product_id, $item->variant_id ? (int) $item->variant_id : null);
+            $share = $item->discount_total ?? new Money(0, $item->line_total->currency);
+
+            $previous[$key] = isset($previous[$key]) ? $previous[$key]->plus($share) : $share;
+        }
+
+        $discountTotal = new Money(0, $currency);
+
+        foreach ($newLines as $i => $line) {
+            /** @var Money $lineTotal */
+            $lineTotal = $line['line_total'];
+            $key = $this->lineKey($line['product_id'], $line['variant_id']);
+            $share = $previous[$key] ?? new Money(0, $lineTotal->currency);
+
+            if ($share->greaterThan($lineTotal)) {
+                $share = $lineTotal;
+            }
+
+            $newLines[$i]['discount_total'] = $share;
+            $newLines[$i]['line_total'] = $lineTotal->minus($share);
+            $discountTotal = $discountTotal->plus($share);
+        }
+
+        return [$newLines, $discountTotal];
     }
 
     /**

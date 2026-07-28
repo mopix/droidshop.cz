@@ -16,6 +16,8 @@ use Modules\Discounts\Models\Discount;
 use Modules\Discounts\Models\DiscountRedemption;
 use Modules\Discounts\Models\DiscountTarget;
 use Modules\Orders\Models\Order;
+use Modules\Orders\Models\OrderEvent;
+use Modules\Orders\Services\OrderEditor;
 use Modules\Products\Models\Product;
 use Modules\Products\Services\ProductWriter;
 use Modules\Shipping\Models\ShippingMethod;
@@ -230,21 +232,6 @@ class OrderDiscountTest extends TestCase
         });
     }
 
-    public function test_the_email_limit_blocks_a_second_order_from_the_same_address(): void
-    {
-        $this->context->runAs($this->tenant, function (): void {
-            $product = $this->product(100000, ['stock_tracked' => false]);
-            Discount::factory()->code('UVITACI')->percent(100)->create(['usage_limit_per_email' => 1]);
-
-            $first = $this->place($this->cart('UVITACI', [$product->id => 1]));
-            $second = $this->place($this->cart('UVITACI', [$product->id => 1]));
-
-            $this->assertSame(10000, $first->discount_total->amount);
-            $this->assertSame(0, $second->discount_total->amount);
-            $this->assertSame(1, DiscountRedemption::query()->count());
-        });
-    }
-
     public function test_free_shipping_zeroes_the_delivery_charge_on_the_order(): void
     {
         $this->context->runAs($this->tenant, function (): void {
@@ -326,6 +313,159 @@ class OrderDiscountTest extends TestCase
                 $order->items_total->amount,
             );
             $this->assertSame(10000, $order->discount_total->amount);
+        });
+    }
+
+    /**
+     * The cart and the recap price with `email: null` (CartPricer has no
+     * address), so `usage_limit_per_email` and `first_order_only` are the two
+     * conditions whose answer can only change at submit. Charging the shopper
+     * a total they never saw is not an option: the order is refused with a
+     * Czech reason, exactly as a moved price is.
+     */
+    public function test_a_coupon_the_email_disqualifies_refuses_the_order(): void
+    {
+        $this->context->runAs($this->tenant, function (): void {
+            $product = $this->product(100000, ['stock_tracked' => true, 'stock_qty' => 5]);
+            Discount::factory()->code('UVITACI')->percent(100)->create(['usage_limit_per_email' => 1]);
+
+            // The address has already used it once.
+            $this->place($this->cart('UVITACI', [$product->id => 1]));
+
+            try {
+                $this->place($this->cart('UVITACI', [$product->id => 1]));
+                $this->fail('A coupon the e-mail disqualifies must refuse the order.');
+            } catch (DiscountNoLongerValid $e) {
+                $this->assertSame('Slevový kód UVITACI už není platný.', $e->getMessage());
+            }
+
+            // Only the first order exists, and only its unit left stock.
+            $this->assertSame(1, Order::query()->count());
+            $this->assertSame(4, (int) $product->fresh()->stock_qty);
+            $this->assertSame(1, DiscountRedemption::query()->count());
+        });
+    }
+
+    /**
+     * A code the recap ALREADY showed as rejected must stay a no-op: turning
+     * it into a dead end at submit would punish the shopper for something they
+     * were told about two screens ago.
+     */
+    public function test_a_coupon_rejected_for_a_non_email_reason_still_places_at_full_price(): void
+    {
+        $this->context->runAs($this->tenant, function (): void {
+            $product = $this->product(100000);
+            Discount::factory()->code('PROSLA')->percent(100)->create([
+                'ends_at' => now()->subDay(),
+            ]);
+
+            $order = $this->place($this->cart('PROSLA', [$product->id => 1]));
+
+            $this->assertSame(100000, $order->total->amount);
+            $this->assertSame(0, $order->discount_total->amount);
+        });
+    }
+
+    // --- admin edit -------------------------------------------------------
+
+    /**
+     * @param  list<array<string, mixed>>  $lines
+     */
+    private function edit(Order $order, array $lines): Order
+    {
+        return app(OrderEditor::class)->edit(
+            $order,
+            $lines,
+            $order->billing,
+            null,
+            $order->email,
+            $order->phone,
+            null,
+            OrderEvent::ACTOR_ADMIN,
+            null,
+        );
+    }
+
+    /**
+     * The edit form always posts the whole line list, so an address-only
+     * change runs the same delete/recreate as a quantity change. It must not
+     * quietly re-price the order at full catalogue price — the customer agreed
+     * to the discounted total.
+     */
+    public function test_an_address_only_edit_leaves_the_discount_and_the_total_alone(): void
+    {
+        $this->context->runAs($this->tenant, function (): void {
+            $product = $this->product(100000);
+            Discount::factory()->code('SLEVA10')->percent(100)->create(['name' => 'Sleva 10 %']);
+
+            $order = $this->place($this->cart('SLEVA10', [$product->id => 1]));
+            $item = $order->items()->firstOrFail();
+
+            $edited = $this->edit($order, [
+                ['id' => $item->id, 'product_id' => $product->id, 'quantity' => 1],
+            ]);
+
+            $this->assertSame(90000, $edited->items_total->amount);
+            $this->assertSame(10000, $edited->discount_total->amount);
+            $this->assertSame(90000, $edited->total->amount);
+
+            $editedItem = $edited->items()->firstOrFail();
+            $this->assertSame(90000, $editedItem->line_total->amount);
+            $this->assertSame(10000, $editedItem->discount_total->amount);
+        });
+    }
+
+    public function test_removing_a_line_keeps_the_surviving_lines_discount(): void
+    {
+        $this->context->runAs($this->tenant, function (): void {
+            $a = $this->product(100000, ['name' => 'Produkt A']);
+            $b = $this->product(100000, ['name' => 'Produkt B']);
+            Discount::factory()->code('SLEVA10')->percent(100)->create();
+
+            $order = $this->place($this->cart('SLEVA10', [$a->id => 1, $b->id => 1]));
+            $this->assertSame(20000, $order->discount_total->amount);
+
+            $keep = $order->items()->where('product_id', $a->id)->firstOrFail();
+
+            $edited = $this->edit($order, [
+                ['id' => $keep->id, 'product_id' => $a->id, 'quantity' => 1],
+            ]);
+
+            $survivor = $edited->items()->firstOrFail();
+            $this->assertSame(1, $edited->items()->count());
+            $this->assertSame(10000, $survivor->discount_total->amount);
+            $this->assertSame(90000, $survivor->line_total->amount);
+
+            // The removed line took its own share with it — the invariant
+            // orders.discount_total == Σ item discount_total still holds.
+            $this->assertSame(10000, $edited->discount_total->amount);
+            $this->assertSame(90000, $edited->items_total->amount);
+        });
+    }
+
+    public function test_a_line_added_by_the_admin_gets_no_discount(): void
+    {
+        $this->context->runAs($this->tenant, function (): void {
+            $a = $this->product(100000, ['name' => 'Produkt A']);
+            $b = $this->product(50000, ['name' => 'Produkt B']);
+            Discount::factory()->code('SLEVA10')->percent(100)->create();
+
+            $order = $this->place($this->cart('SLEVA10', [$a->id => 1]));
+            $item = $order->items()->firstOrFail();
+
+            $edited = $this->edit($order, [
+                ['id' => $item->id, 'product_id' => $a->id, 'quantity' => 1],
+                ['product_id' => $b->id, 'quantity' => 1],
+            ]);
+
+            $added = $edited->items()->where('product_id', $b->id)->firstOrFail();
+
+            // The engine is never re-run on an edit, so a new line is priced
+            // at the catalogue price and discounted by nothing.
+            $this->assertSame(0, $added->discount_total->amount);
+            $this->assertSame(50000, $added->line_total->amount);
+            $this->assertSame(10000, $edited->discount_total->amount);
+            $this->assertSame(140000, $edited->items_total->amount);
         });
     }
 
