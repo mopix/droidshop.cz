@@ -244,7 +244,10 @@ class CheckoutDiscountRecapTest extends TestCase
         ]);
 
         $response->assertRedirect($this->url('/kosik'));
-        $response->assertSessionHas('status', 'Slevový kód JEDEN už není platný.');
+        $response->assertSessionHas(
+            'status',
+            'Slevový kód JEDEN už není platný. Odebrali jsme ho z košíku — zkontrolujte prosím cenu a objednávku dokončete znovu.',
+        );
 
         $this->assertSame(0, $this->context->runAs($this->tenant, fn (): int => Order::query()->count()));
     }
@@ -302,9 +305,29 @@ class CheckoutDiscountRecapTest extends TestCase
         ]);
 
         $response->assertRedirect($this->url('/kosik'));
-        $response->assertSessionHas('status', 'Slevový kód UVITACI už není platný.');
+        $response->assertSessionHas(
+            'status',
+            'Slevový kód UVITACI už není platný. Odebrali jsme ho z košíku — zkontrolujte prosím cenu a objednávku dokončete znovu.',
+        );
 
         $this->assertSame(0, $this->context->runAs($this->tenant, fn (): int => Order::query()->count()));
+
+        // The refusal must not leave the shopper in a loop. CartPricer prices
+        // with `email: null`, so a coupon rejected only because of the e-mail
+        // still looks applied to the cart — the code therefore has to be gone
+        // from the cart row, not merely reported, or the page would show
+        // "Uplatněn slevový kód" and the discounted total right under a flash
+        // saying it is invalid, and every resubmit would refuse again.
+        $this->assertNull(
+            $this->context->runAs($this->tenant, fn () => Cart::query()->firstOrFail()->coupon_code),
+        );
+
+        $cartPage = $this->withCookie('cart_token', $token)->get($this->url('/kosik'));
+
+        $cartPage->assertOk();
+        $cartPage->assertDontSee('Uplatněn slevový kód');
+        $cartPage->assertDontSee('Uvítací sleva');
+        $cartPage->assertSee($this->czk(100_000), false);
     }
 
     public function test_the_discount_field_round_trips_back_to_the_checkout_page(): void

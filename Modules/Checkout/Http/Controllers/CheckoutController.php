@@ -314,14 +314,27 @@ class CheckoutController
                 $request,
             );
         } catch (DiscountNoLongerValid $e) {
-            // Someone else took the coupon's last use between this shopper's
-            // recap and their submit — the discount's exact counterpart to
-            // PriceChanged. OrderPlacer redeems under a row lock inside its
-            // transaction, so nothing was written and no allowance was
-            // consumed; the cart still holds the code, and re-pricing it there
-            // now shows the rejection.
+            // The coupon stopped applying between this shopper's recap and
+            // their submit — the discount's exact counterpart to PriceChanged.
+            // Nothing was written and no allowance was consumed (OrderPlacer
+            // refuses before any stock moves, and redeems under a row lock
+            // inside its transaction).
+            //
+            // The code is dropped from the cart here, not merely reported.
+            // CartPricer prices with `email: null`, so the two conditions this
+            // refusal exists for (usage_limit_per_email, first_order_only) are
+            // invisible to it: leaving the code on the cart would re-render
+            // "Uplatněn slevový kód …" and the discounted total directly under
+            // a flash saying it is no longer valid, and every resubmit would
+            // hit the same refusal. The message says so explicitly, because a
+            // shopper who sees the price go up is owed the reason.
+            $this->carts->setCouponCode($cart, null);
+
             return CartCookie::attach(
-                redirect()->route('storefront.checkout.show')->with('status', $e->getMessage()),
+                redirect()->route('storefront.checkout.show')->with(
+                    'status',
+                    $e->getMessage().' Odebrali jsme ho z košíku — zkontrolujte prosím cenu a objednávku dokončete znovu.',
+                ),
                 $cart,
                 $request,
             );
