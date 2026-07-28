@@ -37,7 +37,13 @@ class UpdateDiscountRequest extends FormRequest
             'type' => ['required', Rule::in([
                 Discount::TYPE_PERCENT, Discount::TYPE_FIXED, Discount::TYPE_FREE_SHIPPING,
             ])],
-            'value' => ['required_unless:type,'.Discount::TYPE_FREE_SHIPPING, 'integer', 'min:0', 'max:1000000'],
+            // See StoreDiscountRequest::rules() for why the ceiling depends
+            // on the type: 1000 permille (=100%) for a percent discount,
+            // otherwise the generic haléře ceiling.
+            'value' => [
+                'required_unless:type,'.Discount::TYPE_FREE_SHIPPING, 'integer', 'min:0',
+                'max:'.($this->input('type') === Discount::TYPE_PERCENT ? 1000 : 1000000),
+            ],
             'scope' => ['required', Rule::in([
                 Discount::SCOPE_CART, Discount::SCOPE_CATEGORIES, Discount::SCOPE_PRODUCTS,
             ])],
@@ -74,13 +80,19 @@ class UpdateDiscountRequest extends FormRequest
     {
         $code = $this->input('code');
 
-        if ($code === null) {
-            return;
+        if ($code !== null) {
+            $normalised = mb_strtoupper(trim((string) $code));
+            $code = $normalised === '' ? null : $normalised;
+
+            $this->merge(['code' => $code]);
         }
 
-        $normalised = mb_strtoupper(trim((string) $code));
-
-        $this->merge(['code' => $normalised === '' ? null : $normalised]);
+        // See StoreDiscountRequest::prepareForValidation(): a coupon's own
+        // `combinable` flag is never read by the evaluator, so a direct POST
+        // must not be able to leave a stale `false` on it.
+        if ($code !== null) {
+            $this->merge(['combinable' => true]);
+        }
     }
 
     /**

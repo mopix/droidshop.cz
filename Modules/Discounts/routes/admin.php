@@ -13,6 +13,10 @@ use Modules\Discounts\Http\Controllers\DiscountAdminController;
 Route::get('/', [DiscountAdminController::class, 'index'])->name('index');
 Route::get('/nova', [DiscountAdminController::class, 'create'])->name('create');
 Route::post('/', [DiscountAdminController::class, 'store'])->name('store');
+// Backs the product target picker's search-as-you-type (final review, wave
+// 2.6) — a fixed path segment, never confused with '/{discount}/upravit'
+// below since that route requires whereNumber('discount').
+Route::get('/produkty/hledat', [DiscountAdminController::class, 'searchProducts'])->name('products.search');
 Route::get('/{discount}/upravit', [DiscountAdminController::class, 'edit'])->whereNumber('discount')->name('edit');
 Route::patch('/{discount}', [DiscountAdminController::class, 'update'])->whereNumber('discount')->name('update');
 Route::delete('/{discount}', [DiscountAdminController::class, 'destroy'])->whereNumber('discount')->name('destroy');

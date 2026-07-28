@@ -4,8 +4,10 @@ namespace Modules\Discounts\Http\Controllers;
 
 use App\Core\Modules\ModuleRegistry;
 use App\Core\Tenancy\TenantContext;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Inertia\Response;
 use Modules\Categories\Models\Category;
@@ -57,7 +59,7 @@ class DiscountAdminController
         return inertia('Modules/Discounts/Form', [
             'discount' => null,
             'categories' => $this->categoryOptions(),
-            'products' => $this->productOptions(),
+            'selectedProducts' => [],
         ]);
     }
 
@@ -78,10 +80,21 @@ class DiscountAdminController
 
         $discount->load('targets');
 
+        $presented = $this->present($discount, withTargets: true);
+
         return inertia('Modules/Discounts/Form', [
-            'discount' => $this->present($discount, withTargets: true),
+            'discount' => $presented,
             'categories' => $this->categoryOptions(),
-            'products' => $this->productOptions(),
+            // Only the products this discount already targets — never the
+            // whole catalogue (final review, wave 2.6: an unfiltered
+            // productOptions() shipped a multi-megabyte prop and an unusable
+            // picker for a shop with thousands of products). New products
+            // are found through searchProducts() below; this only seeds the
+            // picker's "already selected" chips so their names are known
+            // before any search has run.
+            'selectedProducts' => $discount->scope === Discount::SCOPE_PRODUCTS
+                ? $this->productsByIds($presented['target_ids'])
+                : [],
         ]);
     }
 
@@ -94,6 +107,34 @@ class DiscountAdminController
         });
 
         return redirect()->route('admin.discounts.index')->with('success', 'Sleva byla uložena.');
+    }
+
+    /**
+     * Backs the product picker's search-as-you-type (final review, wave
+     * 2.6): the Form.vue picker never receives the whole catalogue, it asks
+     * here for at most 30 name/SKU matches at a time, the same shape
+     * ProductAdminController::index() already uses for its own search.
+     */
+    public function searchProducts(Request $request): JsonResponse
+    {
+        abort_unless((bool) $request->user('web')?->can('discounts.manage'), 403);
+
+        if (! $this->moduleEnabled('products')) {
+            return response()->json(['data' => []]);
+        }
+
+        $term = trim((string) $request->query('q', ''));
+
+        $products = Product::query()
+            ->when($term !== '', fn ($query) => $query->where(fn ($w) => $w
+                ->where('name', 'like', '%'.$term.'%')
+                ->orWhere('sku', 'like', '%'.$term.'%')
+            ))
+            ->orderBy('name')
+            ->limit(30)
+            ->get(['id', 'name', 'sku']);
+
+        return response()->json(['data' => $this->presentProducts($products)]);
     }
 
     public function destroy(Request $request, Discount $discount): RedirectResponse
@@ -216,19 +257,32 @@ class DiscountAdminController
     }
 
     /**
-     * Same reasoning as categoryOptions() above, for the products module.
+     * The products already targeted by a discount, by id — bounded by
+     * definition (a discount realistically targets a handful of products),
+     * unlike the full catalogue searchProducts() deliberately never ships in
+     * one response.
      *
+     * @param  list<int>  $ids
      * @return list<array{id: int, name: string}>
      */
-    private function productOptions(): array
+    private function productsByIds(array $ids): array
     {
-        if (! $this->moduleEnabled('products')) {
+        if ($ids === [] || ! $this->moduleEnabled('products')) {
             return [];
         }
 
-        return Product::query()
-            ->orderBy('name')
-            ->get(['id', 'name', 'sku'])
+        return $this->presentProducts(
+            Product::query()->whereIn('id', $ids)->orderBy('name')->get(['id', 'name', 'sku'])
+        );
+    }
+
+    /**
+     * @param  Collection<int, Product>  $products
+     * @return list<array{id: int, name: string}>
+     */
+    private function presentProducts(Collection $products): array
+    {
+        return $products
             ->map(fn (Product $product) => [
                 'id' => $product->id,
                 'name' => $product->sku ? "{$product->name} ({$product->sku})" : $product->name,

@@ -2,13 +2,16 @@
 
 namespace Tests\Feature\Modules\Discounts;
 
+use App\Core\Tax\TaxRates;
 use App\Core\Tenancy\TenantContext;
 use App\Models\Tenant;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Inertia\Testing\AssertableInertia;
 use Modules\Categories\Services\CategoryTree;
 use Modules\Discounts\Models\Discount;
 use Modules\Discounts\Models\DiscountTarget;
+use Modules\Products\Services\ProductWriter;
 use Tests\Concerns\ActivatesModules;
 use Tests\TestCase;
 
@@ -266,5 +269,148 @@ class DiscountAdminTest extends TestCase
         $this->actingAs($this->owner)
             ->delete("http://shop1.droidshop/admin/m/discounts/{$foreign->id}")
             ->assertNotFound();
+    }
+
+    /**
+     * `value` is permille for a percent discount, so 1000 already means "the
+     * whole basket is free" — nothing above that is legitimate. Before this
+     * fix the server accepted e.g. 5000 (500 %) and only the evaluator's
+     * basket cap kept the money non-negative (final review, wave 2.6).
+     */
+    public function test_a_percent_value_over_100_percent_is_rejected(): void
+    {
+        $this->actingAs($this->owner)
+            ->post('http://shop1.droidshop/admin/m/discounts', [
+                'name' => 'Přehnaná sleva',
+                'type' => 'percent',
+                'value' => 5000,
+                'scope' => 'cart',
+            ])
+            ->assertSessionHasErrors('value');
+    }
+
+    /**
+     * The percent ceiling must not leak onto the fixed/haléře unit — a large
+     * fixed discount is a legitimate amount, unlike a percent above 100.
+     */
+    public function test_a_large_fixed_amount_is_still_accepted(): void
+    {
+        $this->actingAs($this->owner)
+            ->post('http://shop1.droidshop/admin/m/discounts', [
+                'name' => 'Velká pevná sleva',
+                'type' => 'fixed',
+                'value' => 500000,
+                'scope' => 'cart',
+            ])
+            ->assertRedirect()
+            ->assertSessionDoesntHaveErrors('value');
+    }
+
+    /**
+     * The evaluator never reads a coupon's own `combinable` flag — only an
+     * automatic rule's. A direct POST carrying `combinable=false` alongside
+     * a code must not be allowed to store a flag nothing honours (final
+     * review, wave 2.6): StoreDiscountRequest forces it back to true.
+     */
+    public function test_combinable_is_forced_true_for_a_coupon_regardless_of_what_was_posted(): void
+    {
+        $this->actingAs($this->owner)
+            ->post('http://shop1.droidshop/admin/m/discounts', [
+                'name' => 'Sleva s kódem',
+                'code' => 'NEKOMBINOVAT',
+                'type' => 'percent',
+                'value' => 100,
+                'scope' => 'cart',
+                'combinable' => false,
+            ])
+            ->assertRedirect();
+
+        app(TenantContext::class)->runAs($this->tenant, function (): void {
+            $discount = Discount::query()->where('code', 'NEKOMBINOVAT')->firstOrFail();
+
+            $this->assertTrue((bool) $discount->combinable);
+        });
+    }
+
+    /**
+     * The same enforcement on update: an existing coupon cannot be edited
+     * back into `combinable=false` either.
+     */
+    public function test_combinable_is_forced_true_for_a_coupon_on_update(): void
+    {
+        $discount = app(TenantContext::class)->runAs(
+            $this->tenant,
+            fn () => Discount::factory()->code('DRZKOMBI')->percent(50)->create(['combinable' => true]),
+        );
+
+        $this->actingAs($this->owner)
+            ->patch("http://shop1.droidshop/admin/m/discounts/{$discount->id}", [
+                'name' => 'Sleva s kódem',
+                'code' => 'DRZKOMBI',
+                'type' => 'percent',
+                'value' => 50,
+                'scope' => 'cart',
+                'combinable' => false,
+            ])
+            ->assertRedirect();
+
+        app(TenantContext::class)->runAs($this->tenant, function () use ($discount): void {
+            $this->assertTrue((bool) $discount->fresh()->combinable);
+        });
+    }
+
+    /**
+     * The product picker must never ship the whole catalogue (final review,
+     * wave 2.6) — it searches on demand instead, capped and filtered exactly
+     * like ProductAdminController::index()'s own search.
+     */
+    public function test_the_product_search_endpoint_is_bounded_and_filtered(): void
+    {
+        app(TenantContext::class)->runAs($this->tenant, function (): void {
+            $rate = app(TaxRates::class)->default()->id;
+
+            app(ProductWriter::class)->create(['name' => 'Hledaný produkt', 'price' => 100_00, 'tax_rate_id' => $rate]);
+            app(ProductWriter::class)->create(['name' => 'Jiný produkt', 'price' => 100_00, 'tax_rate_id' => $rate]);
+        });
+
+        $response = $this->actingAs($this->owner)
+            ->get('http://shop1.droidshop/admin/m/discounts/produkty/hledat?q=Hledaný')
+            ->assertOk();
+
+        $names = collect($response->json('data'))->pluck('name');
+
+        $this->assertTrue($names->contains(fn ($name) => str_contains($name, 'Hledaný produkt')));
+        $this->assertFalse($names->contains(fn ($name) => str_contains($name, 'Jiný produkt')));
+    }
+
+    /**
+     * The edit screen's `selectedProducts` prop is bounded to this
+     * discount's own targets, never the whole catalogue — the mirror-image
+     * check to the search endpoint test above, at the Inertia prop level.
+     */
+    public function test_the_edit_screen_ships_only_the_selected_products(): void
+    {
+        [$targeted, $discount] = app(TenantContext::class)->runAs($this->tenant, function (): array {
+            $rate = app(TaxRates::class)->default()->id;
+
+            $targeted = app(ProductWriter::class)->create(['name' => 'Cílený produkt', 'price' => 100_00, 'tax_rate_id' => $rate]);
+            app(ProductWriter::class)->create(['name' => 'Netknutý produkt', 'price' => 100_00, 'tax_rate_id' => $rate]);
+
+            $discount = Discount::factory()->percent(100)->create(['scope' => Discount::SCOPE_PRODUCTS]);
+            $discount->targets()->create([
+                'target_type' => DiscountTarget::TYPE_PRODUCT,
+                'target_id' => $targeted->id,
+            ]);
+
+            return [$targeted, $discount];
+        });
+
+        $this->actingAs($this->owner)
+            ->get("http://shop1.droidshop/admin/m/discounts/{$discount->id}/upravit")
+            ->assertInertia(fn (AssertableInertia $page) => $page
+                ->component('Modules/Discounts/Form')
+                ->has('selectedProducts', 1)
+                ->where('selectedProducts.0.id', $targeted->id)
+            );
     }
 }

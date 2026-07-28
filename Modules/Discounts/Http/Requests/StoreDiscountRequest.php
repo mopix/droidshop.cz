@@ -42,7 +42,16 @@ class StoreDiscountRequest extends FormRequest
             'type' => ['required', Rule::in([
                 Discount::TYPE_PERCENT, Discount::TYPE_FIXED, Discount::TYPE_FREE_SHIPPING,
             ])],
-            'value' => ['required_unless:type,'.Discount::TYPE_FREE_SHIPPING, 'integer', 'min:0', 'max:1000000'],
+            // The ceiling depends on the unit: permille caps at 1000 (=100%,
+            // already "the whole basket is free") for a percent discount, but
+            // a fixed haléře amount legitimately needs a much larger ceiling.
+            // Without this split the server accepted e.g. 100 000 % — nothing
+            // but the evaluator's basket cap stood between a typo and a
+            // give-everything-away coupon (final review, wave 2.6).
+            'value' => [
+                'required_unless:type,'.Discount::TYPE_FREE_SHIPPING, 'integer', 'min:0',
+                'max:'.($this->input('type') === Discount::TYPE_PERCENT ? 1000 : 1000000),
+            ],
             'scope' => ['required', Rule::in([
                 Discount::SCOPE_CART, Discount::SCOPE_CATEGORIES, Discount::SCOPE_PRODUCTS,
             ])],
@@ -79,16 +88,27 @@ class StoreDiscountRequest extends FormRequest
     {
         $code = $this->input('code');
 
-        if ($code === null) {
-            return;
+        if ($code !== null) {
+            $normalised = mb_strtoupper(trim((string) $code));
+
+            // An empty/whitespace-only code becomes null (an automatic
+            // rule), not a string that then fails the regex — the admin
+            // left the field blank on purpose.
+            $code = $normalised === '' ? null : $normalised;
+
+            $this->merge(['code' => $code]);
         }
 
-        $normalised = mb_strtoupper(trim((string) $code));
-
-        // An empty/whitespace-only code becomes null (an automatic rule), not
-        // a string that then fails the regex — the admin left the field
-        // blank on purpose.
-        $this->merge(['code' => $normalised === '' ? null : $normalised]);
+        // The evaluator only ever reads `combinable` on an automatic rule (a
+        // coupon's own flag is ignored) — Form.vue hides the control once a
+        // code is typed, but a direct POST could still carry
+        // `combinable=false` for a coupon and the row would silently store a
+        // flag nothing honours. Forcing it to true here, after `code` is
+        // normalised above, keeps the stored value honest regardless of what
+        // the client actually sent.
+        if ($code !== null) {
+            $this->merge(['combinable' => true]);
+        }
     }
 
     /**
