@@ -374,17 +374,24 @@ class OrderEditor
                         );
                     }
                 }
-            }
 
-            // Lock ordering (OrderPlacer's docblock): products first, discount
-            // row last. This release runs AFTER the stock above, in the same
-            // transaction — reversing it would take the discount lock before
-            // the product lock and deadlock a concurrent placement on the
-            // same popular coupon. A cancelled order gives back everything it
-            // took: the stock above (when $returnStock), and the coupon
-            // allowance always — a storno must not leave a shopper locked out
-            // of a coupon they never got to keep the benefit of.
-            $this->redemptions->release((int) $order->id);
+                // Lock ordering (OrderPlacer's docblock): products first,
+                // discount row last. This release runs AFTER the stock
+                // above, in the same transaction — reversing it would take
+                // the discount lock before the product lock and deadlock a
+                // concurrent placement on the same popular coupon.
+                //
+                // Gated on $returnStock, not unconditional (rozhodnutí
+                // 2026-07-28): $returnStock=false is this codebase's
+                // suspected-fraud storno — the admin unchecks "Vrátit
+                // odečtené kusy zpět na sklad" specifically to record that
+                // the goods are NOT coming back. The allowance comes back
+                // exactly when the stock comes back, so a one-per-email
+                // welcome coupon does not become usable again by a flagged
+                // address the moment the shop has already conceded the
+                // goods.
+                $this->redemptions->release((int) $order->id);
+            }
         });
 
         if ($sendEmail) {

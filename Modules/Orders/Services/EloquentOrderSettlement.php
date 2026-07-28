@@ -71,18 +71,23 @@ final class EloquentOrderSettlement implements OrderSettlement
                         $this->catalog->incrementStock($item->product_id, (int) $item->quantity);
                     }
                 }
-            }
 
-            // Lock ordering (OrderPlacer's docblock): products first, discount
-            // row last. This release runs AFTER the stock above, in the same
-            // transaction — reversing it would take the discount lock before
-            // the product lock and deadlock a concurrent placement on the
-            // same popular coupon. An order that failed to be paid gives back
-            // everything it took: the stock above, and the coupon allowance
-            // here — without this a coupon limited to one use per e-mail
-            // would lock the shopper out after a gateway timeout they did not
-            // cause.
-            $this->redemptions->release((int) $order->id);
+                // Lock ordering (OrderPlacer's docblock): products first,
+                // discount row last. This release runs AFTER the stock
+                // above, in the same transaction — reversing it would take
+                // the discount lock before the product lock and deadlock a
+                // concurrent placement on the same popular coupon.
+                //
+                // Gated on $returnStock, not unconditional (rozhodnutí
+                // 2026-07-28, symmetric with OrderEditor::cancel()): the
+                // allowance comes back exactly when the stock comes back —
+                // one rule to remember, not two behaviours that diverge by
+                // call site. Both real callers pass returnStock: true today,
+                // so this is currently unobservable here, but a future
+                // caller passing false gets the coherent answer without
+                // rediscovering the argument.
+                $this->redemptions->release((int) $order->id);
+            }
 
             return $this->workflow->transitionPayment($order, Order::PAYMENT_FAILED, OrderEvent::ACTOR_SYSTEM, null, $note);
         });
