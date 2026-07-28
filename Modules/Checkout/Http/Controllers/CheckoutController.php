@@ -385,6 +385,29 @@ class CheckoutController
             );
         }
 
+        // Nothing to charge: a 100 % discount (or a fixed discount covering
+        // the whole basket on a free shipping method, wave 2.6) leaves an
+        // order worth nothing. Comgate refuses a zero amount, so handing this
+        // to a gateway would strand the shopper on an error page with an
+        // order that can never be paid. It is settled directly instead,
+        // through the same OrderSettlement contract a gateway callback would
+        // use — so the state machine and the order_events trail look
+        // identical to any other paid order. This is checked before the
+        // provider lookup below and applies regardless of which payment
+        // method was chosen (online or offline): an offline method on a
+        // free order has just as little to collect as an online one.
+        if ($placed->total()->isZero()) {
+            $this->settlement->settlePaid(
+                $placed->uuid(),
+                'Objednávka plně pokrytá slevou — bez platby.',
+            );
+
+            return CartCookie::forget(
+                redirect()->route('storefront.checkout.thankYou', ['uuid' => $placed->uuid()]),
+                $request,
+            );
+        }
+
         // Placed. If the chosen method is an online gateway this shop actually
         // runs, start the payment and send the shopper to the gateway; the
         // order stays unpaid until a verified callback settles it. Otherwise
