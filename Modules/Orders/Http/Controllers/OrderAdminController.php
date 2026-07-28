@@ -127,6 +127,11 @@ class OrderAdminController
                 'shipping_snapshot' => $order->shipping_snapshot,
                 'payment_snapshot' => $order->orderPaymentSnapshot(),
                 'payment_fee' => $order->payment_fee->amount,
+                // Drives the edit form's warning that this order carries a
+                // discount an edit will NOT recalculate (OrderEditor::edit
+                // preserves each line's share instead of re-running the
+                // engine), so the nájemce knows before they touch a quantity.
+                'discount_total' => $order->discount_total->amount,
                 'vat_summary' => $order->vat_summary,
                 'note' => $order->note,
                 // Whether OrderEditor::edit() would still accept a PATCH on

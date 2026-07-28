@@ -211,6 +211,17 @@ class EloquentCartRepository implements CartRepository
         $cart->update(['pickup_point_code' => $code]);
     }
 
+    public function setCouponCode(CartShape $cart, ?string $code): void
+    {
+        if (! $this->modules->has('checkout')) {
+            return;
+        }
+
+        $cart = $this->persisted($cart);
+
+        $cart->update(['coupon_code' => $code]);
+    }
+
     private function transientCart(): Cart
     {
         return new Cart([

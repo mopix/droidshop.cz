@@ -6,6 +6,8 @@ use App\Core\Catalog\Contracts\ProductCatalog;
 use App\Core\Catalog\Exceptions\InsufficientStock;
 use App\Core\Checkout\Contracts\CartRepository;
 use App\Core\Checkout\Contracts\CartShape;
+use App\Core\Discounts\Contracts\DiscountEngine;
+use App\Core\Discounts\Contracts\DiscountRedemption;
 use App\Core\Orders\Contracts\OrderPlacement;
 use App\Core\Orders\Exceptions\OrderPlacementUnavailable;
 use App\Core\Orders\Exceptions\PriceChanged;
@@ -305,7 +307,7 @@ class OrderPlacerTest extends TestCase
         // is forced to miss, so it proceeds to an insert that collides with the
         // winner's row. The catch must re-read and return the winner.
         $result = $this->context->runAs($this->tenant, function () use ($cart, $token) {
-            $placer = new class(app(ShopModules::class), app(ProductCatalog::class), app(ShippingOptions::class), app(PaymentOptions::class), app(SequenceService::class), app(TaxRates::class), app(CarrierRegistry::class), app(PickupPointCatalog::class)) extends OrderPlacer
+            $placer = new class(app(ShopModules::class), app(ProductCatalog::class), app(ShippingOptions::class), app(PaymentOptions::class), app(SequenceService::class), app(TaxRates::class), app(CarrierRegistry::class), app(PickupPointCatalog::class), app(DiscountEngine::class), app(DiscountRedemption::class)) extends OrderPlacer
             {
                 public int $lookupCalls = 0;
 

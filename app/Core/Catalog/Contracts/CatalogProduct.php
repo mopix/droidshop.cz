@@ -68,4 +68,12 @@ interface CatalogProduct
      * override down to the shop-wide default, so a view never has to.
      */
     public function catalogVariantDisplay(): string;
+
+    /**
+     * Every category this product sits in — what the discount engine's
+     * scope=categories rules match against (App\Core\Discounts\DiscountLine).
+     *
+     * @return list<int>
+     */
+    public function catalogCategoryIds(): array;
 }

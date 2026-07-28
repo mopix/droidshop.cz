@@ -1,0 +1,31 @@
+{
+    "name": "discounts",
+    "version": "1.0.0",
+    "title": {
+        "cs": "Slevy"
+    },
+    "description": {
+        "cs": "Slevové kupóny a automatická pravidla — procento, pevná částka, doprava zdarma, sleva na kategorii."
+    },
+    "core": false,
+    "billable": false,
+    "level": "premium",
+    "requires": {},
+    "provides": [
+        "discount-engine"
+    ],
+    "listens": [],
+    "permissions": [
+        "discounts.manage"
+    ],
+    "settings_schema": null,
+    "nav": [
+        {
+            "area": "admin",
+            "label": "Slevy",
+            "route": "admin.discounts.index",
+            "icon": "tag",
+            "order": 55
+        }
+    ]
+}

@@ -71,4 +71,9 @@ final class NullCartRepository implements CartRepository
     {
         // No-op.
     }
+
+    public function setCouponCode(CartShape $cart, ?string $code): void
+    {
+        // No-op: nowhere to persist a code without the module.
+    }
 }

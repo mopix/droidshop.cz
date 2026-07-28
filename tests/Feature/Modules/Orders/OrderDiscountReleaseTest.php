@@ -1,0 +1,494 @@
+<?php
+
+namespace Tests\Feature\Modules\Orders;
+
+use App\Core\Catalog\Contracts\ProductCatalog;
+use App\Core\Discounts\Contracts\DiscountRedemption as DiscountRedemptionContract;
+use App\Core\Money\Money;
+use App\Core\Orders\Contracts\OrderSettlement;
+use App\Core\Orders\Exceptions\IllegalTransition;
+use App\Core\Tax\TaxRates;
+use App\Core\Tenancy\TenantContext;
+use App\Models\Tenant;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Str;
+use Modules\Discounts\Models\Discount;
+use Modules\Discounts\Models\DiscountRedemption;
+use Modules\Orders\Models\Order;
+use Modules\Orders\Services\OrderEditor;
+use Modules\Products\Models\Product;
+use Modules\Products\Services\ProductWriter;
+use Tests\Concerns\ActivatesModules;
+use Tests\TestCase;
+
+/**
+ * Task 9: the two places that give stock back — admin storno
+ * (OrderEditor::cancel) and a failed/expired online payment
+ * (EloquentOrderSettlement::settleFailed) — must also give the discount
+ * allowance back, in the SAME transaction, released strictly AFTER the stock
+ * (OrderPlacer's binding lock-ordering docblock: products first, discount row
+ * last — a release path must acquire the same order or it deadlocks a
+ * concurrent placement on a popular coupon).
+ */
+class OrderDiscountReleaseTest extends TestCase
+{
+    use ActivatesModules;
+    use RefreshDatabase;
+
+    private Tenant $tenant;
+
+    private TenantContext $context;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        config()->set('cache.default', 'array');
+        config()->set('tenancy.platform_domain', 'droidshop');
+
+        $this->artisan('modules:sync')->assertSuccessful();
+
+        $this->context = app(TenantContext::class);
+        $this->context->forget();
+
+        $this->tenant = Tenant::factory()->withDomain('shop1.droidshop')->create();
+
+        foreach (['orders', 'products', 'discounts'] as $module) {
+            $this->activateModule($this->tenant, $module);
+        }
+    }
+
+    private function rateId(): int
+    {
+        return app(TaxRates::class)->default()->id;
+    }
+
+    /**
+     * @param  array<string, mixed>  $attributes
+     */
+    private function makeProduct(array $attributes = []): Product
+    {
+        return $this->context->runAs($this->tenant, fn () => app(ProductWriter::class)->create([
+            'name' => 'Klávesnice Acme',
+            'price' => 99900,
+            'tax_rate_id' => $this->rateId(),
+            'status' => Product::STATUS_ACTIVE,
+            'stock_tracked' => true,
+            'stock_qty' => 10,
+            'stock_policy' => Product::STOCK_POLICY_SOLD_OUT,
+            ...$attributes,
+        ]));
+    }
+
+    /**
+     * @param  array<string, mixed>  $attributes
+     */
+    private function billing(array $attributes = []): array
+    {
+        return array_merge([
+            'name' => 'Jana Nováková',
+            'street' => 'Hlavní 1',
+            'city' => 'Praha',
+            'zip' => '110 00',
+            'country' => 'CZ',
+        ], $attributes);
+    }
+
+    /**
+     * Places an order the same shape OrderPlacer would, decrementing stock
+     * exactly as a real checkout would, so the release tests start from a
+     * realistic stock position.
+     *
+     * @param  array<string, mixed>  $attributes
+     */
+    private function makeOrderWithLine(Product $product, int $quantity, string $email, array $attributes = []): Order
+    {
+        return $this->context->runAs($this->tenant, function () use ($product, $quantity, $email, $attributes) {
+            app(ProductCatalog::class)->decrementStock($product->id, $quantity);
+
+            $order = Order::query()->create(array_merge([
+                'number' => '2026'.random_int(100000, 999999),
+                'checkout_token' => Str::uuid()->toString(),
+                'source' => Order::SOURCE_STOREFRONT,
+                'email' => $email,
+                'billing' => $this->billing(),
+                'currency' => 'CZK',
+                'items_total' => $product->price->amount * $quantity,
+                'shipping_total' => 0,
+                'payment_fee' => 0,
+                'total' => $product->price->amount * $quantity,
+                'fulfillment_status' => Order::FULFILLMENT_NEW,
+                'payment_status' => Order::PAYMENT_UNPAID,
+                'placed_at' => now(),
+            ], $attributes));
+
+            $order->items()->create([
+                'product_id' => $product->id,
+                'name' => $product->name,
+                'sku' => $product->sku,
+                'unit_price' => $product->price,
+                'tax_rate' => $product->catalogTaxRatePercent(),
+                'quantity' => $quantity,
+                'line_total' => $product->price->times($quantity),
+                'currency' => 'CZK',
+            ]);
+
+            return $order;
+        });
+    }
+
+    private function stockOf(Product $product): int
+    {
+        return $this->context->runAs(
+            $this->tenant,
+            fn () => Product::query()->findOrFail($product->id)->stock_qty,
+        );
+    }
+
+    /**
+     * Records a redemption exactly as EloquentDiscountRedemption::redeem()
+     * would have, without going through a real checkout — the release side is
+     * under test here, not the consuming side (already covered by
+     * DiscountRedemptionTest and OrderDiscountTest).
+     */
+    private function redeem(Discount $discount, Order $order, string $email, int $amount = 10000): void
+    {
+        $this->context->runAs($this->tenant, function () use ($discount, $order, $email, $amount): void {
+            DiscountRedemption::query()->create([
+                'discount_id' => $discount->id,
+                'order_id' => $order->id,
+                'email' => $email,
+                'amount' => $amount,
+            ]);
+
+            $discount->increment('used_count');
+        });
+    }
+
+    // --- admin storno --------------------------------------------------
+
+    public function test_cancelling_an_order_gives_the_allowance_back(): void
+    {
+        $product = $this->makeProduct();
+        $order = $this->makeOrderWithLine($product, 1, 'kupujici@example.com');
+
+        $discount = $this->context->runAs($this->tenant, fn () => Discount::factory()->code('JEDEN')->percent(100)->create([
+            'usage_limit' => 1,
+        ]));
+
+        $this->redeem($discount, $order, 'kupujici@example.com');
+
+        $this->context->runAs($this->tenant, function () use ($order): void {
+            app(OrderEditor::class)->cancel($order, 'Zákazník si to rozmyslel.', returnStock: true, sendEmail: false, actorType: 'admin', actorId: null);
+        });
+
+        $this->context->runAs($this->tenant, function () use ($discount, $order): void {
+            $this->assertSame(0, (int) $discount->fresh()->used_count);
+            $this->assertNotNull(DiscountRedemption::query()->where('order_id', $order->id)->firstOrFail()->released_at);
+        });
+    }
+
+    public function test_cancelling_an_order_with_no_discount_is_unaffected(): void
+    {
+        $product = $this->makeProduct();
+        $order = $this->makeOrderWithLine($product, 1, 'kupujici@example.com');
+
+        $this->context->runAs($this->tenant, function () use ($order): void {
+            $cancelled = app(OrderEditor::class)->cancel($order, 'Bez slevy.', returnStock: true, sendEmail: false, actorType: 'admin', actorId: null);
+
+            $this->assertSame(Order::FULFILLMENT_CANCELLED, $cancelled->fulfillment_status);
+            $this->assertSame(0, DiscountRedemption::query()->count());
+        });
+    }
+
+    /**
+     * Review finding (Important 1): return_stock=false is this codebase's
+     * suspected-fraud storno path (OrderEditTest's "Podezření na podvod."
+     * case, admin checkbox "Vrátit odečtené kusy zpět na sklad" left
+     * unchecked). The admin unchecks it specifically to record that the
+     * goods are NOT coming back — the allowance must not come back either,
+     * or a one-per-email welcome coupon becomes usable again by the flagged
+     * address the instant the shop has already conceded the goods.
+     */
+    public function test_cancelling_without_returning_stock_leaves_the_allowance_untouched(): void
+    {
+        $product = $this->makeProduct();
+        $order = $this->makeOrderWithLine($product, 1, 'kupujici@example.com');
+
+        $discount = $this->context->runAs($this->tenant, fn () => Discount::factory()->code('JEDEN')->percent(100)->create([
+            'usage_limit' => 1,
+        ]));
+
+        $this->redeem($discount, $order, 'kupujici@example.com');
+
+        $this->context->runAs($this->tenant, function () use ($order): void {
+            app(OrderEditor::class)->cancel($order, 'Podezření na podvod.', returnStock: false, sendEmail: false, actorType: 'admin', actorId: null);
+        });
+
+        $this->context->runAs($this->tenant, function () use ($discount, $order): void {
+            $this->assertSame(1, (int) $discount->fresh()->used_count);
+            $this->assertNull(DiscountRedemption::query()->where('order_id', $order->id)->firstOrFail()->released_at);
+        });
+    }
+
+    // --- gateway failure / expiry ---------------------------------------
+
+    public function test_a_failed_payment_gives_the_allowance_back(): void
+    {
+        $product = $this->makeProduct();
+        $order = $this->makeOrderWithLine($product, 1, 'kupujici@example.com');
+
+        $discount = $this->context->runAs($this->tenant, fn () => Discount::factory()->code('JEDEN')->percent(100)->create([
+            'usage_limit' => 1,
+        ]));
+
+        $this->redeem($discount, $order, 'kupujici@example.com');
+
+        $this->context->runAs($this->tenant, function () use ($order): void {
+            $moved = app(OrderSettlement::class)->settleFailed($order->uuid, returnStock: true);
+            $this->assertTrue($moved);
+        });
+
+        $this->context->runAs($this->tenant, function () use ($discount, $order): void {
+            $this->assertSame(0, (int) $discount->fresh()->used_count);
+            $this->assertNotNull(DiscountRedemption::query()->where('order_id', $order->id)->firstOrFail()->released_at);
+        });
+    }
+
+    public function test_settling_an_already_settled_order_does_not_release_twice(): void
+    {
+        $product = $this->makeProduct();
+        $order = $this->makeOrderWithLine($product, 1, 'kupujici@example.com');
+
+        $discount = $this->context->runAs($this->tenant, fn () => Discount::factory()->code('JEDEN')->percent(100)->create([
+            'usage_limit' => 1,
+        ]));
+
+        $this->redeem($discount, $order, 'kupujici@example.com');
+
+        $this->context->runAs($this->tenant, function () use ($order): void {
+            $this->assertTrue(app(OrderSettlement::class)->settleFailed($order->uuid, returnStock: true));
+            // Already failed: settleFailed's own unpaid-only guard refuses a
+            // second call before it ever reaches the release — this proves
+            // that guard, not release()'s own idempotence, is what protects
+            // the counter here.
+            $this->assertFalse(app(OrderSettlement::class)->settleFailed($order->uuid, returnStock: true));
+        });
+
+        $this->context->runAs($this->tenant, fn () => $this->assertSame(0, (int) $discount->fresh()->used_count));
+    }
+
+    /**
+     * Symmetric with the storno case above (Important 1): both real callers
+     * of settleFailed() pass returnStock: true today, but the rule is "the
+     * allowance comes back exactly when the stock comes back", not "always"
+     * — pinning it here so a future caller passing false gets the coherent
+     * behaviour without anyone rediscovering the argument.
+     */
+    public function test_settling_failed_without_returning_stock_leaves_the_allowance_untouched(): void
+    {
+        $product = $this->makeProduct();
+        $order = $this->makeOrderWithLine($product, 1, 'kupujici@example.com');
+
+        $discount = $this->context->runAs($this->tenant, fn () => Discount::factory()->code('JEDEN')->percent(100)->create([
+            'usage_limit' => 1,
+        ]));
+
+        $this->redeem($discount, $order, 'kupujici@example.com');
+
+        $this->context->runAs($this->tenant, function () use ($order): void {
+            $this->assertTrue(app(OrderSettlement::class)->settleFailed($order->uuid, returnStock: false));
+        });
+
+        $this->context->runAs($this->tenant, function () use ($discount, $order): void {
+            $this->assertSame(1, (int) $discount->fresh()->used_count);
+            $this->assertNull(DiscountRedemption::query()->where('order_id', $order->id)->firstOrFail()->released_at);
+        });
+    }
+
+    /**
+     * Minor 2 from review: the realistic cross-call-site sequence — a
+     * gateway failure releases first, then an admin storno of the same
+     * (now-failed) order releases again. Safe by inspection (settleFailed
+     * only moves payment_status, so it never blocks cancel; the second
+     * release no-ops on its own whereNull('released_at') filter, not on
+     * either method's own guard) — pinned here so that stays true.
+     */
+    public function test_a_gateway_failure_followed_by_a_storno_of_the_same_order_releases_only_once(): void
+    {
+        $product = $this->makeProduct();
+        $order = $this->makeOrderWithLine($product, 1, 'kupujici@example.com');
+
+        $discount = $this->context->runAs($this->tenant, fn () => Discount::factory()->code('JEDEN')->percent(100)->create([
+            'usage_limit' => 1,
+        ]));
+
+        $this->redeem($discount, $order, 'kupujici@example.com');
+
+        $this->context->runAs($this->tenant, function () use ($order): void {
+            $this->assertTrue(app(OrderSettlement::class)->settleFailed($order->uuid, returnStock: true));
+        });
+
+        $this->context->runAs($this->tenant, fn () => $this->assertSame(0, (int) $discount->fresh()->used_count));
+
+        $this->context->runAs($this->tenant, function () use ($order): void {
+            app(OrderEditor::class)->cancel($order->fresh(), 'Storno po selhané platbě.', returnStock: true, sendEmail: false, actorType: 'admin', actorId: null);
+        });
+
+        $this->context->runAs($this->tenant, function () use ($discount, $order): void {
+            // Still 0, not -1: the second release found the row already
+            // released_at and no-opped rather than decrementing again.
+            $this->assertSame(0, (int) $discount->fresh()->used_count);
+            $this->assertSame(1, DiscountRedemption::query()->where('order_id', $order->id)->count());
+        });
+    }
+
+    // --- both eligibility gates really reopen ----------------------------
+
+    public function test_a_released_coupon_can_be_used_again_by_the_same_email(): void
+    {
+        $product = $this->makeProduct();
+        $order = $this->makeOrderWithLine($product, 1, 'jana@example.cz');
+
+        $discount = $this->context->runAs($this->tenant, fn () => Discount::factory()->code('UVITACI')->percent(100)->create([
+            'usage_limit' => 1,
+            'usage_limit_per_email' => 1,
+        ]));
+
+        $this->redeem($discount, $order, 'jana@example.cz');
+
+        $this->context->runAs($this->tenant, function () use ($order): void {
+            app(OrderEditor::class)->cancel($order, 'Vrátit slevu.', returnStock: true, sendEmail: false, actorType: 'admin', actorId: null);
+        });
+
+        // Both gates reopened: usage_limit (used_count back at 0) and the
+        // per-email limit (the only row for this address is now released).
+        $this->context->runAs($this->tenant, function () use ($discount): void {
+            app(DiscountRedemptionContract::class)->redeem(
+                $discount->id,
+                9999,
+                'jana@example.cz',
+                null,
+                new Money(10000, 'CZK'),
+            );
+        });
+
+        $this->context->runAs($this->tenant, function () use ($discount): void {
+            $this->assertSame(1, (int) $discount->fresh()->used_count);
+            $this->assertSame(1, DiscountRedemption::query()->whereNull('released_at')->count());
+        });
+    }
+
+    // --- direct release() idempotence at the contract level --------------
+
+    public function test_releasing_twice_directly_does_not_double_decrement(): void
+    {
+        $product = $this->makeProduct();
+        $order = $this->makeOrderWithLine($product, 1, 'kupujici@example.com');
+
+        $discount = $this->context->runAs($this->tenant, fn () => Discount::factory()->code('JEDEN')->percent(100)->create());
+
+        $this->redeem($discount, $order, 'kupujici@example.com');
+
+        $this->context->runAs($this->tenant, function () use ($order): void {
+            $redemptions = app(DiscountRedemptionContract::class);
+            $redemptions->release($order->id);
+            $redemptions->release($order->id);
+        });
+
+        $this->context->runAs($this->tenant, fn () => $this->assertSame(0, (int) $discount->fresh()->used_count));
+    }
+
+    /**
+     * Final review (wave 2.6): the SELECT inside release() is NOT what makes a
+     * repeated release safe — two concurrent releases both see the row
+     * unreleased there. The compare-and-swap UPDATE is. Simulated here by
+     * stamping the row from underneath a release that has already read it:
+     * with an unconditional UPDATE the decrement below would fire anyway and a
+     * usage_limit = 100 coupon would become usable 101 times.
+     */
+    public function test_release_does_not_decrement_when_another_writer_already_stamped_the_row(): void
+    {
+        $product = $this->makeProduct();
+        $order = $this->makeOrderWithLine($product, 1, 'kupujici@example.com');
+
+        $discount = $this->context->runAs($this->tenant, fn () => Discount::factory()->code('STO')->percent(10)->create([
+            'usage_limit' => 100,
+        ]));
+
+        $this->context->runAs($this->tenant, function () use ($discount, $order): void {
+            DiscountRedemption::query()->create([
+                'discount_id' => $discount->id,
+                'order_id' => $order->id,
+                'email' => 'kupujici@example.com',
+                'amount' => 10000,
+            ]);
+
+            // A hundred uses on the counter, one of them this order's.
+            $discount->forceFill(['used_count' => 100])->save();
+
+            // The competing writer wins the race: the row is stamped released
+            // before our release() gets to its own UPDATE.
+            DiscountRedemption::query()
+                ->where('order_id', $order->id)
+                ->update(['released_at' => now()]);
+
+            app(DiscountRedemptionContract::class)->release((int) $order->id);
+        });
+
+        // 100, not 99: the loser of the CAS must not give an allowance back
+        // that the winner already gave back.
+        $this->context->runAs($this->tenant, fn () => $this->assertSame(100, (int) $discount->fresh()->used_count));
+    }
+
+    /**
+     * Final review (wave 2.6): OrderEditor::cancel() took no row lock, so an
+     * admin double-click could put two transactions through the whole body —
+     * both returning the stock and both releasing the allowance. The lock plus
+     * OrderWorkflow's graph check now refuse the second one outright; nothing
+     * it would have moved is moved.
+     */
+    public function test_cancelling_an_already_cancelled_order_changes_neither_the_allowance_nor_stock(): void
+    {
+        $product = $this->makeProduct();
+        $order = $this->makeOrderWithLine($product, 1, 'kupujici@example.com');
+
+        $discount = $this->context->runAs($this->tenant, fn () => Discount::factory()->code('JEDEN')->percent(100)->create([
+            'usage_limit' => 1,
+        ]));
+
+        $this->redeem($discount, $order, 'kupujici@example.com');
+
+        $this->context->runAs($this->tenant, function () use ($order): void {
+            app(OrderEditor::class)->cancel($order, 'Zákazník si to rozmyslel.', returnStock: true, sendEmail: false, actorType: 'admin', actorId: null);
+        });
+
+        $stockAfterFirstCancel = $this->stockOf($product);
+
+        // The stale model the double-click would carry: still `new` in memory,
+        // which is exactly what used to slip past the in-memory graph check.
+        $stale = $this->context->runAs($this->tenant, fn () => Order::query()->findOrFail($order->id));
+        $stale->forceFill(['fulfillment_status' => Order::FULFILLMENT_NEW]);
+
+        // try/catch rather than expectException: the state assertions below are
+        // the point of this test, and expectException would end the method the
+        // moment the throw happened.
+        $refused = false;
+
+        try {
+            $this->context->runAs($this->tenant, function () use ($stale): void {
+                app(OrderEditor::class)->cancel($stale, 'Dvojklik.', returnStock: true, sendEmail: false, actorType: 'admin', actorId: null);
+            });
+        } catch (IllegalTransition $e) {
+            $refused = true;
+        }
+
+        $this->assertTrue($refused, 'A second cancel of the same order must be refused.');
+
+        $this->context->runAs($this->tenant, function () use ($discount, $order, $product, $stockAfterFirstCancel): void {
+            $this->assertSame(0, (int) $discount->fresh()->used_count);
+            $this->assertSame(1, DiscountRedemption::query()->where('order_id', $order->id)->count());
+            $this->assertSame($stockAfterFirstCancel, Product::query()->findOrFail($product->id)->stock_qty);
+        });
+    }
+}

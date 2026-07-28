@@ -3,6 +3,7 @@
 namespace Database\Seeders;
 
 use App\Core\Enums\PlanLevel;
+use App\Models\Module;
 use App\Models\Plan;
 use Illuminate\Database\Seeder;
 
@@ -39,5 +40,13 @@ class PlanSeeder extends Seeder
                 'emails_month' => 30000,
             ],
         ]);
+
+        // Premium-only modules (spec §909). Attached here so a fresh install
+        // and the test suite agree with the production backfill migration.
+        $premium = Plan::where('key', 'premium')->first();
+
+        if ($premium !== null && Module::where('key', 'discounts')->exists()) {
+            $premium->modules()->syncWithoutDetaching(['discounts']);
+        }
     }
 }

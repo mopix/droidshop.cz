@@ -109,6 +109,11 @@
             font-size: 8pt;
             color: #555;
         }
+        .discount-note {
+            margin: 0 0 16px 0;
+            font-size: 9pt;
+            color: #555;
+        }
     </style>
 </head>
 <body>
@@ -209,6 +214,21 @@
             @endforeach
         </tbody>
     </table>
+
+    {{-- Informational only, never part of any total (rozhodnutí 2026-07-28):
+         the lines above already carry the discounted amounts. Omitted
+         entirely on an order with no live discount, so an undiscounted
+         invoice renders with no layout shift. discount_note is the full
+         opening clause built by InvoiceSnapshot::discountNote() — either
+         "Uplatněna sleva: {names}" or, when the order_discounts snapshot no
+         longer agrees with the live discount total, the generic, code-free
+         "Uplatněna sleva" (see that method's docblock for why). --}}
+    @if(!empty($document->discount_note))
+        <p class="discount-note">
+            {{ $document->discount_note }} — celkem {{ $document->discount_total->format() }}.
+            Ceny položek jsou uvedeny po slevě.
+        </p>
+    @endif
 
     @if($isVatPayer && !empty($document->vat_summary))
         <table class="vat-summary">

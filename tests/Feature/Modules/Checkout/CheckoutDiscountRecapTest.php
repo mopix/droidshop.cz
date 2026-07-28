@@ -1,0 +1,530 @@
+<?php
+
+namespace Tests\Feature\Modules\Checkout;
+
+use App\Core\Discounts\Contracts\DiscountRedemption;
+use App\Core\Discounts\Exceptions\DiscountNoLongerValid;
+use App\Core\Money\Money;
+use App\Core\Tax\TaxRates;
+use App\Core\Tenancy\TenantContext;
+use App\Models\Tenant;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Modules\Checkout\Models\Cart;
+use Modules\Discounts\Models\Discount;
+use Modules\Discounts\Models\DiscountRedemption as DiscountRedemptionRow;
+use Modules\Orders\Models\Order;
+use Modules\Products\Models\Product;
+use Modules\Products\Services\ProductWriter;
+use Modules\Shipping\Models\PaymentMethod;
+use Modules\Shipping\Models\ShippingMethod;
+use Tests\Concerns\ActivatesModules;
+use Tests\TestCase;
+
+/**
+ * `/pokladna/udaje` — the recap on the page carrying "Objednat s povinností
+ * platby" must show a discount as its own row and the displayed components
+ * must reconcile with the displayed total (final review of Task 5 flagged
+ * that the recap used to show a pre-discount "Mezisoučet" next to a total
+ * computed from the post-discount payableTotal, with no line explaining the
+ * gap — spec §16.3, .claude/rules/storefront-rendering.md).
+ */
+class CheckoutDiscountRecapTest extends TestCase
+{
+    use ActivatesModules;
+    use RefreshDatabase;
+
+    private TenantContext $context;
+
+    private Tenant $tenant;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $this->withoutVite();
+        config()->set('cache.default', 'array');
+        config()->set('tenancy.platform_domain', 'droidshop');
+
+        $this->artisan('modules:sync')->assertSuccessful();
+
+        $this->context = app(TenantContext::class);
+        $this->context->forget();
+
+        $this->tenant = Tenant::factory()->withDomain('shop1.droidshop')->create(['name' => 'Shop One']);
+
+        foreach (['storefront', 'checkout', 'products', 'categories', 'orders', 'shipping', 'discounts'] as $module) {
+            $this->activateModule($this->tenant, $module);
+        }
+    }
+
+    private function url(string $path): string
+    {
+        return 'http://shop1.droidshop'.$path;
+    }
+
+    /**
+     * Money::format() uses NumberFormatter's own grouping and non-breaking
+     * spaces, so assertions render the expectation through the exact same
+     * formatter rather than guessing the literal bytes (mirrors
+     * CheckoutShippingTest/CartDiscountFormTest).
+     */
+    private function czk(int $minorUnits): string
+    {
+        return (new Money($minorUnits, 'CZK'))->format();
+    }
+
+    /**
+     * @param  array<string, mixed>  $attributes
+     */
+    private function makeProduct(array $attributes = []): Product
+    {
+        return $this->context->runAs($this->tenant, fn () => app(ProductWriter::class)->create([
+            'name' => 'Testovací produkt',
+            'price' => 100_000, // 1 000,00 Kč
+            'status' => Product::STATUS_ACTIVE,
+            'tax_rate_id' => app(TaxRates::class)->default()->id,
+            'stock_qty' => 10,
+            ...$attributes,
+        ]));
+    }
+
+    private function cartToken(): string
+    {
+        return $this->context->runAs($this->tenant, fn () => Cart::query()->firstOrFail()->token);
+    }
+
+    public function test_the_checkout_recap_shows_the_discount_and_the_reduced_total(): void
+    {
+        $product = $this->context->runAs($this->tenant, function (): Product {
+            $product = $this->makeProduct();
+
+            Discount::factory()->code('SLEVA10')->percent(100)->create(['name' => 'Sleva 10 %']);
+
+            return $product;
+        });
+
+        $this->post($this->url('/kosik'), ['product_id' => $product->id, 'quantity' => 1])
+            ->assertRedirect();
+
+        $token = $this->cartToken();
+
+        $this->withCookie('cart_token', $token)
+            ->post($this->url('/kosik/sleva'), ['code' => 'SLEVA10', 'return_to' => 'checkout'])
+            ->assertRedirect($this->url('/pokladna/udaje'));
+
+        $page = $this->withCookie('cart_token', $token)->get($this->url('/pokladna/udaje'));
+
+        $page->assertOk();
+        $page->assertSee('Sleva 10 %');
+        $page->assertSee($this->czk(90_000), false); // 1 000,00 − 10 % = 900,00 Kč
+    }
+
+    /**
+     * Pins the recap arithmetic: the subtotal, the discount, the shipping
+     * cost and the payment fee shown on the page must sum to the total shown
+     * next to the submit button — not merely each be individually correct.
+     * Every figure here is non-zero so a defect in any one row would move
+     * the sum away from the asserted total.
+     */
+    public function test_the_recap_rows_reconcile_with_the_displayed_total(): void
+    {
+        $product = $this->context->runAs($this->tenant, function (): Product {
+            $product = $this->makeProduct(['price' => 100_000]); // 1 000,00 Kč
+
+            Discount::factory()->code('SLEVA10')->percent(100)->create(['name' => 'Sleva 10 %']); // 10 %
+
+            ShippingMethod::create([
+                'provider' => ShippingMethod::PROVIDER_FLAT,
+                'name' => 'Kurýr',
+                'price' => 9_900, // 99,00 Kč
+                'is_active' => true,
+            ]);
+
+            PaymentMethod::create([
+                'provider' => PaymentMethod::PROVIDER_COD,
+                'name' => 'Dobírka',
+                'fee' => 2_000, // 20,00 Kč
+                'is_active' => true,
+            ]);
+
+            return $product;
+        });
+
+        $this->post($this->url('/kosik'), ['product_id' => $product->id, 'quantity' => 1]);
+        $token = $this->cartToken();
+
+        $this->withCookie('cart_token', $token)
+            ->post($this->url('/kosik/sleva'), ['code' => 'SLEVA10', 'return_to' => 'checkout']);
+
+        $shippingId = $this->context->runAs($this->tenant, fn () => ShippingMethod::query()->firstOrFail()->id);
+        $paymentId = $this->context->runAs($this->tenant, fn () => PaymentMethod::query()->firstOrFail()->id);
+
+        $this->withCookie('cart_token', $token)->post($this->url('/pokladna/doprava'), [
+            'shipping_method_id' => $shippingId,
+            'payment_method_id' => $paymentId,
+        ]);
+
+        $page = $this->withCookie('cart_token', $token)->get($this->url('/pokladna/udaje'));
+
+        $page->assertOk();
+
+        // Mezisoučet 1 000,00 − Sleva 100,00 + Doprava 99,00 + Platba 20,00 = Celkem 1 019,00 Kč.
+        $subtotal = new Money(100_000, 'CZK');
+        $discount = new Money(10_000, 'CZK');
+        $shippingCost = new Money(9_900, 'CZK');
+        $paymentFee = new Money(2_000, 'CZK');
+        $total = $subtotal->minus($discount)->plus($shippingCost)->plus($paymentFee);
+
+        $this->assertSame(101_900, $total->amount);
+
+        $page->assertSee($subtotal->format(), false);
+        $page->assertSee('−'.$discount->format(), false);
+        $page->assertSee($shippingCost->format(), false);
+        $page->assertSee($paymentFee->format(), false);
+        $page->assertSee($total->format(), false);
+    }
+
+    /**
+     * The coupon's counterpart to PriceChanged: someone else took the last use
+     * between this shopper's recap and their submit. OrderPlacer redeems under
+     * a row lock inside its transaction, so the loser must land back on the
+     * cart with the reason — never on a 500, and never with a half-written
+     * order.
+     */
+    public function test_a_coupon_taken_between_the_recap_and_the_submit_sends_the_shopper_back(): void
+    {
+        $product = $this->context->runAs($this->tenant, function (): Product {
+            $product = $this->makeProduct();
+
+            Discount::factory()->code('JEDEN')->percent(100)->create([
+                'name' => 'Sleva 10 %',
+                'usage_limit' => 1,
+            ]);
+
+            return $product;
+        });
+
+        $this->post($this->url('/kosik'), ['product_id' => $product->id, 'quantity' => 1]);
+        $token = $this->cartToken();
+
+        $this->withCookie('cart_token', $token)
+            ->post($this->url('/kosik/sleva'), ['code' => 'JEDEN', 'return_to' => 'checkout']);
+
+        $page = $this->withCookie('cart_token', $token)->get($this->url('/pokladna/udaje'));
+        $page->assertOk();
+        preg_match('/name="checkout_token"\s+value="([^"]+)"/', $page->getContent(), $m);
+        $this->assertNotEmpty($m[1] ?? null);
+
+        // The race, made deterministic. Exhausting used_count by hand would
+        // not do it: the engine re-evaluates inside the same transaction and
+        // would simply stop applying the coupon (a full-price order, tested in
+        // OrderDiscountTest). Only a genuine race — the other shopper's
+        // transaction committing between this one's evaluation and its locked
+        // redeem() — reaches the refusal, so redeem() is stubbed to refuse.
+        $this->app->instance(DiscountRedemption::class, new class implements DiscountRedemption
+        {
+            public function redeem(int $discountId, int $orderId, string $email, ?int $customerId, Money $amount): void
+            {
+                throw DiscountNoLongerValid::forCode('JEDEN');
+            }
+
+            public function release(int $orderId): void {}
+        });
+
+        $response = $this->withCookie('cart_token', $token)->post($this->url('/pokladna/udaje'), [
+            'checkout_token' => $m[1],
+            'email' => 'jana@example.cz',
+            'phone' => '+420777123456',
+            'name' => 'Jana Nováková',
+            'street' => 'Hlavní 1',
+            'city' => 'Praha',
+            'zip' => '11000',
+            'country' => 'CZ',
+            'terms' => '1',
+        ]);
+
+        $response->assertRedirect($this->url('/kosik'));
+        $response->assertSessionHas(
+            'status',
+            'Slevový kód JEDEN už není platný. Odebrali jsme ho z košíku — zkontrolujte prosím cenu a objednávku dokončete znovu.',
+        );
+
+        $this->assertSame(0, $this->context->runAs($this->tenant, fn (): int => Order::query()->count()));
+    }
+
+    /**
+     * The recap prices with `email: null`, so a per-e-mail limit only bites at
+     * submit — the one case where the binding answer can be worse than the one
+     * on the payment-obligation page. The shopper must land back on the cart
+     * with a Czech reason and no order, never be charged the higher total.
+     */
+    public function test_a_coupon_the_email_disqualifies_sends_the_shopper_back_with_the_reason(): void
+    {
+        $product = $this->context->runAs($this->tenant, function (): Product {
+            $product = $this->makeProduct();
+
+            $discount = Discount::factory()->code('UVITACI')->percent(100)->create([
+                'name' => 'Uvítací sleva',
+                'usage_limit_per_email' => 1,
+            ]);
+
+            // The address has already used it on an earlier order — invisible
+            // to the recap, which has no e-mail to check against.
+            DiscountRedemptionRow::query()->create([
+                'discount_id' => $discount->id,
+                'order_id' => 4242,
+                'email' => 'jana@example.cz',
+                'amount' => 10_000,
+            ]);
+
+            return $product;
+        });
+
+        $this->post($this->url('/kosik'), ['product_id' => $product->id, 'quantity' => 1]);
+        $token = $this->cartToken();
+
+        $this->withCookie('cart_token', $token)
+            ->post($this->url('/kosik/sleva'), ['code' => 'UVITACI', 'return_to' => 'checkout']);
+
+        $page = $this->withCookie('cart_token', $token)->get($this->url('/pokladna/udaje'));
+        $page->assertOk();
+        // The recap still offers it — that is exactly the gap being closed.
+        $page->assertSee('Uvítací sleva');
+        preg_match('/name="checkout_token"\s+value="([^"]+)"/', $page->getContent(), $m);
+
+        $response = $this->withCookie('cart_token', $token)->post($this->url('/pokladna/udaje'), [
+            'checkout_token' => $m[1],
+            'email' => 'jana@example.cz',
+            'phone' => '+420777123456',
+            'name' => 'Jana Nováková',
+            'street' => 'Hlavní 1',
+            'city' => 'Praha',
+            'zip' => '11000',
+            'country' => 'CZ',
+            'terms' => '1',
+        ]);
+
+        $response->assertRedirect($this->url('/kosik'));
+        $response->assertSessionHas(
+            'status',
+            'Slevový kód UVITACI už není platný. Odebrali jsme ho z košíku — zkontrolujte prosím cenu a objednávku dokončete znovu.',
+        );
+
+        $this->assertSame(0, $this->context->runAs($this->tenant, fn (): int => Order::query()->count()));
+
+        // The refusal must not leave the shopper in a loop. CartPricer prices
+        // with `email: null`, so a coupon rejected only because of the e-mail
+        // still looks applied to the cart — the code therefore has to be gone
+        // from the cart row, not merely reported, or the page would show
+        // "Uplatněn slevový kód" and the discounted total right under a flash
+        // saying it is invalid, and every resubmit would refuse again.
+        $this->assertNull(
+            $this->context->runAs($this->tenant, fn () => Cart::query()->firstOrFail()->coupon_code),
+        );
+
+        $cartPage = $this->withCookie('cart_token', $token)->get($this->url('/kosik'));
+
+        $cartPage->assertOk();
+        $cartPage->assertDontSee('Uplatněn slevový kód');
+        $cartPage->assertDontSee('Uvítací sleva');
+        $cartPage->assertSee($this->czk(100_000), false);
+    }
+
+    /**
+     * Final review (wave 2.6): the recap is the page carrying the
+     * payment-obligation button, so it must never display a discounted total
+     * built on a code that no longer applies. A code found stale here is
+     * cleared on this very render (StaleCoupon) and the reason is printed —
+     * which is the precondition for OrderPlacer refusing on ANY rejection.
+     */
+    public function test_the_recap_render_clears_a_stale_code_and_shows_the_reason(): void
+    {
+        $product = $this->context->runAs($this->tenant, function (): Product {
+            $product = $this->makeProduct();
+
+            Discount::factory()->code('SLEVA10')->percent(100)->create(['name' => 'Sleva 10 %']);
+
+            return $product;
+        });
+
+        $this->post($this->url('/kosik'), ['product_id' => $product->id, 'quantity' => 1]);
+        $token = $this->cartToken();
+
+        $this->withCookie('cart_token', $token)
+            ->post($this->url('/kosik/sleva'), ['code' => 'SLEVA10', 'return_to' => 'checkout'])
+            ->assertRedirect($this->url('/pokladna/udaje'));
+
+        // An admin switches the coupon off while the shopper sits on the recap.
+        $this->context->runAs(
+            $this->tenant,
+            fn () => Discount::query()->firstOrFail()->forceFill(['active' => false])->save(),
+        );
+
+        $page = $this->withCookie('cart_token', $token)->get($this->url('/pokladna/udaje'));
+
+        $page->assertOk();
+        $page->assertSee('Slevový kód neplatí');
+        $page->assertSee('kód je vypnutý.');
+        // The total next to the submit button is the undiscounted one.
+        $page->assertSee($this->czk(100_000), false);
+        $page->assertDontSee('Uplatněn slevový kód');
+
+        $this->assertNull(
+            $this->context->runAs($this->tenant, fn () => Cart::query()->firstOrFail()->coupon_code),
+        );
+    }
+
+    /**
+     * Re-review of the final-review fix: StaleCoupon::clear() used to run above
+     * the "no shipping method chosen yet" redirect, so a shopper who reached
+     * /pokladna/udaje without a method had their code removed and was sent to
+     * /pokladna/doprava — a page that does not include the discount partial and
+     * therefore printed no reason. By the next render discountRejection is null
+     * and nothing explains the vanished discount, which is exactly the silent
+     * clearing StaleCoupon's own contract forbids.
+     *
+     * The clear now sits immediately above the view, so it only fires on a
+     * render that shows the reason. Placement is unaffected: place() needs a
+     * checkout_token, and only the full recap render mints one.
+     */
+    public function test_the_shipping_redirect_does_not_clear_the_code_before_any_page_can_explain_it(): void
+    {
+        $product = $this->context->runAs($this->tenant, function (): Product {
+            $product = $this->makeProduct();
+
+            Discount::factory()->code('SLEVA10')->percent(100)->create(['name' => 'Sleva 10 %']);
+
+            // A real shipping method exists, so the recap refuses to render
+            // until one is chosen (no free-pickup fallback).
+            ShippingMethod::create([
+                'provider' => ShippingMethod::PROVIDER_FLAT,
+                'name' => 'Kurýr',
+                'price' => 9_900,
+                'is_active' => true,
+            ]);
+
+            return $product;
+        });
+
+        $this->post($this->url('/kosik'), ['product_id' => $product->id, 'quantity' => 1]);
+        $token = $this->cartToken();
+
+        $this->withCookie('cart_token', $token)
+            ->post($this->url('/kosik/sleva'), ['code' => 'SLEVA10', 'return_to' => 'checkout']);
+
+        $this->context->runAs(
+            $this->tenant,
+            fn () => Discount::query()->firstOrFail()->forceFill(['active' => false])->save(),
+        );
+
+        // No shipping method chosen: this request only redirects, it renders
+        // nothing that could carry the reason.
+        $this->withCookie('cart_token', $token)
+            ->get($this->url('/pokladna/udaje'))
+            ->assertRedirect($this->url('/pokladna/doprava'));
+
+        // The code survives, because nothing has explained its removal yet.
+        $this->assertSame(
+            'SLEVA10',
+            $this->context->runAs($this->tenant, fn () => Cart::query()->firstOrFail()->coupon_code),
+        );
+
+        $shippingId = $this->context->runAs($this->tenant, fn () => ShippingMethod::query()->firstOrFail()->id);
+
+        $this->withCookie('cart_token', $token)
+            ->post($this->url('/pokladna/doprava'), ['shipping_method_id' => $shippingId]);
+
+        // Now the recap really renders — and this is the render that both
+        // clears the code and says why.
+        $page = $this->withCookie('cart_token', $token)->get($this->url('/pokladna/udaje'));
+
+        $page->assertOk();
+        $page->assertSee('Slevový kód neplatí');
+        $page->assertSee('kód je vypnutý.');
+
+        $this->assertNull(
+            $this->context->runAs($this->tenant, fn () => Cart::query()->firstOrFail()->coupon_code),
+        );
+    }
+
+    /**
+     * Final review (wave 2.6): DiscountNoLongerValid is also reachable with no
+     * code involved at all — an AUTOMATIC rule losing the redeem() lock race —
+     * and the flash used to promise "Odebrali jsme ho z košíku" regardless,
+     * which is a lie when there was never a code to remove.
+     */
+    public function test_an_automatic_rule_losing_the_race_does_not_claim_a_code_was_removed(): void
+    {
+        $product = $this->context->runAs($this->tenant, function (): Product {
+            $product = $this->makeProduct();
+
+            // No code: an automatic rule, applied without the shopper typing
+            // anything.
+            Discount::factory()->percent(100)->create(['name' => 'Akce']);
+
+            return $product;
+        });
+
+        $this->post($this->url('/kosik'), ['product_id' => $product->id, 'quantity' => 1]);
+        $token = $this->cartToken();
+
+        $page = $this->withCookie('cart_token', $token)->get($this->url('/pokladna/udaje'));
+        $page->assertOk();
+        preg_match('/name="checkout_token"\s+value="([^"]+)"/', $page->getContent(), $m);
+        $this->assertNotEmpty($m[1] ?? null);
+
+        $this->app->instance(DiscountRedemption::class, new class implements DiscountRedemption
+        {
+            public function redeem(int $discountId, int $orderId, string $email, ?int $customerId, Money $amount): void
+            {
+                throw DiscountNoLongerValid::forCode(null);
+            }
+
+            public function release(int $orderId): void {}
+        });
+
+        $response = $this->withCookie('cart_token', $token)->post($this->url('/pokladna/udaje'), [
+            'checkout_token' => $m[1],
+            'email' => 'jana@example.cz',
+            'phone' => '+420777123456',
+            'name' => 'Jana Nováková',
+            'street' => 'Hlavní 1',
+            'city' => 'Praha',
+            'zip' => '11000',
+            'country' => 'CZ',
+            'terms' => '1',
+        ]);
+
+        $response->assertRedirect($this->url('/kosik'));
+        $response->assertSessionHas(
+            'status',
+            'Sleva už není platná. Zkontrolujte prosím cenu a objednávku dokončete znovu.',
+        );
+
+        $this->assertSame(0, $this->context->runAs($this->tenant, fn (): int => Order::query()->count()));
+    }
+
+    public function test_the_discount_field_round_trips_back_to_the_checkout_page(): void
+    {
+        $product = $this->context->runAs($this->tenant, function (): Product {
+            $product = $this->makeProduct();
+
+            Discount::factory()->code('SLEVA10')->percent(100)->create(['name' => 'Sleva 10 %']);
+
+            return $product;
+        });
+
+        $this->post($this->url('/kosik'), ['product_id' => $product->id, 'quantity' => 1]);
+        $token = $this->cartToken();
+
+        $apply = $this->withCookie('cart_token', $token)
+            ->post($this->url('/kosik/sleva'), ['code' => 'SLEVA10', 'return_to' => 'checkout']);
+
+        $apply->assertRedirect($this->url('/pokladna/udaje'));
+
+        $remove = $this->withCookie('cart_token', $token)
+            ->post($this->url('/kosik/sleva/zrusit'), ['return_to' => 'checkout']);
+
+        $remove->assertRedirect($this->url('/pokladna/udaje'));
+    }
+}

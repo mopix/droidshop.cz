@@ -51,6 +51,9 @@ class Order extends Model implements OrderView
             'payment_snapshot' => 'array',
             'vat_summary' => 'array',
             'items_total' => MoneyCast::class,
+            // What came off the lines. Never an input to any total —
+            // items_total is already the discounted sum (see OrderPlacer).
+            'discount_total' => MoneyCast::class,
             'shipping_total' => MoneyCast::class,
             'payment_fee' => MoneyCast::class,
             'total' => MoneyCast::class,
@@ -78,6 +81,12 @@ class Order extends Model implements OrderView
     public function events(): HasMany
     {
         return $this->hasMany(OrderEvent::class);
+    }
+
+    /** The discounts that fired on this order, as they were at placement. */
+    public function discounts(): HasMany
+    {
+        return $this->hasMany(OrderDiscount::class);
     }
 
     // --- OrderView ----------------------------------------------------
@@ -184,5 +193,17 @@ class Order extends Model implements OrderView
     public function orderVatSummary(): array
     {
         return $this->vat_summary ?? [];
+    }
+
+    public function orderDiscountTotal(): Money
+    {
+        return $this->discount_total;
+    }
+
+    public function orderDiscounts(): Collection
+    {
+        // A fresh query, not the cached relation — same reasoning as
+        // orderItems() above.
+        return $this->discounts()->get();
     }
 }

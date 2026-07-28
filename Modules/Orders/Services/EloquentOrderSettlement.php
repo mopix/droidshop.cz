@@ -3,6 +3,7 @@
 namespace Modules\Orders\Services;
 
 use App\Core\Catalog\Contracts\ProductCatalog;
+use App\Core\Discounts\Contracts\DiscountRedemption;
 use App\Core\Orders\Contracts\OrderSettlement;
 use Illuminate\Support\Facades\DB;
 use Modules\Orders\Models\Order;
@@ -25,6 +26,7 @@ final class EloquentOrderSettlement implements OrderSettlement
     public function __construct(
         private readonly OrderWorkflow $workflow,
         private readonly ProductCatalog $catalog,
+        private readonly DiscountRedemption $redemptions,
     ) {}
 
     public function attachReference(string $uuid, string $reference): void
@@ -69,6 +71,22 @@ final class EloquentOrderSettlement implements OrderSettlement
                         $this->catalog->incrementStock($item->product_id, (int) $item->quantity);
                     }
                 }
+
+                // Lock ordering (OrderPlacer's docblock): products first,
+                // discount row last. This release runs AFTER the stock
+                // above, in the same transaction — reversing it would take
+                // the discount lock before the product lock and deadlock a
+                // concurrent placement on the same popular coupon.
+                //
+                // Gated on $returnStock, not unconditional (rozhodnutí
+                // 2026-07-28, symmetric with OrderEditor::cancel()): the
+                // allowance comes back exactly when the stock comes back —
+                // one rule to remember, not two behaviours that diverge by
+                // call site. Both real callers pass returnStock: true today,
+                // so this is currently unobservable here, but a future
+                // caller passing false gets the coherent answer without
+                // rediscovering the argument.
+                $this->redemptions->release((int) $order->id);
             }
 
             return $this->workflow->transitionPayment($order, Order::PAYMENT_FAILED, OrderEvent::ACTOR_SYSTEM, null, $note);

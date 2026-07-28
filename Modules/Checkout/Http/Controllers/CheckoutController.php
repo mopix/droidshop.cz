@@ -5,6 +5,7 @@ namespace Modules\Checkout\Http\Controllers;
 use App\Core\Catalog\Exceptions\InsufficientStock;
 use App\Core\Checkout\Contracts\CartRepository;
 use App\Core\Checkout\Contracts\CartShape;
+use App\Core\Discounts\Exceptions\DiscountNoLongerValid;
 use App\Core\Money\Money;
 use App\Core\Orders\Contracts\OrderPlacement;
 use App\Core\Orders\Contracts\OrderSettlement;
@@ -33,7 +34,9 @@ use Modules\Checkout\Http\Requests\PlaceOrderRequest;
 use Modules\Checkout\Services\CartPricer;
 use Modules\Checkout\Support\CartCookie;
 use Modules\Checkout\Support\PricedCart;
+use Modules\Checkout\Support\StaleCoupon;
 use Modules\Storefront\Support\Seo;
+use Modules\Storefront\Support\ShopModules;
 
 /**
  * `/pokladna/doprava` — the shipping + payment step. Same no-JS contract as
@@ -60,6 +63,7 @@ class CheckoutController
         private readonly OrderSettlement $settlement,
         private readonly PickupPointCatalog $points,
         private readonly CarrierRegistry $carriers,
+        private readonly ShopModules $modules,
     ) {}
 
     public function shipping(Request $request): Response|RedirectResponse
@@ -100,12 +104,12 @@ class CheckoutController
         }
 
         $shippingCost = $selectedShipping !== null
-            ? $this->pricer->shippingCost($priced->itemsTotal, $selectedShipping)
+            ? $this->pricer->shippingCost($priced->itemsTotal, $selectedShipping, $priced->freeShipping)
             : null;
 
         $paymentFee = $selectedPayment?->fee();
 
-        $total = $priced->itemsTotal;
+        $total = $priced->payableTotal;
 
         if ($shippingCost !== null) {
             $total = $total->plus($shippingCost);
@@ -187,13 +191,17 @@ class CheckoutController
 
     /**
      * `/pokladna/udaje` — the contact/address form plus a server-rendered
-     * recap (line items, delivery, payment, VAT breakdown, total) and the
-     * "Objednat s povinností platby" button.
+     * recap (line items, discount, delivery, payment, VAT breakdown, total)
+     * and the "Objednat s povinností platby" button.
      *
      * The recap is built entirely from the priced cart and the chosen options,
      * read fresh — never from anything a client posted (AK 5). The hidden
      * checkout_token minted here is the idempotency key the form posts back
-     * (AK 2).
+     * (AK 2). The discount field on this page (partial shared with /kosik,
+     * wave 2.6) reuses $priced straight from the pricer above — the same
+     * PricedCart the recap totals below come from, so a code applied here
+     * cannot show a different figure than the one the recap already used to
+     * compute $total in resolveSelection().
      */
     public function details(Request $request): Response|RedirectResponse
     {
@@ -222,6 +230,24 @@ class CheckoutController
             );
         }
 
+        // A coupon this render finds rejected comes off the cart, exactly as it
+        // does on /kosik — this page carries the payment-obligation button, so
+        // "the code is still on the cart" has to mean "it was valid at the last
+        // render" before place() may lean on that (StaleCoupon). $priced still
+        // carries the rejection, so the partial in the view below prints the
+        // reason on this very render.
+        //
+        // Deliberately AFTER the shipping redirect above, not before it
+        // (re-review finding): /pokladna/doprava does not include the discount
+        // partial, so clearing on a request that redirects there would take the
+        // code away with no page left to say why — and by the next render
+        // discountRejection is null and nothing explains the vanished discount.
+        // StaleCoupon's whole contract is "cleared only where the reason is
+        // shown". The invariant place() leans on is unaffected: place()
+        // requires a checkout_token, and only the full recap render below mints
+        // one.
+        StaleCoupon::clear($this->carts, $cart, $priced);
+
         $view = view('checkout::checkout.details', [
             'cart' => $priced,
             'usingFallback' => $selection['usingFallback'],
@@ -238,6 +264,10 @@ class CheckoutController
                 $selection['paymentFee'],
             ),
             'checkoutToken' => Str::random(40),
+            // Same decision as CartController::show(): resolved once here
+            // from ShopModules, not by the partial reaching into the
+            // container itself.
+            'discountsEnabled' => $this->modules->has('discounts'),
             'seo' => new Seo(title: 'Údaje a rekapitulace', noindex: true),
         ]);
 
@@ -302,6 +332,43 @@ class CheckoutController
                 $cart,
                 $request,
             );
+        } catch (DiscountNoLongerValid $e) {
+            // The discount stopped applying between this shopper's recap and
+            // their submit — the discount's exact counterpart to PriceChanged.
+            // Nothing was written and no allowance was consumed (OrderPlacer
+            // refuses before any stock moves, and redeems under a row lock
+            // inside its transaction).
+            //
+            // A typed code is dropped from the cart here, not merely reported:
+            // leaving it on would re-render "Uplatněn slevový kód …" and the
+            // discounted total directly under a flash saying it is no longer
+            // valid, and every resubmit would hit the same refusal. The message
+            // says so explicitly, because a shopper who sees the price go up is
+            // owed the reason.
+            //
+            // But this exception is also reachable with no code involved at all
+            // — an AUTOMATIC rule losing the redeem() lock race — and then
+            // there is nothing to remove, so promising a removal would be a
+            // lie (final review, wave 2.6). The exception itself does not carry
+            // the distinction (forCode(null) only changes its wording), so it
+            // is taken from the cart, which is the actual authority on whether
+            // a code was there.
+            $storedCode = $cart->cartCouponCode();
+            $hadCode = $storedCode !== null && trim($storedCode) !== '';
+
+            if ($hadCode) {
+                $this->carts->setCouponCode($cart, null);
+            }
+
+            $message = $hadCode
+                ? $e->getMessage().' Odebrali jsme ho z košíku — zkontrolujte prosím cenu a objednávku dokončete znovu.'
+                : $e->getMessage().' Zkontrolujte prosím cenu a objednávku dokončete znovu.';
+
+            return CartCookie::attach(
+                redirect()->route('storefront.checkout.show')->with('status', $message),
+                $cart,
+                $request,
+            );
         } catch (InsufficientStock $e) {
             // The last unit went between adding it and submitting (AK 3).
             return CartCookie::attach(
@@ -345,6 +412,29 @@ class CheckoutController
                     ->route('storefront.checkout.shipping')
                     ->withErrors(['shipping_method_id' => $e->getMessage()]),
                 $cart,
+                $request,
+            );
+        }
+
+        // Nothing to charge: a 100 % discount (or a fixed discount covering
+        // the whole basket on a free shipping method, wave 2.6) leaves an
+        // order worth nothing. Comgate refuses a zero amount, so handing this
+        // to a gateway would strand the shopper on an error page with an
+        // order that can never be paid. It is settled directly instead,
+        // through the same OrderSettlement contract a gateway callback would
+        // use — so the state machine and the order_events trail look
+        // identical to any other paid order. This is checked before the
+        // provider lookup below and applies regardless of which payment
+        // method was chosen (online or offline): an offline method on a
+        // free order has just as little to collect as an online one.
+        if ($placed->total()->isZero()) {
+            $this->settlement->settlePaid(
+                $placed->uuid(),
+                'Objednávka plně pokrytá slevou — bez platby.',
+            );
+
+            return CartCookie::forget(
+                redirect()->route('storefront.checkout.thankYou', ['uuid' => $placed->uuid()]),
                 $request,
             );
         }
@@ -426,12 +516,12 @@ class CheckoutController
         }
 
         $shippingCost = $shipping !== null
-            ? $this->pricer->shippingCost($priced->itemsTotal, $shipping)
+            ? $this->pricer->shippingCost($priced->itemsTotal, $shipping, $priced->freeShipping)
             : new Money(0, $currency);
 
         $paymentFee = $payment?->fee() ?? new Money(0, $currency);
 
-        $total = $priced->itemsTotal->plus($shippingCost)->plus($paymentFee);
+        $total = $priced->payableTotal->plus($shippingCost)->plus($paymentFee);
 
         return [
             'usingFallback' => $usingFallback,

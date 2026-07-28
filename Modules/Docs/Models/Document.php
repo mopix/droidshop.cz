@@ -30,6 +30,9 @@ class Document extends Model implements DocumentView
             'items' => 'array',
             'vat_summary' => 'array',
             'total' => MoneyCast::class,
+            // Informational only (rozhodnutí 2026-07-28) — 0 on every
+            // document type that never sets it (credit note, proforma).
+            'discount_total' => MoneyCast::class,
             'issued_at' => 'datetime',
             'taxable_at' => 'date',
             'due_at' => 'date',

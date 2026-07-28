@@ -9,6 +9,14 @@
         </p>
     @endif
 
+    {{--
+        Shown regardless of whether the basket is empty: a shopper may type a
+        code (and needs to see why one was just rejected) before ever adding
+        anything, and a code already stored from an earlier visit still shows
+        as applied here even against an empty cart (AK 2).
+    --}}
+    @include('checkout::partials.discount-form', ['returnTo' => 'cart', 'discountsEnabled' => $discountsEnabled])
+
     @if ($cart->isEmpty())
         <div class="card mt-6 p-6 text-slate-600">
             <p>Váš košík je prázdný.</p>
@@ -93,9 +101,19 @@
             <p class="mt-6 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-800">Máte dopravu zdarma.</p>
         @endif
 
-        <p class="mt-6 text-right text-xl font-semibold text-slate-900">
-            Celkem: {{ $cart->itemsTotal->format() }}
-        </p>
+        <div class="mt-6 text-right">
+            @if ($cart->discountTotal?->isPositive())
+                <p class="text-sm text-slate-500">Mezisoučet: {{ $cart->itemsTotal->format() }}</p>
+                <p class="text-sm text-emerald-700">Sleva: −{{ $cart->discountTotal->format() }}</p>
+                <p class="text-xl font-semibold text-slate-900">
+                    Celkem: {{ $cart->payableTotal->format() }}
+                </p>
+            @else
+                <p class="text-xl font-semibold text-slate-900">
+                    Celkem: {{ $cart->itemsTotal->format() }}
+                </p>
+            @endif
+        </div>
 
         <p class="mt-4 text-right">
             <a href="{{ route('storefront.checkout.shipping') }}" class="btn btn-primary">

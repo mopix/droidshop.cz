@@ -107,4 +107,9 @@ class Cart extends Model implements CartShape
     {
         return $this->pickup_point_code;
     }
+
+    public function cartCouponCode(): ?string
+    {
+        return $this->coupon_code;
+    }
 }

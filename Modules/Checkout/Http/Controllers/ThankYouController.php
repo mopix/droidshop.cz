@@ -71,6 +71,18 @@ class ThankYouController
      */
     private function bankTransfer(OrderView $order, array $snapshot): array
     {
+        // A zero-total order (fully discounted, wave 2.6 Task 10) is already
+        // settled paid before this page ever renders — nothing is left to
+        // transfer. Checked on the total, not orderPaymentStatus(): the total
+        // is what actually determines whether there is anything to pay, and
+        // the same reasoning has to hold in SendOrderConfirmation's mail
+        // build, where the order is not yet settled when the instruction
+        // text is composed. Keeping both call sites on the same signal avoids
+        // the two ever disagreeing about a single order.
+        if ($order->orderTotal()->isZero()) {
+            return [null, null];
+        }
+
         $paymentId = $snapshot['id'] ?? null;
 
         if ($paymentId === null) {

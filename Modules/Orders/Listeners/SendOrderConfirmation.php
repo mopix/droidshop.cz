@@ -123,6 +123,18 @@ class SendOrderConfirmation
      */
     private function paymentInstruction(Order $order): ?string
     {
+        // A zero-total order (fully discounted, wave 2.6 Task 10) has
+        // nothing to transfer. Gated on the total, not payment_status: this
+        // listener runs inside OrderPlacer::place(), before
+        // CheckoutController ever gets a chance to settle a zero-total order
+        // paid, so payment_status is still 'unpaid' at this point regardless
+        // — the total is the only signal that is already correct here. See
+        // the matching guard in ThankYouController::bankTransfer(), which
+        // must use the same signal for the same reason of not disagreeing.
+        if ($order->total->isZero()) {
+            return null;
+        }
+
         $snapshot = $order->payment_snapshot ?? [];
         $paymentId = $snapshot['id'] ?? null;
 

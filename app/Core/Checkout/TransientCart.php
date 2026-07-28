@@ -63,4 +63,9 @@ final class TransientCart implements CartShape
     {
         return null;
     }
+
+    public function cartCouponCode(): ?string
+    {
+        return null;
+    }
 }

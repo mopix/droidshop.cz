@@ -6,6 +6,12 @@ use App\Core\Checkout\Contracts\CartRepository;
 use App\Core\Checkout\NullCartRepository;
 use App\Core\Customers\Contracts\CustomerIdentity;
 use App\Core\Customers\NullCustomerIdentity;
+use App\Core\Discounts\Contracts\DiscountBook;
+use App\Core\Discounts\Contracts\DiscountEngine;
+use App\Core\Discounts\Contracts\DiscountRedemption;
+use App\Core\Discounts\NullDiscountBook;
+use App\Core\Discounts\NullDiscountEngine;
+use App\Core\Discounts\NullDiscountRedemption;
 use App\Core\Documents\Contracts\DocumentBook;
 use App\Core\Documents\Contracts\DocumentIssuer;
 use App\Core\Documents\Contracts\DocumentLedger;
@@ -108,6 +114,16 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(CarrierRegistry::class, NullCarrierRegistry::class);
         $this->app->bind(PickupPointCatalog::class, NullPickupPointCatalog::class);
         $this->app->bind(ShipmentBook::class, NullShipmentBook::class);
+
+        // Same pattern for discounts (wave 2.6): app(DiscountEngine::class)
+        // resolves on a deploy without the discounts module and answers "no
+        // discount", so CartPricer and OrderPlacer need no module check of
+        // their own. Modules\Discounts\Providers\ModuleProvider overwrites all
+        // three when the module is deployed; per-tenant activation is handled
+        // by the evaluator itself, not by the binding.
+        $this->app->bind(DiscountEngine::class, NullDiscountEngine::class);
+        $this->app->bind(DiscountBook::class, NullDiscountBook::class);
+        $this->app->bind(DiscountRedemption::class, NullDiscountRedemption::class);
 
         // Same pattern for document issuance: app(DocumentIssuer::class)
         // resolves even on a deploy without the docs module. Unlike the

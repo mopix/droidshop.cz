@@ -2,6 +2,8 @@
 
 namespace Modules\Checkout\Support;
 
+use App\Core\Discounts\AppliedDiscountSource;
+use App\Core\Discounts\DiscountRejection;
 use App\Core\Money\Money;
 
 /**
@@ -25,6 +27,16 @@ final readonly class PricedCart
         public ?Money $freeShippingThreshold,
         /** How much more itemsTotal needs to reach the threshold, or null when already free or no threshold exists. */
         public ?Money $freeShippingRemaining,
+        /** The whole basket's discount, 0 when nothing applied. */
+        public ?Money $discountTotal = null,
+        /** itemsTotal minus discountTotal — the amount the shipping/payment totals are added to. */
+        public ?Money $payableTotal = null,
+        /** @var list<AppliedDiscountSource> */
+        public array $discountSources = [],
+        /** True when a discount makes shipping free regardless of the method's own threshold. */
+        public bool $freeShipping = false,
+        /** Set when the shopper typed a code that does not apply — the reason is shown next to the field. */
+        public ?DiscountRejection $discountRejection = null,
     ) {}
 
     public function isEmpty(): bool

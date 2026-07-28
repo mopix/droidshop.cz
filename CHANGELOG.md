@@ -11,6 +11,27 @@ Pravidla: [`.claude/skills/versioning/SKILL.md`](.claude/skills/versioning/SKILL
 
 > CHANGELOG vede milníky (minor/major). Detail patchů je v `git log`.
 
+## [0.24.0] – 2026-07-28
+
+**Fáze 2 / vlna 2.6 — slevový engine (kupóny + automatická pravidla).** Nájemce dává slevy: kódový kupón, který zákazník zadá v košíku nebo v pokladně, a automatické pravidlo, které platí bez kódu. Sleva se rozpustí do řádků košíku i objednávky s haléřovou přesností, takže DPH rekapitulace vždy sedí na skutečně zaplacenou částku. 1461 testů (5110 assertions).
+
+### Jádro a nový modul
+- Kontrakt `DiscountEngine` (`apply(DiscountContext): AppliedDiscount`) + `DiscountBook`/`DiscountRedemption` a guest-safe null bindingy v `app/Core/Discounts/` — vzor `PaymentGatewayRegistry`/`CarrierRegistry`, takže vypnutý modul znamená „žádná sleva", ne chybu.
+- Nový premium modul `Modules/Discounts` (klíč `discounts`, odchylka od spec `coupons` — obsluhuje i pravidla bez kódu): `DiscountEvaluator` vyhodnocuje podmínky (platnost, min. košík, cíl kategorie/produkty, přihlášení, první nákup, limity), `DiscountAllocator` rozpouští částku do řádků přes `Money::allocateByRatios()`, capacity-aware (víc slev na tentýž řádek nikdy nepřekročí jeho vlastní součet).
+
+### Košík, pokladna, objednávka
+- `CartPricer` cení košík přes engine; pole „Slevový kód" na `/kosik` i `/pokladna/udaje` je čistý `<form method="post">`, funguje bez JS, chyba vázaná `aria-describedby` + `role="alert"`.
+- Automatické pravidlo „doprava zdarma nad X" přebije `freeFrom()`; nejvýš jeden kupón na košík + `combinable` automatická pravidla (kupónův vlastní `combinable` se ignoruje).
+- `OrderPlacer` vyhodnocuje slevu znovu při odeslání (poslední vyhodnocení je závazné, politika `PriceChanged`), čerpá limit uvnitř téže transakce jako odpis skladu; storno a expirace vrací čerpání gated na `returnStock`, takže podezřelý storno bez vrácení skladu nevrací ani kupón. E-mailem gatovaný kupón, který selže až při odeslání, objednávku odmítne s vysvětlením místo tiché plné ceny.
+- Objednávka za 0 Kč po slevě se settluje přímo, platební brána se nevolá; QR a platební instrukce se potlačí na děkovné stránce i v e-mailu.
+
+### Doklady a admin
+- Faktura nese zlevněné řádky + informační poznámku o uplatněné slevě; při editaci objednávky se podíl slevy na přeživších řádcích zachová a `orders.discount_total` se přepočítá bez opětovného běhu enginu — poznámka na faktuře degraduje bez jmen slev, když se snímek rozejde se živým součtem. Dobropis zůstává prostou negací.
+- Admin `/admin/m/discounts` (Inertia): výpis, formulář s generátorem kódu a ohraničeným hledáčkem produktů, potvrzovací dialog u mazání, chyby vázané na pole.
+
+### Odloženo
+- Akční ceny produktu (přeškrtnutá cena, evidence nejnižší ceny za 30 dní) = **vlna 2.7** — mění `ProductCatalog::price()`, tedy cenovou autoritu. Dárkové poukazy, dávkové generování kódů, procentní sleva na dopravu, víc kupónů najednou, plný přepočet slevy při editaci objednávky = `docs/future/slevy-dalsi-kroky.md`.
+
 ## [0.23.0] – 2026-07-27
 
 **Fáze 2 / vlna 2.5 — Zásilkovna.** Nájemce prodává s dopravou na výdejní místo a celý životní cyklus zásilky odbaví z adminu: zákazník si místo vybere v pokladně i s vypnutým JavaScriptem, nájemce objednávku podá do Zásilkovny přes API, stáhne štítek a zákazník dostane sledovací odkaz. 1359 testů (4653 assertions).

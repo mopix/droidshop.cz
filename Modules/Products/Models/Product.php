@@ -334,4 +334,28 @@ class Product extends Model implements CatalogProduct
 
         return app(VariantDisplay::class)->forCurrentTenant();
     }
+
+    /**
+     * @return list<int>
+     */
+    public function catalogCategoryIds(): array
+    {
+        // The relation PROPERTY, not the categories() query builder method:
+        // reading $this->categories lazy-loads once and memoises on the
+        // model (and is eager-loadable by a future caller via ->with()),
+        // where categories()->pluck(...) fires a brand new query every
+        // single call (review finding, wave 2.6 — see
+        // EloquentProductCatalog::paginate()'s own docblock for the same
+        // property-vs-method distinction on 'variants').
+        //
+        // map(static fn ...) rather than map(intval(...)): Collection::map
+        // invokes the callback as ($item, $key), so a bare first-class
+        // callable intval(...) receives the collection KEY as intval()'s
+        // $base argument and silently zeroes every id but the first
+        // (verified on PHP 8.3 — collect(["12","34"])->map(intval(...))
+        // yields [12, 0]). Masked today only because PDO_MySQL returns
+        // native ints for integer columns; a connection that stringifies
+        // fetches would break scope=categories discounts silently.
+        return $this->categories->pluck('id')->map(static fn ($id): int => (int) $id)->all();
+    }
 }
