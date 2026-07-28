@@ -1,6 +1,6 @@
 # DroidShop.cz — přehled stavu (co je hotové, co nás čeká)
 
-Stav k 2026-07-24 · verze 0.19.x · 1096 automatických testů zelených · vše v `main`.
+Stav k 2026-07-28 · verze 0.24.x · 1514 automatických testů zelených · vlny 2.2–2.7 na větvi před mergem, zbytek v `main`.
 
 Zdroj pravdy detailů: [`docs/as-is/STATUS.md`](as-is/STATUS.md). Tady je čtivý přehled po rolích + roadmapa.
 
@@ -44,12 +44,19 @@ DroidShop je **multi-tenant SaaS e-shop platforma** (typ Shoptet). To, co je vid
 - **Vlastní doména (vlna 2.1):** přidat doménu, DNS instrukce s tokenem, „Ověřit", stavový badge, smazat. *(Reálné ověření + certifikát funguje jen na veřejné VPS, ne lokálně.)*
 - **Statické stránky** (VOP, kontakt…), **nastavení identity e-mailu**.
 
+### Co přibylo ve vlnách 2.2–2.7
+- **Vzhled e-shopu:** vlastní barvy, logo, favicon (`/admin/nastaveni/vzhled`).
+- **Bloková homepage:** nájemce skládá úvodní stránku z 5 typů bloků.
+- **Varianty produktu** (Velikost × Barva): osy, hodnoty, generování matice, cena a sklad per varianta.
+- **Zásilkovna:** výdejní místa, hromadné podání, štítky, expediční fronta, tracking.
+- **Slevy:** kupóny i automatická pravidla (procento, pevná částka, doprava zdarma, cíl na kategorii/produkty, limity).
+- **Akční ceny** produktu i varianty s obdobím + povinný údaj o nejnižší ceně za 30 dní (Omnibus).
+
 ### Co ještě NEMÁ (čeká)
-- **Varianty produktu** (velikost/barva/…).
 - **CSV import/export** produktů, hromadné operace, automatické řezy obrázků.
 - Filtry v katalogu, štítky, výrobci, blog, recenze.
-- Volba/editor **šablony** storefrontu (dnes jedna napevno).
-- Napojení dopravců (**Zásilkovna**, PPL, DPD) — dnes jen paušál + osobní odběr.
+- Volba mezi **víc šablonami** storefrontu (dnes jedna, ale přebarvitelná).
+- Další dopravci (PPL, DPD) — dnes Zásilkovna + paušál + osobní odběr.
 
 ---
 
@@ -67,9 +74,10 @@ Celý veřejný web je **Blade SSR** (server-rendered) a **funguje bez JavaScrip
 - **Onboarding nájemce:** registrace → průvodce → e-shop na subdoméně **do 10 minut**, auto-login napříč hosty.
 
 ### Co ještě NEMÁ (čeká)
-- Varianty produktu na detailu, galerie/zoom, našeptávač, mini-košík (ostrůvky).
+- Galerie/zoom, našeptávač, mini-košík (ostrůvky) — výběr varianty už ostrůvek má.
 - Page cache (rychlost, spec §15.6) — čeká na stabilní Redis.
 - Vícejazyčnost (fáze 3), Heureka/Zboží/Google feedy.
+- Filtr „ve slevě" a fasety v katalogu.
 
 ---
 
@@ -91,9 +99,8 @@ Celý veřejný web je **Blade SSR** (server-rendered) a **funguje bez JavaScrip
 - Ověřit reálná Stripe + Comgate volání s ostrými klíči (smoke test).
 
 ### B) Storefront hodnota pro nájemce (nejvíc „vidět")
-- **Šablona/vzhled** e-shopu (dnes holá) + volba barev/loga.
-- **Varianty produktu**, filtry katalogu, štítky, výrobci.
-- **Zásilkovna** (výdejní místa) — nejžádanější doprava v ČR.
+- ~~Šablona/vzhled, varianty produktu, Zásilkovna~~ — **hotovo** (vlny 2.2–2.5).
+- Filtry katalogu, štítky, výrobci.
 - Page cache (rychlost, Lighthouse ≥ 90).
 
 ### C) Provozní komfort
@@ -113,6 +120,6 @@ Celý veřejný web je **Blade SSR** (server-rendered) a **funguje bez JavaScrip
 ---
 
 ## 6. Historie vln (co už proběhlo)
-Fáze 0 (tenancy jádro, moduly, superadmin) → 1.1–1.2 (katalog) → 1.3 (košík/pokladna/objednávky) → 1.4 (platby Comgate) → 1.5–1.6 (faktury/dobropis/proforma/VAT export) → 1.7 (onboarding + platformní billing) → 1.8 (Stripe předplatné) → 1.9 (roční interval + změna tarifu) → **2.1 (vlastní domény + auto TLS)**. Každá vlna: spec → plán → TDD implementace → review → merge.
+Fáze 0 (tenancy jádro, moduly, superadmin) → 1.1–1.2 (katalog) → 1.3 (košík/pokladna/objednávky) → 1.4 (platby Comgate) → 1.5–1.6 (faktury/dobropis/proforma/VAT export) → 1.7 (onboarding + platformní billing) → 1.8 (Stripe předplatné) → 1.9 (roční interval + změna tarifu) → 2.1 (vlastní domény + auto TLS) → 2.2 (šablona + branding) → 2.3 (bloková homepage) → 2.4 (varianty produktu) → 2.5 (Zásilkovna) → 2.6 (slevový engine) → **2.7 (akční ceny + Omnibus)**. Každá vlna: spec → plán → TDD implementace → review → merge.
 
-**Závěr:** není to málo. Je hotový celý motor SaaS platformy včetně reálných plateb, fakturace a domén. Zbývá hlavně **viditelná vrstva** (šablona, varianty, dopravci) — což je práce, ale méně riziková než to, co už stojí.
+**Závěr:** motor SaaS platformy stojí celý (platby, fakturace, domény) a viditelná vrstva ho dohnala — šablona, varianty, dopravce, slevy i akční ceny jsou hotové. Zbývá hlavně **nasazení a právní minimum**, plus provozní komfort (feedy, CSV, page cache).

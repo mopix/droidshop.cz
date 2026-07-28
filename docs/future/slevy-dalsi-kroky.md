@@ -2,13 +2,19 @@
 
 Vlna 2.6 dodala kódový kupón a automatické pravidlo nad košíkem (`app/Core/Discounts/`, modul `discounts`). Co zůstává mimo rozsah, viz `docs/superpowers/specs/2026-07-28-vlna-26-slevovy-engine-design.md` sekce „Mimo rozsah" a as-is [`2026-07-28-slevovy-engine.md`](../as-is/2026-07-28-slevovy-engine.md).
 
-## Vlna 2.7 — akční ceny produktu
+## Akční ceny produktu — HOTOVO (vlna 2.7)
 
-Přeškrtnutá cena a `sale_price` na produktu a variantě, plus evidence nejnižší ceny za 30 dní podle novely o ochraně spotřebitele (§579 produktové spec). Samostatná vlna, protože mění `ProductCatalog::price()` — cenovou autoritu, přes kterou dnes jede košík, objednávka i doklady. Slevový engine z 2.6 sedí **nad** touto autoritou (druhá vrstva), takže akční cena a kupón/pravidlo se budou muset umět skládat: sleva na kategorii aplikovaná na už zlevněný produkt musí počítat ze skutečné (akční) ceny, ne z původní.
+Dodáno: `sale_price` + okno kampaně na produktu i variantě, časová řada `product_price_history` s plánovanými intervaly, `LowestPriceCalculator` a povinný řádek o nejnižší ceně za 30 dní. Detail: [`docs/as-is/2026-07-28-akcni-ceny.md`](../as-is/2026-07-28-akcni-ceny.md).
 
-Otevřené otázky pro plán 2.7:
-- Kde se ukládá historie ceny pro dokládání „nejnižší cena za posledních 30 dní" — nová tabulka s časovou řadou, nebo denní snapshot?
-- Zobrazuje se na produktu jak přeškrtnutá původní cena, tak případná slevová cena z kupónu, nebo se sčítají do jednoho čísla?
+Obě otevřené otázky zodpovězeny: historie je **časová řada změn** (ne denní snapshot) a na produktu se zobrazuje akční cena, přeškrtnutá **nominální** cena a zákonná 30denní reference; sleva z kupónu se do tohoto páru nemíchá (kupón se počítá z akční ceny až v košíku).
+
+Co ze slevové oblasti zůstává otevřené:
+
+- **Řádek nejnižší ceny ve výpisu kategorie** — dnes je povinný údaj jen na detailu produktu, ve výpisu je pouze přeškrtnutá cena. Právně nenulové riziko, čeká na právní review.
+- **Omnibus u automatických pravidel z 2.6** — veřejně oznámené pravidlo „−10 % na kategorii" je věcně také oznámení slevy, ale nemá `sale_price` a nesahá na historii ceny. Chce vlastní rozbor.
+- **Hromadné nastavení akcí** (vybrat N produktů, zlevnit o X %) a import cen z CSV.
+- **Filtr „ve slevě" ve storefront katalogu** — otevírá fasety a canonical/`noindex` politiku filtrů, kterou zatím nemáme.
+- **Akční ceny ve feedech** Heureka/Zboží/Google, až feedy vzniknou.
 
 ## Dárkové poukazy
 
@@ -43,6 +49,6 @@ Z `progress.md` ledgeru — menší nálezy z code review, které nebránily uza
 
 - `discounts.currency` je nepoužitý sloupec (MVP je jen CZK) — buď zahodit, nebo časem validovat proti měně košíku, až přibude vícemenová podpora.
 - `checkout/shipping.blade.php` u každé radio volby dopravy/platby tiskne nominální cenu i při běžící slevě na dopravu zdarma — vizuálně rozporuplné vedle přeškrtnuté ceny v rekapitulaci; oprava je menší UI úprava, ne architektonická změna.
-- `CartPricer::vatBreakdown()` tiše zahazuje poplatek za dopravu/platbu bez `tax_rate_id` — existující dluh z dřívějších vln, dotýká se i slev na dopravu.
+- ~~`CartPricer::vatBreakdown()` tiše zahazuje poplatek za dopravu/platbu bez `tax_rate_id`~~ — **uzavřeno vlnou 2.7**: sazba je pro plátce DPH povinná a existující metody ji dostaly backfillem.
 - `EloquentDiscountRedemption::release()` píše `released_at` bezpodmínečným UPDATE (ne compare-and-swap) a `OrderEditor::cancel()` nebere zámek na řádku objednávky — teoretický dvojitý odpočet `used_count` při dvou opravdu souběžných vstupních bodech. Stojí za doplnění testu na souběh, až vznikne příležitost.
 - Chybí objednávkový test, který naskládá `PERCENTAGE` slevu s další slevou a přímo asertuje `sum(order_discounts.amount) === orders.discount_total` — invariant drží strukturálně, ale bez explicitního pojistkového testu.
