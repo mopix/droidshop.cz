@@ -5,6 +5,7 @@ namespace Modules\Checkout\Http\Controllers;
 use App\Core\Catalog\Exceptions\InsufficientStock;
 use App\Core\Checkout\Contracts\CartRepository;
 use App\Core\Checkout\Contracts\CartShape;
+use App\Core\Discounts\Exceptions\DiscountNoLongerValid;
 use App\Core\Money\Money;
 use App\Core\Orders\Contracts\OrderPlacement;
 use App\Core\Orders\Contracts\OrderSettlement;
@@ -309,6 +310,18 @@ class CheckoutController
                     'status',
                     'Cena se u některé položky změnila z '.$e->oldPrice->format().' na '.$e->newPrice->format().'. Zkontrolujte prosím košík a objednávku dokončete znovu.',
                 ),
+                $cart,
+                $request,
+            );
+        } catch (DiscountNoLongerValid $e) {
+            // Someone else took the coupon's last use between this shopper's
+            // recap and their submit — the discount's exact counterpart to
+            // PriceChanged. OrderPlacer redeems under a row lock inside its
+            // transaction, so nothing was written and no allowance was
+            // consumed; the cart still holds the code, and re-pricing it there
+            // now shows the rejection.
+            return CartCookie::attach(
+                redirect()->route('storefront.checkout.show')->with('status', $e->getMessage()),
                 $cart,
                 $request,
             );

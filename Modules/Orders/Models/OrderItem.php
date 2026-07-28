@@ -27,7 +27,11 @@ class OrderItem extends Model
         return [
             'quantity' => 'integer',
             'unit_price' => MoneyCast::class,
+            // line_total is what the line CHARGES — already net of its share
+            // of the discount; discount_total records what came off, for
+            // display only.
             'line_total' => MoneyCast::class,
+            'discount_total' => MoneyCast::class,
             'tax_rate' => 'decimal:2',
         ];
     }

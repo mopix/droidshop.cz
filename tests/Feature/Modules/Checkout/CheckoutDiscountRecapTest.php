@@ -2,6 +2,8 @@
 
 namespace Tests\Feature\Modules\Checkout;
 
+use App\Core\Discounts\Contracts\DiscountRedemption;
+use App\Core\Discounts\Exceptions\DiscountNoLongerValid;
 use App\Core\Money\Money;
 use App\Core\Tax\TaxRates;
 use App\Core\Tenancy\TenantContext;
@@ -9,6 +11,7 @@ use App\Models\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Modules\Checkout\Models\Cart;
 use Modules\Discounts\Models\Discount;
+use Modules\Orders\Models\Order;
 use Modules\Products\Models\Product;
 use Modules\Products\Services\ProductWriter;
 use Modules\Shipping\Models\PaymentMethod;
@@ -178,6 +181,71 @@ class CheckoutDiscountRecapTest extends TestCase
         $page->assertSee($shippingCost->format(), false);
         $page->assertSee($paymentFee->format(), false);
         $page->assertSee($total->format(), false);
+    }
+
+    /**
+     * The coupon's counterpart to PriceChanged: someone else took the last use
+     * between this shopper's recap and their submit. OrderPlacer redeems under
+     * a row lock inside its transaction, so the loser must land back on the
+     * cart with the reason — never on a 500, and never with a half-written
+     * order.
+     */
+    public function test_a_coupon_taken_between_the_recap_and_the_submit_sends_the_shopper_back(): void
+    {
+        $product = $this->context->runAs($this->tenant, function (): Product {
+            $product = $this->makeProduct();
+
+            Discount::factory()->code('JEDEN')->percent(100)->create([
+                'name' => 'Sleva 10 %',
+                'usage_limit' => 1,
+            ]);
+
+            return $product;
+        });
+
+        $this->post($this->url('/kosik'), ['product_id' => $product->id, 'quantity' => 1]);
+        $token = $this->cartToken();
+
+        $this->withCookie('cart_token', $token)
+            ->post($this->url('/kosik/sleva'), ['code' => 'JEDEN', 'return_to' => 'checkout']);
+
+        $page = $this->withCookie('cart_token', $token)->get($this->url('/pokladna/udaje'));
+        $page->assertOk();
+        preg_match('/name="checkout_token"\s+value="([^"]+)"/', $page->getContent(), $m);
+        $this->assertNotEmpty($m[1] ?? null);
+
+        // The race, made deterministic. Exhausting used_count by hand would
+        // not do it: the engine re-evaluates inside the same transaction and
+        // would simply stop applying the coupon (a full-price order, tested in
+        // OrderDiscountTest). Only a genuine race — the other shopper's
+        // transaction committing between this one's evaluation and its locked
+        // redeem() — reaches the refusal, so redeem() is stubbed to refuse.
+        $this->app->instance(DiscountRedemption::class, new class implements DiscountRedemption
+        {
+            public function redeem(int $discountId, int $orderId, string $email, ?int $customerId, Money $amount): void
+            {
+                throw DiscountNoLongerValid::forCode('JEDEN');
+            }
+
+            public function release(int $orderId): void {}
+        });
+
+        $response = $this->withCookie('cart_token', $token)->post($this->url('/pokladna/udaje'), [
+            'checkout_token' => $m[1],
+            'email' => 'jana@example.cz',
+            'phone' => '+420777123456',
+            'name' => 'Jana Nováková',
+            'street' => 'Hlavní 1',
+            'city' => 'Praha',
+            'zip' => '11000',
+            'country' => 'CZ',
+            'terms' => '1',
+        ]);
+
+        $response->assertRedirect($this->url('/kosik'));
+        $response->assertSessionHas('status', 'Slevový kód JEDEN už není platný.');
+
+        $this->assertSame(0, $this->context->runAs($this->tenant, fn (): int => Order::query()->count()));
     }
 
     public function test_the_discount_field_round_trips_back_to_the_checkout_page(): void

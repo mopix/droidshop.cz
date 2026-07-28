@@ -5,6 +5,11 @@ namespace Modules\Orders\Services;
 use App\Core\Catalog\Contracts\CatalogProduct;
 use App\Core\Catalog\Contracts\ProductCatalog;
 use App\Core\Catalog\Exceptions\InsufficientStock;
+use App\Core\Discounts\AppliedDiscount;
+use App\Core\Discounts\Contracts\DiscountEngine;
+use App\Core\Discounts\Contracts\DiscountRedemption;
+use App\Core\Discounts\DiscountContext;
+use App\Core\Discounts\DiscountLine;
 use App\Core\Money\Money;
 use App\Core\Orders\Contracts\OrderPlacement;
 use App\Core\Orders\Contracts\OrderView;
@@ -25,6 +30,7 @@ use App\Core\Tax\TaxRates;
 use App\Models\TaxRate;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
+use LogicException;
 use Modules\Orders\Events\OrderPlaced;
 use Modules\Orders\Models\Order;
 use Modules\Orders\Models\OrderEvent;
@@ -57,6 +63,8 @@ class OrderPlacer implements OrderPlacement
         private readonly TaxRates $taxRates,
         private readonly CarrierRegistry $carriers,
         private readonly PickupPointCatalog $points,
+        private readonly DiscountEngine $discounts,
+        private readonly DiscountRedemption $redemptions,
     ) {}
 
     public function place(PlacementRequest $request): PlacedOrder
@@ -149,6 +157,42 @@ class OrderPlacer implements OrderPlacement
             //     unshippable parcel.
             $pickupPointSnapshot = $this->resolvePickupPoint($request, $shippingOption, $lines);
 
+            // 4b. The discount, recomputed here and binding only here: the cart
+            //     page and the checkout recap both ran the engine too, but
+            //     neither result is trusted — a coupon that expired between
+            //     screens simply stops applying, exactly the way a moved
+            //     catalogue price is refused above. Deliberately before the
+            //     stock decrement, for the reason wave 2.4 established:
+            //     anything that can refuse the order refuses it before any
+            //     stock moves.
+            $applied = $this->discounts->apply(new DiscountContext(
+                lines: $this->discountLines($lines),
+                itemsTotal: $itemsTotal,
+                // The only field on this context that originates with the
+                // shopper, and even it is only a string to look up.
+                couponCode: $request->cart->cartCouponCode(),
+                customerId: $request->customerId,
+                email: $request->email,
+                shippingCost: $shippingTotal,
+            ));
+
+            if ($applied->freeShipping) {
+                // Outranks the method's own free_from threshold: the shop gave
+                // delivery away deliberately, so the threshold no longer
+                // decides (same rule as CartPricer::shippingCost()).
+                $shippingTotal = new Money(0, $currency);
+            }
+
+            // The reduction lands on the LINES, not on a total: order_items
+            // then charges what it charges, and the VAT recapitulation, the
+            // invoice and the credit note all keep reading exactly one number
+            // (rozhodnutí 2026-07-28). items_total and discount_total are both
+            // re-summed from the lines below, so the three figures written to
+            // the order can never disagree with each other.
+            [$lines, $discountTotal] = $this->applyDiscountToLines($lines, $applied, $currency);
+
+            $itemsTotal = $this->sum(array_column($lines, 'line_total'), $currency);
+
             // 5. Take stock inside the transaction, so it rolls back with the
             //    order. decrementStock is a single atomic conditional UPDATE
             //    (see EloquentProductCatalog): the loser of a race on the last
@@ -187,6 +231,7 @@ class OrderPlacer implements OrderPlacement
                 'shipping_snapshot' => $shippingSnapshot,
                 'payment_snapshot' => $this->paymentSnapshot($paymentOption, $paymentFee),
                 'items_total' => $itemsTotal,
+                'discount_total' => $discountTotal,
                 'shipping_total' => $shippingTotal,
                 'payment_fee' => $paymentFee,
                 'total' => $total,
@@ -209,8 +254,37 @@ class OrderPlacer implements OrderPlacement
                     'tax_rate' => $line['tax_rate'],
                     'quantity' => $line['quantity'],
                     'line_total' => $line['line_total'],
+                    'discount_total' => $line['discount_total'],
                     'currency' => $currency,
                 ]);
+            }
+
+            foreach ($applied->sources as $source) {
+                // A snapshot, not a reference: the coupon may be deleted or
+                // the whole module switched off long before anyone reprints
+                // this invoice (see OrderDiscount).
+                $order->discounts()->create([
+                    'discount_id' => $source->discountId,
+                    'code' => $source->code,
+                    'name' => $source->name,
+                    'type' => $source->type,
+                    'amount' => $source->amount->amount,
+                    'free_shipping' => $source->freeShipping,
+                ]);
+
+                // Inside the transaction, alongside the stock decrement and
+                // for the same reason: an order that cannot take the last use
+                // of a coupon must not exist, and an order that fails to write
+                // must give the use back. redeem() locks the discount row, so
+                // two shoppers racing for that last use serialise here and the
+                // loser's whole order rolls back (DiscountNoLongerValid).
+                $this->redemptions->redeem(
+                    $source->discountId,
+                    (int) $order->id,
+                    $request->email,
+                    $request->customerId,
+                    $source->amount,
+                );
             }
 
             $order->events()->create([
@@ -276,7 +350,13 @@ class OrderPlacer implements OrderPlacement
     /**
      * Recomputes each cart line from the catalogue, rejecting a moved price.
      *
-     * @return list<array{product_id:int,variant_id:?int,variant_label:?string,name:string,sku:?string,unit_price:Money,tax_rate:float,quantity:int,line_total:Money,weight_grams:int}>
+     * `cart_item_id` carries the cart line's own id through so the discount
+     * engine's per-line allocation (keyed by exactly that id) can be matched
+     * back onto the right line; `category_ids` is read here, off the product
+     * already loaded, so building the engine's input costs no second
+     * catalogue round trip.
+     *
+     * @return list<array{cart_item_id:int,product_id:int,variant_id:?int,variant_label:?string,name:string,sku:?string,unit_price:Money,tax_rate:float,quantity:int,line_total:Money,discount_total:Money,category_ids:list<int>,weight_grams:int}>
      */
     private function recomputeLines(PlacementRequest $request): array
     {
@@ -356,6 +436,7 @@ class OrderPlacer implements OrderPlacement
             }
 
             $lines[] = [
+                'cart_item_id' => (int) $item->id,
                 'product_id' => $productId,
                 'variant_id' => $variantId,
                 'variant_label' => $variant?->catalogVariantLabel(),
@@ -365,6 +446,10 @@ class OrderPlacer implements OrderPlacement
                 'tax_rate' => $product->catalogTaxRatePercent(),
                 'quantity' => $quantity,
                 'line_total' => $currentPrice->times($quantity),
+                // Overwritten by applyDiscountToLines() before anything is
+                // written; a line no discount touches keeps this zero.
+                'discount_total' => new Money(0, $currentPrice->currency),
+                'category_ids' => $product->catalogCategoryIds(),
                 // Read from the catalogue alongside everything else on this
                 // line (never trusted from the cart or the request), summed
                 // below for a carrier pickup-point snapshot's weight_grams —
@@ -375,6 +460,73 @@ class OrderPlacer implements OrderPlacement
         }
 
         return $lines;
+    }
+
+    /**
+     * The recomputed lines as the discount engine sees them.
+     *
+     * Built from what recomputeLines() already read, never from a second
+     * catalogue query: the engine runs once per placement and a per-line
+     * round trip here would cost one query per basket line for nothing.
+     *
+     * @param  list<array<string, mixed>>  $lines
+     * @return list<DiscountLine>
+     */
+    private function discountLines(array $lines): array
+    {
+        return array_map(static fn (array $line): DiscountLine => new DiscountLine(
+            itemId: $line['cart_item_id'],
+            productId: $line['product_id'],
+            variantId: $line['variant_id'],
+            categoryIds: $line['category_ids'],
+            lineTotal: $line['line_total'],
+            taxRatePercent: $line['tax_rate'],
+        ), $lines);
+    }
+
+    /**
+     * Folds the engine's allocation onto the lines and reports what came off.
+     *
+     * The returned discount total is the sum of the shares actually written,
+     * not AppliedDiscount::$total: orders.discount_total must describe the
+     * lines this order carries, and re-deriving it is what makes
+     * `items_total == Σ line_total` and `discount_total == Σ line
+     * discount_total` true by construction rather than by trust.
+     *
+     * @param  list<array<string, mixed>>  $lines
+     * @return array{0: list<array<string, mixed>>, 1: Money}
+     */
+    private function applyDiscountToLines(array $lines, AppliedDiscount $applied, string $currency): array
+    {
+        $discountTotal = new Money(0, $currency);
+
+        foreach ($lines as $i => $line) {
+            /** @var Money $lineTotal */
+            $lineTotal = $line['line_total'];
+            $share = $applied->forLine($line['cart_item_id'], $currency);
+
+            if ($share->greaterThan($lineTotal)) {
+                // An assertion, not a clamp. The allocator is capacity-aware
+                // (DiscountEvaluator::allocate()), so this cannot happen — and
+                // if it ever does, the honest outcome is that nothing is
+                // written: order_items.line_total is unsigned, so the
+                // alternative is either a write error further down or, worse,
+                // a silently negative charge. The transaction rolls back and
+                // the shopper is told the order did not go through.
+                throw new LogicException(sprintf(
+                    'Discount allocation of %d exceeds line total %d on cart item %d.',
+                    $share->amount,
+                    $lineTotal->amount,
+                    $line['cart_item_id'],
+                ));
+            }
+
+            $lines[$i]['discount_total'] = $share;
+            $lines[$i]['line_total'] = $lineTotal->minus($share);
+            $discountTotal = $discountTotal->plus($share);
+        }
+
+        return [$lines, $discountTotal];
     }
 
     /**
