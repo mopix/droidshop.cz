@@ -48,5 +48,11 @@ class PlanSeeder extends Seeder
         if ($premium !== null && Module::where('key', 'discounts')->exists()) {
             $premium->modules()->syncWithoutDetaching(['discounts']);
         }
+
+        // Feeds are base: a Heureka feed is a condition of selling in the Czech
+        // market, not an upsell, so every plan gets it.
+        if (Module::where('key', 'feeds')->exists()) {
+            Plan::all()->each(fn (Plan $plan) => $plan->modules()->syncWithoutDetaching(['feeds']));
+        }
     }
 }

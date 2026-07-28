@@ -11,6 +11,30 @@ Pravidla: [`.claude/skills/versioning/SKILL.md`](.claude/skills/versioning/SKILL
 
 > CHANGELOG vede milníky (minor/major). Detail patchů je v `git log`.
 
+## [0.27.0] – 2026-07-28
+
+**Fáze 2 / vlna 2.9 — XML feedy pro Heureku a Zboží.cz.** Nájemce zapne feed v adminu a porovnávač si z jeho domény stáhne katalog: `/feed/heureka.xml` a `/feed/zbozi.xml`. Bez feedu český e-shop prakticky neprodává. 1600 testů (5603 assertions).
+
+### Nový modul `feeds`
+- `level: base`, bez `requires`, runtime gate přes `ShopModules`. Base vědomě: feed do Heureky je v Česku podmínka prodeje, ne nadstandard — schovat ho za vyšší tarif by srazilo hodnotu základního tarifu pod běžný standard.
+- Migrace přiřazuje modul **všem tarifům** plus řádek v `PlanSeeder`. Modul, který není v žádném tarifu, si nájemce nemůže zapnout (`PlanDoesNotIncludeModule`) — chování hlídá test.
+- Dvě tabulky: `product_feeds` (stav a nastavení feedu) a `feed_category_mappings` (kategorie v číselníku porovnávače). Mapování je vlastní tabulka, ne sloupce na `categories`: modul jde vypnout a nesmí po sobě nechat sloupce v cizím modulu.
+
+### Feed
+- XML se staví na request a cachuje hodinu (vzor `SitemapController`). **Vypnutý feed i vypnutý modul vracejí 404**, ne prázdné XML — prázdný feed čte porovnávač jako „e-shop nemá zboží" a odstraní z výpisu celý katalog.
+- Varianta je samostatný `SHOPITEM` se sdíleným `ITEMGROUP_ID` a osami v `PARAM`; `ITEM_ID` je `{produkt}-{varianta}`, protože holé id varianty by mohlo kolidovat s id produktu.
+- Cena vždy z `catalogPrice()`, tedy včetně akční ceny z vlny 2.7 — feed nesmí inzerovat jinou částku, než jakou zákazník zaplatí v košíku. Do feedu jdou jen `published()` produkty, takže koncept se ven nedostane.
+- Vyprodané zboží zůstává ve feedu s `DELIVERY_DATE` místo aby zmizelo a ztratilo historii. `CATEGORYTEXT` z mapování, prázdné degraduje na vlastní strom nájemce. Blok `DELIVERY` z `ShippingOptions`; bez modulu `shipping` chybí celý místo nulové ceny.
+
+### Admin
+- `/admin/m/feeds` (permission `feeds.manage`): přepínač per feed s adresou ke zkopírování, výchozí dodací lhůta a tabulka kategorií se dvěma textovými poli. Uložení invaliduje cache, aby nájemce nečekal hodinu na vlastní opravu.
+
+### Odloženo
+- Google Merchant, Glami/Favi, import číselníků s našeptávačem, per-product opt-out, invalidace cache při editaci katalogu, hmotnostní pásma dopravy ve feedu = `docs/future/feedy-dalsi-kroky.md`.
+
+### Deploy
+- **`php artisan modules:sync` musí běžet před `php artisan migrate`** — migrace přiřazující modul tarifům jinak neudělá nic (stejné pořadí jako u vlny 2.6). Pak `migrate` (dvě tabulky + přiřazení k tarifům) a `npm run build`.
+
 ## [0.26.0] – 2026-07-28
 
 **Fáze 2 / vlna 2.8 — CSV import a export produktů.** Nájemce naplní a udržuje katalog hromadně: stáhne si ho jako CSV, upraví v Excelu a nahraje zpět. Import zakládá i aktualizuje produkty a varianty podle SKU, chybné řádky přeskočí do protokolu ke stažení. 1565 testů (5475 assertions).
