@@ -1632,7 +1632,22 @@ class RunProductImportTest extends TestCase
         $this->tenant = Tenant::factory()->create();
     }
 
-    private function run(string $csv, bool $dryRun = false): ProductImport
+    private function runJob(ProductImport $import): void
+    {
+        // new, not app(): the job takes a promoted int, and the container
+        // would try to resolve it as a dependency.
+        (new RunProductImport($import->id))->handle(
+            app(ProductCsvParser::class),
+            app(ProductImporter::class),
+            app(FileStorage::class),
+        );
+    }
+
+    /**
+     * runImport, never run(): PHPUnit\Framework\TestCase::run() is final, and
+     * a helper named run() is a fatal error before a single test executes.
+     */
+    private function runImport(string $csv, bool $dryRun = false): ProductImport
     {
         return $this->context->runAs($this->tenant, function () use ($csv, $dryRun) {
             $path = app(FileStorage::class)->putPrivate('imports/test.csv', $csv);
@@ -1644,11 +1659,7 @@ class RunProductImportTest extends TestCase
                 'dry_run' => $dryRun,
             ]);
 
-            app(RunProductImport::class, ['importId' => $import->id])->handle(
-                app(\Modules\Products\Support\ProductCsvParser::class),
-                app(\Modules\Products\Services\ProductImporter::class),
-                app(FileStorage::class),
-            );
+            $this->runJob($import);
 
             return $import->fresh();
         });
@@ -1656,7 +1667,7 @@ class RunProductImportTest extends TestCase
 
     public function test_a_clean_file_imports_every_row(): void
     {
-        $import = $this->run(
+        $import = $this->runImport(
             "typ;sku;nazev;cena;dph;stav\n".
             "produkt;A-1;První;100,00;21;aktivni\n".
             "produkt;A-2;Druhý;200,00;21;aktivni\n"
@@ -1672,7 +1683,7 @@ class RunProductImportTest extends TestCase
 
     public function test_a_bad_row_is_skipped_and_reported(): void
     {
-        $import = $this->run(
+        $import = $this->runImport(
             "typ;sku;nazev;cena;dph;stav\n".
             "produkt;A-1;První;100,00;21;aktivni\n".
             "produkt;A-2;Druhý;200,00;17;aktivni\n"
@@ -1695,7 +1706,7 @@ class RunProductImportTest extends TestCase
 
     public function test_a_dry_run_reports_without_writing(): void
     {
-        $import = $this->run("typ;sku;nazev;cena;dph;stav\nprodukt;A-1;První;100,00;21;aktivni\n", dryRun: true);
+        $import = $this->runImport("typ;sku;nazev;cena;dph;stav\nprodukt;A-1;První;100,00;21;aktivni\n", dryRun: true);
 
         $this->assertSame(1, $import->rows_ok);
         $this->assertSame(0, $this->context->runAs($this->tenant, fn () => Product::query()->count()));
@@ -1711,11 +1722,7 @@ class RunProductImportTest extends TestCase
                 'dry_run' => false,
             ]);
 
-            app(RunProductImport::class, ['importId' => $import->id])->handle(
-                app(\Modules\Products\Support\ProductCsvParser::class),
-                app(\Modules\Products\Services\ProductImporter::class),
-                app(FileStorage::class),
-            );
+            $this->runJob($import);
 
             return $import->fresh();
         });
