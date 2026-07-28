@@ -378,13 +378,13 @@ class Product extends Model implements CatalogProduct
         $variants = $this->variants;
 
         if ($variants->isEmpty()) {
-            return $this->price;
+            return $this->effectivePrice();
         }
 
         $active = $variants->filter(fn (ProductVariant $variant) => $variant->active);
 
         if ($active->isEmpty()) {
-            return $this->price;
+            return $this->effectivePrice();
         }
 
         $available = $active->filter(fn (ProductVariant $variant) => $variant->isAvailable());
