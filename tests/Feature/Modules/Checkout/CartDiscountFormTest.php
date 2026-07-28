@@ -211,4 +211,44 @@ class CartDiscountFormTest extends TestCase
 
         $this->assertDatabaseMissing('carts', ['coupon_code' => 'ANYTHING']);
     }
+
+    /**
+     * Final review (wave 2.6): the endpoint answered an unlimited number of
+     * guesses, and its rejection reasons distinguish "takový kód neexistuje"
+     * from "kód je vyčerpaný" / "platnost kódu skončila" — a dictionary oracle
+     * for a tenant's whole coupon list. ApplyDiscountRequest now throttles ten
+     * attempts a minute per cart+IP, the same RateLimiter pattern
+     * Modules\Customers\Http\Requests\LoginRequest uses.
+     *
+     * The eleventh attempt deliberately carries a code that DOES exist: if the
+     * request had reached the lookup at all, the cart would be carrying it
+     * afterwards.
+     */
+    public function test_the_eleventh_code_attempt_in_a_minute_is_refused_without_a_lookup(): void
+    {
+        $product = $this->seedProductAndCode();
+
+        $this->post($this->url('/kosik'), ['product_id' => $product->id, 'quantity' => 1]);
+        $token = $this->cartTokenInDb();
+
+        for ($i = 0; $i < 10; $i++) {
+            $this->withCookie('cart_token', $token)
+                ->post($this->url('/kosik/sleva'), ['code' => 'HADANKA'.$i])
+                ->assertRedirect();
+        }
+
+        $throttled = $this->withCookie('cart_token', $token)
+            ->post($this->url('/kosik/sleva'), ['code' => 'SLEVA10']);
+
+        $throttled->assertRedirect();
+        $throttled->assertSessionHasErrors('code');
+
+        $this->assertStringContainsString(
+            'Příliš mnoho pokusů',
+            (string) session('errors')->first('code'),
+        );
+
+        // Never looked up, so never stored — the valid code did not get in.
+        $this->assertDatabaseMissing('carts', ['coupon_code' => 'SLEVA10']);
+    }
 }
