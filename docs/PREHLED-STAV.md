@@ -51,9 +51,10 @@ DroidShop je **multi-tenant SaaS e-shop platforma** (typ Shoptet). To, co je vid
 - **Zásilkovna:** výdejní místa, hromadné podání, štítky, expediční fronta, tracking.
 - **Slevy:** kupóny i automatická pravidla (procento, pevná částka, doprava zdarma, cíl na kategorii/produkty, limity).
 - **Akční ceny** produktu i varianty s obdobím + povinný údaj o nejnižší ceně za 30 dní (Omnibus).
+- **CSV import a export** katalogu včetně variant: stáhnout, upravit v Excelu, nahrát zpět; chybné řádky v protokolu, režim „jen zkontrolovat".
 
 ### Co ještě NEMÁ (čeká)
-- **CSV import/export** produktů, hromadné operace, automatické řezy obrázků.
+- Hromadné operace nad výběrem, automatické řezy obrázků, obrázky z URL v importu.
 - Filtry v katalogu, štítky, výrobci, blog, recenze.
 - Volba mezi **víc šablonami** storefrontu (dnes jedna, ale přebarvitelná).
 - Další dopravci (PPL, DPD) — dnes Zásilkovna + paušál + osobní odběr.
@@ -104,7 +105,7 @@ Celý veřejný web je **Blade SSR** (server-rendered) a **funguje bez JavaScrip
 - Page cache (rychlost, Lighthouse ≥ 90).
 
 ### C) Provozní komfort
-- CSV import/export produktů, hromadné operace, řezy obrázků.
+- ~~CSV import/export produktů~~ — **hotovo** (vlna 2.8). Zbývá hromadné operace, řezy obrázků.
 - **Heureka/Zboží/Google** feedy.
 - Superadmin metriky (MRR, churn, tržby).
 
@@ -120,6 +121,6 @@ Celý veřejný web je **Blade SSR** (server-rendered) a **funguje bez JavaScrip
 ---
 
 ## 6. Historie vln (co už proběhlo)
-Fáze 0 (tenancy jádro, moduly, superadmin) → 1.1–1.2 (katalog) → 1.3 (košík/pokladna/objednávky) → 1.4 (platby Comgate) → 1.5–1.6 (faktury/dobropis/proforma/VAT export) → 1.7 (onboarding + platformní billing) → 1.8 (Stripe předplatné) → 1.9 (roční interval + změna tarifu) → 2.1 (vlastní domény + auto TLS) → 2.2 (šablona + branding) → 2.3 (bloková homepage) → 2.4 (varianty produktu) → 2.5 (Zásilkovna) → 2.6 (slevový engine) → **2.7 (akční ceny + Omnibus)**. Každá vlna: spec → plán → TDD implementace → review → merge.
+Fáze 0 (tenancy jádro, moduly, superadmin) → 1.1–1.2 (katalog) → 1.3 (košík/pokladna/objednávky) → 1.4 (platby Comgate) → 1.5–1.6 (faktury/dobropis/proforma/VAT export) → 1.7 (onboarding + platformní billing) → 1.8 (Stripe předplatné) → 1.9 (roční interval + změna tarifu) → 2.1 (vlastní domény + auto TLS) → 2.2 (šablona + branding) → 2.3 (bloková homepage) → 2.4 (varianty produktu) → 2.5 (Zásilkovna) → 2.6 (slevový engine) → 2.7 (akční ceny + Omnibus) → **2.8 (CSV import/export)**. Každá vlna: spec → plán → TDD implementace → review → merge.
 
 **Závěr:** motor SaaS platformy stojí celý (platby, fakturace, domény) a viditelná vrstva ho dohnala — šablona, varianty, dopravce, slevy i akční ceny jsou hotové. Zbývá hlavně **nasazení a právní minimum**, plus provozní komfort (feedy, CSV, page cache).

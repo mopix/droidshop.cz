@@ -4,6 +4,7 @@ namespace Tests\Feature\Modules\Products;
 
 use App\Core\Tax\TaxRates;
 use App\Core\Tenancy\TenantContext;
+use App\Models\Plan;
 use App\Models\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Modules\Categories\Models\Category;
@@ -172,6 +173,44 @@ class ProductImporterTest extends TestCase
         ]);
 
         $this->assertStringContainsString('Rodičovský produkt', implode(' ', $errors));
+    }
+
+    /**
+     * The plan cap has to survive a bulk upload, or a merchant could bypass
+     * it with one file. It fails its own row and leaves the rest of the run
+     * alone — an import of 3 000 rows must not die on row 501.
+     */
+    public function test_a_full_plan_fails_only_the_row_that_exceeds_it(): void
+    {
+        $plan = Plan::factory()->create(['limits' => ['products' => 1]]);
+        $this->tenant->forceFill(['plan_id' => $plan->id])->save();
+
+        $this->assertSame([], $this->import($this->row(['sku' => 'FIRST'])));
+
+        $errors = $this->import($this->row(['sku' => 'SECOND', 'nazev' => 'Druhý']));
+
+        $this->assertNotEmpty($errors);
+        $this->assertStringContainsString('limit', mb_strtolower(implode(' ', $errors)));
+
+        // The first row still stands: the refusal is per row, not per run.
+        $this->assertSame(1, $this->context->runAs($this->tenant, fn () => Product::query()->count()));
+    }
+
+    public function test_an_update_is_allowed_even_when_the_plan_is_full(): void
+    {
+        $plan = Plan::factory()->create(['limits' => ['products' => 1]]);
+        $this->tenant->forceFill(['plan_id' => $plan->id])->save();
+
+        $this->import($this->row());
+
+        // Updating an existing product adds nothing, so the cap must not lock
+        // a merchant out of fixing prices in a catalogue they already have.
+        $this->assertSame([], $this->import($this->row(['cena' => '888,00'])));
+
+        $this->assertSame(
+            88800,
+            $this->context->runAs($this->tenant, fn () => Product::query()->firstOrFail()->price->amount),
+        );
     }
 
     public function test_a_duplicate_sku_in_the_catalogue_fails_the_row(): void

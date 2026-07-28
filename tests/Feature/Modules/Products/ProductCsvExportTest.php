@@ -85,6 +85,32 @@ class ProductCsvExportTest extends TestCase
         $this->assertStringContainsString('900,00', $csv);
     }
 
+    /**
+     * The purchase price is the shop's margin. Someone allowed to edit the
+     * catalogue but not to see costs must not get them via the export — the
+     * same rule the product detail screen enforces.
+     */
+    public function test_a_user_without_the_costs_permission_gets_no_purchase_price(): void
+    {
+        $this->seedProduct();
+
+        $staff = User::factory()->create();
+        $this->tenant->users()->attach($staff, [
+            'role' => 'staff',
+            'permissions' => ['products.view', 'products.edit'],
+            'joined_at' => now(),
+        ]);
+
+        $response = $this->actingAs($staff)->get('http://shop1.droidshop/admin/m/products/export');
+        $response->assertOk();
+        $csv = $response->streamedContent();
+
+        $this->assertStringNotContainsString('nakupni_cena', $csv);
+        $this->assertStringNotContainsString('900,00', $csv);
+        // Still a usable export, just without the margin column.
+        $this->assertStringContainsString('ACME-1', $csv);
+    }
+
     public function test_a_formula_in_a_name_is_neutralised(): void
     {
         $this->context->runAs($this->tenant, fn () => app(ProductWriter::class)->create([
