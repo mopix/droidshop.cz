@@ -11,6 +11,30 @@ Pravidla: [`.claude/skills/versioning/SKILL.md`](.claude/skills/versioning/SKILL
 
 > CHANGELOG vede milníky (minor/major). Detail patchů je v `git log`.
 
+## [0.25.0] – 2026-07-28
+
+**Fáze 2 / vlna 2.7 — akční ceny produktu + evidence nejnižší ceny za 30 dní.** Nájemce zlevní produkt i variantu na určené období; storefront ukáže akční cenu, přeškrtnutou nominální a povinný údaj o nejnižší ceně za posledních 30 dní podle § 12a zákona č. 634/1992 Sb. (směrnice Omnibus). Zároveň se zavírá dluh nesený z vlny 2.6: poplatek za dopravu a platbu bez sazby DPH se účtoval, ale vypadával z rekapitulace. 1514 testů (5326 assertions).
+
+### Cenová autorita
+- `products.sale_price` + okno kampaně (`sale_starts_at`/`sale_ends_at`) a `product_variants.sale_price`; okno sedí **jen na produktu** (jedna kampaň, částky per varianta). Varianta bez vlastní ceny dědí i akční částku produktu; varianta s vlastní cenou musí mít vlastní, jinak jede na nominální — absolutní částka na jiném cenovém základu by tiše prodávala pod nákladem.
+- `ProductCatalog::price()` a `CatalogProduct::catalogPrice()` vracejí **efektivní** cenu, takže košík, `OrderPlacer`, doklady i slevový engine z 2.6 účtují akční cenu bez jediné změny volajícího kódu; kupón se tím počítá z akční ceny, ne z nominální. Kontrakty rozšířeny o `catalogRegularPrice()`, `catalogIsOnSale()`, `catalogLowestPriceIn30Days()` a variantní protějšky.
+- Řazení katalogu podle ceny jede přes `CASE WHEN` nad efektivní cenou (MySQL i SQLite), takže zlevněný produkt sedí ve výpisu tam, kam podle skutečně placené ceny patří. Mrtvý sloupec `compare_at_price` zahozen.
+
+### Evidence ceny (Omnibus)
+- Nová tabulka `product_price_history` — časová řada efektivních cen. `PriceHistoryRecorder` zapisuje i **plánované budoucí** intervaly, takže konec akce nepotřebuje cron ani job. Uzavřený řádek se nikdy nemění; běžícímu se smí posunout jen konec, který ještě nenastal (jinak by přeplánování kampaně vyrobilo dva překrývající se intervaly).
+- `LowestPriceCalculator` (okno 30 dní jako konstanta, ne nastavení) počítá referenci **ke startu běžící kampaně** — akce není součástí své vlastní reference, jinak by se reference vždy rovnala akční ceně a každá oznámená sleva vyšla 0 %. Badge `−N %` se počítá z této reference. Produkt nasazený rovnou do akce nemá starší historii: řádek se zobrazí, badge ne.
+- Storefront (Blade SSR, bez JS): akční a přeškrtnutá cena na detailu i ve výpisu, povinný řádek na detailu; JSON-LD `Offer` kvotuje efektivní cenu. Vanilla JS ostrůvek variant přepíná i přeškrtnutou cenu — jen server-formátované řetězce, žádná aritmetika v JS.
+- Admin: pole akční ceny a okna na detailu produktu (`sale_price` musí být nižší než běžná cena, konec po začátku), sloupec akční ceny v mřížce variant.
+
+### DPH poplatků (uzavření dluhu 2.6)
+- `tax_rate_id` u dopravy i platby je povinné, když je nájemce plátce DPH; neplátce ho dál nemusí vyplňovat. Existující metody plátců dostaly výchozí sazbu backfill migrací (nevratnou). Tichý fallback zamítnut — účetní číslo nemá vznikat z domněnky, kterou nájemce nepotvrdil.
+
+### Odloženo
+- Řádek nejnižší ceny ve **výpisu kategorie** (dnes jen na detailu) čeká na právní review; Omnibus u automatických pravidel z 2.6, hromadné nastavení akcí, filtr „ve slevě" a akční ceny ve feedech = `docs/future/slevy-dalsi-kroky.md`.
+
+### Deploy
+- Čtyři nové migrace (dvě strukturální, dvě backfill). Plátci DPH musí mít výchozí sazbu v `tax_rates` **před** migrací, jinak se backfill poplatků pro daného nájemce přeskočí. Reference „nejnižší cena za 30 dní" začíná běžet od nasazení — starší historii nikdo nezaznamenal a migrace ji nevymýšlí.
+
 ## [0.24.0] – 2026-07-28
 
 **Fáze 2 / vlna 2.6 — slevový engine (kupóny + automatická pravidla).** Nájemce dává slevy: kódový kupón, který zákazník zadá v košíku nebo v pokladně, a automatické pravidlo, které platí bez kódu. Sleva se rozpustí do řádků košíku i objednávky s haléřovou přesností, takže DPH rekapitulace vždy sedí na skutečně zaplacenou částku. 1461 testů (5110 assertions).
