@@ -2,6 +2,7 @@
 
 use Illuminate\Support\Facades\Route;
 use Modules\Checkout\Http\Controllers\CartController;
+use Modules\Checkout\Http\Controllers\CartDiscountController;
 use Modules\Checkout\Http\Controllers\CartSummaryController;
 use Modules\Checkout\Http\Controllers\CheckoutController;
 use Modules\Checkout\Http\Controllers\PickupPointController;
@@ -11,6 +12,9 @@ Route::get('/kosik', [CartController::class, 'show'])->name('show');
 Route::post('/kosik', [CartController::class, 'add'])->name('add');
 Route::patch('/kosik/{item}', [CartController::class, 'update'])->whereNumber('item')->name('update');
 Route::delete('/kosik/{item}', [CartController::class, 'remove'])->whereNumber('item')->name('remove');
+
+Route::post('/kosik/sleva', [CartDiscountController::class, 'apply'])->name('discount.apply');
+Route::post('/kosik/sleva/zrusit', [CartDiscountController::class, 'remove'])->name('discount.remove');
 
 Route::get('/pokladna/doprava', [CheckoutController::class, 'shipping'])->name('shipping');
 Route::post('/pokladna/doprava', [CheckoutController::class, 'chooseShipping'])->name('chooseShipping');

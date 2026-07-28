@@ -13,6 +13,7 @@ use Modules\Checkout\Http\Requests\UpdateCartItemRequest;
 use Modules\Checkout\Services\CartPricer;
 use Modules\Checkout\Support\CartCookie;
 use Modules\Storefront\Support\Seo;
+use Modules\Storefront\Support\ShopModules;
 
 /**
  * `/kosik` — the whole flow works with JavaScript switched off (spec §16.3,
@@ -27,6 +28,7 @@ class CartController
         private readonly CartRepository $carts,
         private readonly CartPricer $pricer,
         private readonly ProductCatalog $catalog,
+        private readonly ShopModules $modules,
     ) {}
 
     public function show(Request $request): Response
@@ -36,6 +38,10 @@ class CartController
         $view = view('checkout::cart', [
             'cart' => $this->pricer->price($cart),
             'seo' => new Seo(title: 'Košík', noindex: true),
+            // The discount field renders only for a shop that actually runs
+            // the module — decided here, once, rather than the partial
+            // resolving ShopModules itself out of the container.
+            'discountsEnabled' => $this->modules->has('discounts'),
         ]);
 
         return CartCookie::attach($this->uncached($view), $cart, $request);

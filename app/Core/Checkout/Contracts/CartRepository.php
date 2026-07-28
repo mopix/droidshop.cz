@@ -95,4 +95,15 @@ interface CartRepository
      * ShippingOptions), not to this repository.
      */
     public function choosePickupPoint(CartShape $cart, ?string $code): void;
+
+    /**
+     * Remembers (or clears) the discount code typed by the shopper.
+     *
+     * Storing the code and not its value is the whole contract: what it is
+     * worth is recomputed by DiscountEngine on every render, so a stale cart
+     * can never charge a stale discount. The caller (CartDiscountController)
+     * is responsible for never leaving a code stored here that the engine
+     * just rejected — this method itself does not validate anything.
+     */
+    public function setCouponCode(CartShape $cart, ?string $code): void;
 }
