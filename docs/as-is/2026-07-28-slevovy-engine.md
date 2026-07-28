@@ -1,6 +1,6 @@
 # As-is: Slevový engine (vlna 2.6)
 
-Datum: 2026-07-28 · Verze: **0.24.0** · Větev: `feature/vlna-26-slevovy-engine` · 1461 testů (5110 assertions)
+Datum: 2026-07-28 · Verze: **0.24.3** (0.24.0 = uzavření vlny, 0.24.1–0.24.3 = opravy z final review) · Větev: `feature/vlna-26-slevovy-engine` · 1461 testů (5110 assertions) + 6 z final review
 
 Spec: [`docs/superpowers/specs/2026-07-28-vlna-26-slevovy-engine-design.md`](../superpowers/specs/2026-07-28-vlna-26-slevovy-engine-design.md)
 Plán: [`docs/superpowers/plans/2026-07-28-vlna-26-slevovy-engine.md`](../superpowers/plans/2026-07-28-vlna-26-slevovy-engine.md)
@@ -67,8 +67,8 @@ Nájemce dává slevy: kódový kupón, který zákazník zadá v košíku nebo 
 |---|---|
 | Zákazník bez JS zadá platný kód, dokončí objednávku, sleva sedí na `orders.total` | **splněno** |
 | Neplatný/expirovaný/vyčerpaný kód se neuloží, vrátí konkrétní důvod | **splněno** |
-| Kód zneplatnělý mezi pokladnou a odesláním objednávku nevytvoří | **splněno** — refuse s českým vysvětlením, kód se zároveň smaže z košíku |
-| Alokace do řádků se sečte přesně; DPH rekapitulace sedí i u dvou sazeb | **splněno** |
+| Kód zneplatnělý mezi pokladnou a odesláním objednávku nevytvoří | **splněno** — a to pro **libovolný** důvod zneplatnění, ne jen pro dva e-mailem gatované. Mechanismus je dvoudílný: (1) každý render košíku i rekapitulace pokladny odmítnutý kód **smaže z košíku** a zároveň na téže stránce vypíše důvod (`Modules\Checkout\Support\StaleCoupon`), takže „kód je na košíku" znamená „při posledním renderu platil"; (2) `OrderPlacer::refuseIfTheCouponStoppedApplying()` na jakémkoli odmítnutí zadaného kódu objednávku odmítne s českým vysvětlením a nic nezapíše. Zpřísněno final review (dřív se tiše zapsala plná cena) |
+| Alokace do řádků se sečte přesně; DPH rekapitulace sedí i u dvou sazeb | **splněno částečně** — alokace do řádků a rekapitulace přes víc sazeb sedí, ale poplatek za dopravu nebo platbu, jehož metoda **nemá `tax_rate_id`** (sloupec je nullable ve schématu i v `StoreShippingMethodRequest`/`StorePaymentMethodRequest`), z rekapitulace vypadne, přestože do `orders.total` dál počítá. Plátce DPH tak umí vystavit fakturu, jejíž rekapitulace nesedí s vlastním součtem. Pre-existující cesta (`CartPricer::vatBreakdown()`, `OrderPlacer::vatSummary()`, `OrderEditor::vatSummary()`), vlnou nezhoršená; oprava potřebuje rozhodnutí na úrovni tenant configu — viz technický dluh |
 | Automatické „doprava zdarma nad X" přebije `freeFrom()` | **splněno** |
 | `combinable = false` se s kupónem nesčítá | **splněno** |
 | `usage_limit` se při souběhu nepřečerpá | **splněno** — `lockForUpdate` uvnitř objednávkové transakce |
@@ -84,7 +84,18 @@ Nájemce dává slevy: kódový kupón, který zákazník zadá v košíku nebo 
 
 1461 testů zelených (5110 assertions; vlna začala na 1359), plná sada spuštěna ve foregroundu na commitu `e9b2142`. Každý ze 12 implementačních tasků prošel task review, několik po fix roundu.
 
+Final review celé větve přidal dalších **6 testů** (CAS ve `release()`, dvojí storno, throttle kupónového endpointu, mazání zastaralého kódu na renderu košíku i rekapitulace, chybová zpráva u automatického pravidla bez kódu) a **2 existující testy přepsal**: `test_an_exhausted_coupon_stops_applying_and_leaves_no_row` → `test_an_exhausted_coupon_refuses_the_order_rather_than_charging_full_price` a `test_a_coupon_rejected_for_a_non_email_reason_still_places_at_full_price` → `..._also_refuses_the_order`. Oba pinovaly staré tiché chování za plnou cenu, takže musely změnit tvrzení, ne zmizet. Cílený běh `--filter="Discount|Order|Checkout|Payment|Docs"` po opravách: 440 testů, 2009 assertions, zeleně.
+
 Nové testovací třídy: `DiscountNullBindingTest`, `DiscountModuleTest`, `DiscountAllocatorTest`, `DiscountEvaluatorTest`, `DiscountRedemptionTest`, `DiscountAdminTest`, `CartDiscountTest`, `CartDiscountFormTest`, `CheckoutDiscountRecapTest`, `OrderDiscountTest`, `OrderDiscountReleaseTest`, `InvoiceDiscountTest`.
+
+## Opravy z final review celé větve
+
+Čtyři must-fix nálezy, každý ve vlastním commitu:
+
+1. **Dvojí vrácení čerpání (souběh).** `EloquentDiscountRedemption::release()` stampovalo `released_at` bezpodmínečným UPDATE po SELECTu, takže dva souběžné releasy téže objednávky obě dekrementovaly `used_count` — kupón s `usage_limit = 100` šel použít 101×. Nově compare-and-swap (`whereKey(...)->whereNull('released_at')->update(...)`) a dekrement jen když UPDATE opravdu zabral. `OrderEditor::cancel()` navíc bere `lockForUpdate()` na řádku objednávky (vzor `EloquentOrderSettlement::settleFailed()`) a pracuje se zamčenou instancí — dvojklik na „Stornovat" tak druhým průchodem narazí na `IllegalTransition` a nevrátí sklad ani kupón podruhé. Pořadí zámků beze změny: produkty nejdřív, řádek slevy poslední.
+2. **Neomezený kupónový endpoint jako oracle.** `POST /kosik/sleva` neměl žádný rate limit (skupina `web` ho nenese) a odpovědi rozlišují „takový kód neexistuje" od `min_cart`/`expired`/`usage_limit`/`requires_login` — slovníkový útok si tak umí vypsat existující kódy nájemce. `ApplyDiscountRequest` nově throttluje stejným vzorem jako `Modules\Customers\Http\Requests\LoginRequest`: 10 pokusů/min na tenant + cart token + IP, `ValidationException` s českou zprávou v `passedValidation()`, takže zahozený pokus se k vyhledání slevy vůbec nedostane.
+3. **Tichá plná cena při zneplatnění kódu.** Viz AK 3 výše — refuse platí pro každý důvod, `StaleCoupon` maže odmítnutý kód na renderu (a důvod tam vypíše), `CartPricer` zůstává čistý read (mini-košík nesmí měnit obsah cizího košíku). Flash v `CheckoutController::place()` už netvrdí „Odebrali jsme ho z košíku", když žádný kód nebyl — `DiscountNoLongerValid::forCode(null)` je dosažitelné pro automatické pravidlo, které prohraje `redeem()` lock race.
+4. **Dvě nepravdivá tvrzení v této as-is.** AK 3 se opravdu splnilo až fixem 3; AK 4 je nově vedené jako částečně splněné (viz technický dluh).
 
 ## Odchylky od specifikace
 
@@ -96,16 +107,19 @@ Nové testovací třídy: `DiscountNullBindingTest`, `DiscountModuleTest`, `Disc
 
 ## Technický dluh
 
+**Nejzávažnější nesené riziko**
+- **DPH rekapitulace zahazuje poplatek bez sazby, ale účtuje ho.** Doprava nebo platba bez `tax_rate_id` (nullable ve schématu i ve FormRequestech) se do `vat_summary` nedostane, do `orders.total` ano. U plátce DPH to znamená daňový doklad, jehož rekapitulace nesedí s jeho vlastním součtem — účetní problém nájemce, ne kosmetika. Dotčená místa: `CartPricer::vatBreakdown()`, `OrderPlacer::vatSummary()`, `OrderEditor::vatSummary()`. Cesta je pre-existující (od vlny 1.3), touto vlnou jen zviditelněná, a **v této vlně se záměrně neopravovala**: správná oprava není tichý fallback na výchozí sazbu, ale rozhodnutí na úrovni tenant configu (buď je sazba u zpoplatněné metody povinná pro plátce DPH, nebo se poplatek musí umět zařadit do nulové sazby explicitně). Uzavírá AK 4 jako částečně splněné.
+
 **Architektura**
 - Dvojí výpočet DPH (`CartPricer` + `OrderPlacer` každý počítá vlastní rekapitulaci) je existující dluh z dřívějších vln; engine je volaný z obou míst, takže se dluh vlnou nezhoršuje, ale ani neřeší.
+- **`DiscountBook` je kontrakt, který v produkci nikdo nevolá.** Admin (`DiscountAdminController`) se dotazuje modelu `Discount` přímo, takže inzerovaný read/write split (vzor `OrderBook`/`OrderPlacement`) reálně neexistuje — kontrakt i `EloquentDiscountBook`/`NullDiscountBook` jsou zatím jen deklarace. Buď admin převést na kontrakt, nebo kontrakt zahodit, až bude jasné, kdo je jeho skutečný cizí čtenář.
+- **Engine běží na každém zobrazení storefrontové stránky.** Mini-košík (`CartSummaryController`, `GET /api/kosik/souhrn`) volá `CartPricer::price()`, takže se na každé stránce vyhodnotí celý slevový engine, včetně lazy-loadu kategorií per produkt (`EloquentProductCatalog::findById()` neeager-loaduje `categories`, viz poznámka z tasku 5). Na malém košíku neznatelné, ale je to nový fixní náklad na každý page view — profilovat, než přijde page cache.
 - Editace objednávky v adminu slevu **nepřepočítává** — zachovává podíl slevy na přeživších řádcích (viz rozhodnutí 2026-07-28). Nescaluje dobře, když admin změní množství na řádku: sleva zůstává stejná v haléřích, jen ořezaná na nový součet řádku.
 - `checkout/shipping.blade.php` u každé radio volby dopravy/platby dál tiskne nominální cenu i tehdy, když sleva na dopravu zdarma běží — dřívější kód, dosažitelný poprvé teprve touto vlnou (bez opravy: cena vedle radio buttonu může působit rozporuplně proti přeškrtnuté ceně v rekapitulaci).
-- `CartPricer::vatBreakdown()` tiše zahazuje poplatek za dopravu/platbu bez `tax_rate_id`, ačkoli poplatek dál počítá do celkové částky — existující dluh, potřebuje validaci na úrovni tenant configu.
 
 **Testové mezery**
 - Chybí objednávkový test, který naskládá `PERCENTAGE` slevu s další slevou a přímo asertuje `sum(order_discounts.amount) === orders.discount_total`; invariant drží strukturálně, pokrytí je mezera.
-- `EloquentDiscountRedemption::release()` zapisuje `released_at` bezpodmínečným UPDATE místo compare-and-swap a `OrderEditor::cancel()` nebere zámek na řádku objednávky — dva opravdu souběžné vstupní body by mohly dvakrát odečíst `used_count`. Existující vzor, ne nový v této vlně.
-- Souběžné scénáře limitu (`usage_limit`) jsou ověřené jen sekvenčně přes `lockForUpdate`, jednovláknový PHPUnit skutečný race nevyvolá.
+- Souběžné scénáře limitu (`usage_limit`) jsou ověřené jen sekvenčně přes `lockForUpdate`, jednovláknový PHPUnit skutečný race nevyvolá. Compare-and-swap ve `release()` je proto ověřený deterministicky — cizí writer orazítkuje řádek pod už proběhlým SELECTem (`OrderDiscountReleaseTest`).
 
 **Menší nálezy z reviews (odloženo)**
 - Nepoužitý sloupec `discounts.currency` (CZK-only MVP) — buď zahodit, nebo časem validovat proti měně košíku.
