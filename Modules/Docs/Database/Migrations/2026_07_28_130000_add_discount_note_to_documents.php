@@ -18,13 +18,19 @@ use Illuminate\Support\Facades\Schema;
  * proforma snapshot that never sets them simply gets the column defaults
  * (0 / null), so InvoiceIssuer is the only builder that has to know about
  * this wave's addition.
+ *
+ * `discount_total` is `unsignedBigInteger`, matching the width `total` on
+ * this same table was widened to by the 2026-07-22 migration — unsigned
+ * because, unlike `total`, nothing ever writes a negative discount_total
+ * (a credit note never sets it), but the same 8-byte width as its sibling
+ * money column rather than the narrower 4-byte default.
  */
 return new class extends Migration
 {
     public function up(): void
     {
         Schema::table('documents', function (Blueprint $table) {
-            $table->unsignedInteger('discount_total')->default(0)->after('total');
+            $table->unsignedBigInteger('discount_total')->default(0)->after('total');
             $table->string('discount_note', 500)->nullable()->after('discount_total');
         });
     }

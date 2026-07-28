@@ -2,6 +2,7 @@
 
 namespace Modules\Docs\Services;
 
+use App\Core\Money\Money;
 use App\Core\Orders\Contracts\OrderView;
 use App\Models\Tenant;
 use Illuminate\Support\Carbon;
@@ -53,17 +54,19 @@ class InvoiceSnapshot
             // Informational only — never an input to any total (rozhodnutí
             // 2026-07-28). The lines already carry discounted amounts, so
             // without this note the customer cannot tell why the price
-            // differs from the catalogue. Both read the LIVE order, not the
-            // order_discounts snapshot rows: OrderEditor preserves each
-            // surviving line's own discount share and re-derives
-            // orders.discount_total, but never touches order_discounts, so
-            // after an edit that removes every discounted line the snapshot
-            // rows can still name an amount nothing on the order still
-            // charges. A zero live total means no note at all — an
-            // undiscounted (or no-longer-discounted) order must render
-            // exactly as it always has.
+            // differs from the catalogue. discount_total reads the LIVE
+            // order (orders.discount_total), never the order_discounts
+            // snapshot rows: OrderEditor preserves each surviving line's own
+            // discount share and re-derives orders.discount_total, but never
+            // touches order_discounts, so after an edit that removes every
+            // discounted line the snapshot rows can still name an amount
+            // nothing on the order still charges. A zero live total means no
+            // note at all — an undiscounted (or no-longer-discounted) order
+            // must render exactly as it always has. See discountNote() for
+            // why a NONzero live total does not always get to name what
+            // fired.
             'discount_total' => $discountTotal,
-            'discount_note' => $discountTotal->amount > 0 ? $this->discountNote($order) : null,
+            'discount_note' => $discountTotal->amount > 0 ? $this->discountNote($order, $discountTotal) : null,
             'issued_at' => $issuedAt,
             'taxable_at' => $issuedAt->copy()->startOfDay(),
             'due_at' => $issuedAt->copy()->addDays($dueDays)->startOfDay(),
@@ -71,20 +74,48 @@ class InvoiceSnapshot
     }
 
     /**
-     * Names the discount(s) that fired, from the order_discounts snapshot.
-     * Safe to read even though those rows can be stale about the AMOUNT (see
-     * for()'s docblock): this is only ever reached when the live discount
-     * total says something is still charged at a reduced price, and a
-     * discount named here did genuinely fire on this order at placement.
+     * The note's opening clause: "Uplatněna sleva: {names}" when it is safe
+     * to name what fired, or the generic, code-free "Uplatněna sleva" when
+     * it is not. Only ever called with a positive $liveTotal (for()'s gate).
+     *
+     * Naming is safe only when the order_discounts snapshot rows still sum
+     * to EXACTLY $liveTotal (orders.discount_total). It routinely will not:
+     * the engine legitimately stacks several sources on one order (a coupon
+     * plus one or more automatic rules, each possibly targeting different
+     * lines), and OrderEditor::carryDiscountsOver() re-derives
+     * orders.discount_total purely from the surviving lines' own shares — it
+     * has no idea which source produced which line's share, because
+     * OrderDiscount stores no per-item linkage. So an edit that removes only
+     * SOME of the discounted lines (not all of them — that case is already
+     * handled by for()'s zero-total gate) can shrink the live total below
+     * the sum of the still-unedited snapshot rows, with no way to tell which
+     * row(s) are still true and which no longer contribute anything. Naming
+     * a specific coupon in that state would be a materially misleading claim
+     * on a tax document — exactly what this note exists to prevent — so
+     * every name is dropped in favour of a plain statement that a discount
+     * (of the correctly-live amount, printed separately by the caller) was
+     * applied.
      */
-    private function discountNote(OrderView $order): ?string
+    private function discountNote(OrderView $order, Money $liveTotal): string
     {
-        $note = $order->orderDiscounts()
+        $discounts = $order->orderDiscounts();
+        $snapshotTotal = $discounts->sum(fn ($discount): int => (int) $discount->amount);
+
+        if ($snapshotTotal !== $liveTotal->amount) {
+            return 'Uplatněna sleva';
+        }
+
+        $names = $discounts
             ->map(fn ($discount): string => $discount->code === null
                 ? $discount->name
                 : sprintf('%s (%s)', $discount->name, $discount->code))
             ->implode(', ');
 
-        return $note === '' ? null : $note;
+        // Defensive: a positive live total with an empty snapshot would
+        // already have failed the sum comparison above (0 !== a positive
+        // amount) and returned the generic clause, so $names is never ''
+        // here in practice — kept only so this method can never return an
+        // empty opening clause.
+        return $names === '' ? 'Uplatněna sleva' : sprintf('Uplatněna sleva: %s', $names);
     }
 }

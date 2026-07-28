@@ -228,4 +228,78 @@ class InvoiceDiscountTest extends TestCase
             $this->assertSame(50000, $document->total->amount);
         });
     }
+
+    /**
+     * The reproducer from review: two sources stack on one order — coupon
+     * CODE_A on line 1 (−10000), automatic rule "Rule B" (no code) on line 2
+     * (−5000) — so order_discounts holds two rows summing 15000, but
+     * OrderDiscount stores no per-item linkage. The admin removes line 1
+     * only (not every discounted line — that's the other test above). The
+     * live total correctly drops to 5000 (line 2's own share), but the two
+     * snapshot rows are untouched and still sum to 15000: 15000 !== 5000, so
+     * naming "CODE_A" would claim a coupon still applies to an invoice where
+     * nothing reflects it. The invoice must print the live amount with no
+     * discount code at all, not a partial or wrong name.
+     */
+    public function test_an_edit_that_partially_invalidates_the_snapshot_names_no_discount(): void
+    {
+        $this->context->runAs($this->tenant, function (): void {
+            $productA = $this->product(100000, ['name' => 'Produkt A']);
+            $productB = $this->product(50000, ['name' => 'Produkt B']);
+
+            $couponA = Discount::factory()->code('CODE_A')->fixed(10000)->create([
+                'name' => 'Kupon A',
+                'scope' => Discount::SCOPE_PRODUCTS,
+            ]);
+            $couponA->targets()->create([
+                'target_type' => DiscountTarget::TYPE_PRODUCT,
+                'target_id' => $productA->id,
+            ]);
+
+            $ruleB = Discount::factory()->fixed(5000)->create([
+                'name' => 'Rule B',
+                'scope' => Discount::SCOPE_PRODUCTS,
+            ]);
+            $ruleB->targets()->create([
+                'target_type' => DiscountTarget::TYPE_PRODUCT,
+                'target_id' => $productB->id,
+            ]);
+
+            $order = $this->place($this->cart('CODE_A', [
+                $productA->id => 1,
+                $productB->id => 1,
+            ]));
+            $this->assertSame(15000, $order->discount_total->amount);
+            $this->assertSame(2, $order->discounts()->count());
+            $this->assertSame(15000, (int) $order->discounts()->sum('amount'));
+
+            $keepB = $order->items()->where('product_id', $productB->id)->firstOrFail();
+
+            $edited = app(OrderEditor::class)->edit(
+                $order,
+                [['id' => $keepB->id, 'product_id' => $productB->id, 'quantity' => 1]],
+                $order->billing,
+                null,
+                $order->email,
+                $order->phone,
+                null,
+                OrderEvent::ACTOR_ADMIN,
+                null,
+            );
+
+            $this->assertSame(5000, $edited->discount_total->amount);
+            // Both stale snapshot rows are still sitting there, untouched.
+            $this->assertSame(2, $edited->discounts()->count());
+            $this->assertSame(15000, (int) $edited->discounts()->sum('amount'));
+
+            $document = $this->issueInvoice($edited);
+
+            $this->assertSame(5000, $document->discount_total->amount);
+            $this->assertNotNull($document->discount_note);
+            $this->assertStringNotContainsString('CODE_A', $document->discount_note);
+            $this->assertStringNotContainsString('Kupon A', $document->discount_note);
+            $this->assertStringNotContainsString('Rule B', $document->discount_note);
+            $this->assertSame(45000, $document->total->amount);
+        });
+    }
 }

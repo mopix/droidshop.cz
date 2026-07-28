@@ -218,10 +218,14 @@
     {{-- Informational only, never part of any total (rozhodnutí 2026-07-28):
          the lines above already carry the discounted amounts. Omitted
          entirely on an order with no live discount, so an undiscounted
-         invoice renders with no layout shift. --}}
+         invoice renders with no layout shift. discount_note is the full
+         opening clause built by InvoiceSnapshot::discountNote() — either
+         "Uplatněna sleva: {names}" or, when the order_discounts snapshot no
+         longer agrees with the live discount total, the generic, code-free
+         "Uplatněna sleva" (see that method's docblock for why). --}}
     @if(!empty($document->discount_note))
         <p class="discount-note">
-            Uplatněna sleva: {{ $document->discount_note }} — celkem {{ $document->discount_total->format() }}.
+            {{ $document->discount_note }} — celkem {{ $document->discount_total->format() }}.
             Ceny položek jsou uvedeny po slevě.
         </p>
     @endif
