@@ -111,7 +111,13 @@ class FeedItemBuilder
      */
     private function description(Product $product): string
     {
-        $text = trim(strip_tags((string) $product->description));
+        $html = (string) $product->description;
+
+        // A space before stripping, or two paragraphs come out glued together
+        // as "hliníkové tělo.Demo produkt" — the comparison shopper shows that
+        // string to a customer verbatim.
+        $text = preg_replace('/<(br|\/p|\/div|\/li|\/h[1-6])[^>]*>/i', ' ', $html) ?? $html;
+        $text = trim((string) preg_replace('/\s+/u', ' ', strip_tags($text)));
 
         if ($text === '') {
             $text = trim((string) $product->short_description);

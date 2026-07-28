@@ -128,4 +128,16 @@ class FeedItemBuilderTest extends TestCase
         $this->assertStringNotContainsString('<', $description);
         $this->assertStringContainsString('klávesnice', $description);
     }
+
+    /**
+     * Stripping tags without putting a space back glues paragraphs together —
+     * "hliníkové tělo.Demo produkt" — and the comparison shopper prints that
+     * to a customer verbatim.
+     */
+    public function test_paragraphs_do_not_get_glued_together(): void
+    {
+        $this->product(['description' => '<p>Hliníkové tělo.</p><p>Demo produkt.</p>']);
+
+        $this->assertSame('Hliníkové tělo. Demo produkt.', $this->items()[0]->description);
+    }
 }

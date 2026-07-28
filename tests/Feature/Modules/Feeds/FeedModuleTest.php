@@ -4,6 +4,7 @@ namespace Tests\Feature\Modules\Feeds;
 
 use App\Core\Tenancy\TenantContext;
 use App\Models\Module;
+use App\Models\Plan;
 use App\Models\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Schema;
@@ -71,5 +72,26 @@ class FeedModuleTest extends TestCase
     public function test_both_feed_types_are_known(): void
     {
         $this->assertSame(['heureka', 'zbozi'], ProductFeed::TYPES);
+    }
+
+    /**
+     * A module nobody can switch on is a module that does not exist. Every
+     * plan has to carry it, or a tenant hits PlanDoesNotIncludeModule the
+     * moment they open the screen.
+     */
+    public function test_every_plan_includes_the_module(): void
+    {
+        $this->seed(\Database\Seeders\PlanSeeder::class);
+
+        $plans = Plan::query()->with('modules')->get();
+
+        $this->assertGreaterThan(0, $plans->count());
+
+        foreach ($plans as $plan) {
+            $this->assertTrue(
+                $plan->modules->contains('key', 'feeds'),
+                "Plan {$plan->key} does not include the feeds module.",
+            );
+        }
     }
 }

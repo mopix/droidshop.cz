@@ -52,6 +52,7 @@ DroidShop je **multi-tenant SaaS e-shop platforma** (typ Shoptet). To, co je vid
 - **Slevy:** kupóny i automatická pravidla (procento, pevná částka, doprava zdarma, cíl na kategorii/produkty, limity).
 - **Akční ceny** produktu i varianty s obdobím + povinný údaj o nejnižší ceně za 30 dní (Omnibus).
 - **CSV import a export** katalogu včetně variant: stáhnout, upravit v Excelu, nahrát zpět; chybné řádky v protokolu, režim „jen zkontrolovat".
+- **Feedy pro Heureku a Zboží.cz**: zapnout, namapovat kategorie, adresu vložit do porovnávače; varianty jako samostatné položky.
 
 ### Co ještě NEMÁ (čeká)
 - Hromadné operace nad výběrem, automatické řezy obrázků, obrázky z URL v importu.
@@ -77,7 +78,7 @@ Celý veřejný web je **Blade SSR** (server-rendered) a **funguje bez JavaScrip
 ### Co ještě NEMÁ (čeká)
 - Galerie/zoom, našeptávač, mini-košík (ostrůvky) — výběr varianty už ostrůvek má.
 - Page cache (rychlost, spec §15.6) — čeká na stabilní Redis.
-- Vícejazyčnost (fáze 3), Heureka/Zboží/Google feedy.
+- Vícejazyčnost (fáze 3), Google Merchant feed (Heureka a Zboží hotové ve vlně 2.9).
 - Filtr „ve slevě" a fasety v katalogu.
 
 ---
@@ -106,7 +107,7 @@ Celý veřejný web je **Blade SSR** (server-rendered) a **funguje bez JavaScrip
 
 ### C) Provozní komfort
 - ~~CSV import/export produktů~~ — **hotovo** (vlna 2.8). Zbývá hromadné operace, řezy obrázků.
-- **Heureka/Zboží/Google** feedy.
+- ~~Heureka/Zboží feedy~~ — **hotovo** (vlna 2.9). Zbývá Google Merchant.
 - Superadmin metriky (MRR, churn, tržby).
 
 ### D) Premium / později (fáze 3)
@@ -121,6 +122,6 @@ Celý veřejný web je **Blade SSR** (server-rendered) a **funguje bez JavaScrip
 ---
 
 ## 6. Historie vln (co už proběhlo)
-Fáze 0 (tenancy jádro, moduly, superadmin) → 1.1–1.2 (katalog) → 1.3 (košík/pokladna/objednávky) → 1.4 (platby Comgate) → 1.5–1.6 (faktury/dobropis/proforma/VAT export) → 1.7 (onboarding + platformní billing) → 1.8 (Stripe předplatné) → 1.9 (roční interval + změna tarifu) → 2.1 (vlastní domény + auto TLS) → 2.2 (šablona + branding) → 2.3 (bloková homepage) → 2.4 (varianty produktu) → 2.5 (Zásilkovna) → 2.6 (slevový engine) → 2.7 (akční ceny + Omnibus) → **2.8 (CSV import/export)**. Každá vlna: spec → plán → TDD implementace → review → merge.
+Fáze 0 (tenancy jádro, moduly, superadmin) → 1.1–1.2 (katalog) → 1.3 (košík/pokladna/objednávky) → 1.4 (platby Comgate) → 1.5–1.6 (faktury/dobropis/proforma/VAT export) → 1.7 (onboarding + platformní billing) → 1.8 (Stripe předplatné) → 1.9 (roční interval + změna tarifu) → 2.1 (vlastní domény + auto TLS) → 2.2 (šablona + branding) → 2.3 (bloková homepage) → 2.4 (varianty produktu) → 2.5 (Zásilkovna) → 2.6 (slevový engine) → 2.7 (akční ceny + Omnibus) → 2.8 (CSV import/export) → **2.9 (feedy Heureka a Zboží)**. Každá vlna: spec → plán → TDD implementace → review → merge.
 
 **Závěr:** motor SaaS platformy stojí celý (platby, fakturace, domény) a viditelná vrstva ho dohnala — šablona, varianty, dopravce, slevy i akční ceny jsou hotové. Zbývá hlavně **nasazení a právní minimum**, plus provozní komfort (feedy, CSV, page cache).
