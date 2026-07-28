@@ -186,7 +186,19 @@ const productNames = reactive<Record<number, string>>(
   Object.fromEntries(props.selectedProducts.map((option) => [option.id, option.name])),
 )
 
+// A slower, broader query (e.g. "sleva") fired before a narrower one (e.g.
+// "sleva na boty") can resolve AFTER it — the 300 ms debounce only spaces
+// requests out, it does nothing about the order responses land in. Without a
+// guard, the stale response would overwrite the picker with its broader
+// result set while the search box already reads the narrower term, and the
+// nájemce could tick a product they never actually searched for. Each call
+// stamps a sequence number; only the response matching the latest one is
+// allowed to touch the visible state or the loading/failure flags.
+let productSearchSequence = 0
+
 const searchProducts = async (term: string) => {
+  const sequence = ++productSearchSequence
+
   productsLoading.value = true
   productsSearchFailed.value = false
 
@@ -195,14 +207,18 @@ const searchProducts = async (term: string) => {
       params: { q: term },
     })
 
+    if (sequence !== productSearchSequence) return
+
     productResults.value = data.data
 
     for (const option of data.data) productNames[option.id] = option.name
   } catch {
+    if (sequence !== productSearchSequence) return
+
     productResults.value = []
     productsSearchFailed.value = true
   } finally {
-    productsLoading.value = false
+    if (sequence === productSearchSequence) productsLoading.value = false
   }
 }
 
@@ -409,7 +425,11 @@ const submit = () => {
 
         <!-- Categories: naturally bounded per shop, so the full list ships
              as a prop and is rendered as a plain checkbox list. -->
-        <fieldset v-if="form.scope === SCOPE_CATEGORIES" class="sm:col-span-2">
+        <fieldset
+          v-if="form.scope === SCOPE_CATEGORIES"
+          class="sm:col-span-2"
+          :aria-describedby="describedBy(targetsError && 'd-targets-error')"
+        >
           <legend class="text-sm font-medium text-gray-700">Kategorie, na které sleva platí</legend>
           <div class="mt-2 max-h-56 overflow-y-auto rounded-md border border-gray-200 p-3">
             <p v-if="categories.length === 0" class="text-sm text-gray-600">Zatím tu není žádná kategorie.</p>
@@ -432,7 +452,11 @@ const submit = () => {
              receives the whole catalogue — it searches on demand and keeps a
              separate "selected" chip list so a chosen product's name
              survives after the search box moves on to a different term. -->
-        <fieldset v-else-if="form.scope === SCOPE_PRODUCTS" class="sm:col-span-2">
+        <fieldset
+          v-else-if="form.scope === SCOPE_PRODUCTS"
+          class="sm:col-span-2"
+          :aria-describedby="describedBy(targetsError && 'd-targets-error')"
+        >
           <legend class="text-sm font-medium text-gray-700">Produkty, na které sleva platí</legend>
 
           <div v-if="selectedProductChips.length > 0" class="mt-2 flex flex-wrap gap-2">
