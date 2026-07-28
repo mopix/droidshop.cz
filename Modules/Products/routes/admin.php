@@ -2,11 +2,16 @@
 
 use Illuminate\Support\Facades\Route;
 use Modules\Products\Http\Controllers\ProductAdminController;
+use Modules\Products\Http\Controllers\ProductExportController;
 use Modules\Products\Http\Controllers\ProductImageAdminController;
 use Modules\Products\Http\Controllers\ProductVariantAdminController;
 
 Route::get('/', [ProductAdminController::class, 'index'])->name('index');
 Route::post('/', [ProductAdminController::class, 'store'])->name('store');
+
+// Above the /{product} routes on purpose: a product is bound by slug, so
+// "export" would otherwise be looked up as a product of that name.
+Route::get('/export', [ProductExportController::class, 'download'])->name('export');
 
 Route::get('/{product}', [ProductAdminController::class, 'show'])->name('show');
 Route::patch('/{product}', [ProductAdminController::class, 'update'])->name('update');
