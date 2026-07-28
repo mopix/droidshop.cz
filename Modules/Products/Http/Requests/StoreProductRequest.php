@@ -35,7 +35,14 @@ class StoreProductRequest extends FormRequest
             // Prices arrive as haléře, never as a decimal string: a float on
             // its way to the database is how a price loses a haléř.
             'price' => ['required', 'integer', 'min:0'],
-            'compare_at_price' => ['nullable', 'integer', 'min:0'],
+
+            // A "sale" above the shelf price is either a typo or a dark
+            // pattern, and neither belongs in the catalogue. The window lives
+            // on the product: one campaign, amounts per variant.
+            'sale_price' => ['nullable', 'integer', 'min:0', 'lt:price'],
+            'sale_starts_at' => ['nullable', 'date'],
+            'sale_ends_at' => ['nullable', 'date', 'after:sale_starts_at'],
+
             'purchase_price' => ['nullable', 'integer', 'min:0'],
             'tax_rate_id' => ['required', 'integer', Rule::exists('tax_rates', 'id')],
 

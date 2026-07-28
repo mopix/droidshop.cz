@@ -86,7 +86,9 @@ class ProductAdminController
                 'description' => $product->description,
                 'price' => $product->price->amount,
                 'net_price' => $product->netPrice()->amount,
-                'compare_at_price' => $product->compare_at_price?->amount,
+                'sale_price' => $product->sale_price?->amount,
+                'sale_starts_at' => $product->sale_starts_at?->format('Y-m-d\TH:i'),
+                'sale_ends_at' => $product->sale_ends_at?->format('Y-m-d\TH:i'),
                 // Not merely hidden in the UI: a value the caller may not see
                 // never leaves the server.
                 'purchase_price' => $canSeeCosts ? $product->purchase_price?->amount : null,
@@ -131,6 +133,7 @@ class ProductAdminController
                 // binds straight to it, same convention as the product's own
                 // 'price' prop above.
                 'price' => $variant->price?->amount,
+                'sale_price' => $variant->sale_price?->amount,
                 'stock_tracked' => $variant->stock_tracked,
                 'stock_qty' => $variant->stock_qty,
                 'stock_policy' => $variant->stock_policy,

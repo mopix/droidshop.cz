@@ -15,7 +15,9 @@ type Product = {
   description: string | null
   price: number
   net_price: number
-  compare_at_price: number | null
+  sale_price: number | null
+  sale_starts_at: string | null
+  sale_ends_at: string | null
   purchase_price: number | null
   tax_rate_id: number
   sku: string | null
@@ -48,6 +50,7 @@ type ProductVariant = {
   sku: string | null
   ean: string | null
   price: number | null
+  sale_price: number | null
   stock_tracked: boolean
   stock_qty: number
   stock_policy: string
@@ -110,7 +113,9 @@ const form = useForm({
   short_description: props.product.short_description ?? '',
   description: props.product.description ?? '',
   price: props.product.price,
-  compare_at_price: props.product.compare_at_price,
+  sale_price: props.product.sale_price,
+  sale_starts_at: props.product.sale_starts_at,
+  sale_ends_at: props.product.sale_ends_at,
   purchase_price: props.product.purchase_price,
   tax_rate_id: props.product.tax_rate_id,
   sku: props.product.sku ?? '',
@@ -293,6 +298,7 @@ const saveVariant = (variant: MatrixRow) => {
     route('admin.products.variants.update', [props.product.slug, variant.id]),
     {
       price: variant.price,
+      sale_price: variant.sale_price,
       sku: variant.sku,
       // The matrix's own "Sleduje sklad" checkbox, not a forced value: a
       // variant can legitimately have stock_tracked = false (untracked = no
@@ -668,16 +674,62 @@ const runVariantDelete = () => {
           </div>
 
           <div>
-            <label for="p-compare" class="block text-sm font-medium text-gray-700">
-              Běžná cena (přeškrtnutá)
+            <label for="p-sale" class="block text-sm font-medium text-gray-700">
+              Akční cena (haléře)
             </label>
             <input
-              id="p-compare"
-              v-model.number="form.compare_at_price"
+              id="p-sale"
+              v-model.number="form.sale_price"
               type="number"
               min="0"
               class="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-gray-900 focus:ring-gray-900"
+              aria-describedby="p-sale-hint"
             />
+            <p id="p-sale-hint" class="mt-1 text-sm text-gray-600">
+              Musí být nižší než běžná cena. Na e-shopu se vedle ní ukáže přeškrtnutá běžná cena
+              a povinný údaj o nejnižší ceně za posledních 30 dní.
+            </p>
+            <p v-if="form.errors.sale_price" class="mt-1 text-sm text-red-700">
+              {{ form.errors.sale_price }}
+            </p>
+          </div>
+
+          <div>
+            <label for="p-sale-from" class="block text-sm font-medium text-gray-700">
+              Akce od
+            </label>
+            <input
+              id="p-sale-from"
+              v-model="form.sale_starts_at"
+              type="datetime-local"
+              class="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-gray-900 focus:ring-gray-900"
+              aria-describedby="p-sale-from-hint"
+            />
+            <p id="p-sale-from-hint" class="mt-1 text-sm text-gray-600">
+              Prázdné = akce platí ihned.
+            </p>
+            <p v-if="form.errors.sale_starts_at" class="mt-1 text-sm text-red-700">
+              {{ form.errors.sale_starts_at }}
+            </p>
+          </div>
+
+          <div>
+            <label for="p-sale-to" class="block text-sm font-medium text-gray-700">
+              Akce do
+            </label>
+            <input
+              id="p-sale-to"
+              v-model="form.sale_ends_at"
+              type="datetime-local"
+              class="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-gray-900 focus:ring-gray-900"
+              aria-describedby="p-sale-to-hint"
+            />
+            <p id="p-sale-to-hint" class="mt-1 text-sm text-gray-600">
+              Prázdné = akce běží, dokud ji neukončíte. Konec se uplatní sám, bez zásahu.
+            </p>
+            <p v-if="form.errors.sale_ends_at" class="mt-1 text-sm text-red-700">
+              {{ form.errors.sale_ends_at }}
+            </p>
           </div>
 
           <div v-if="can.costs">
@@ -1073,6 +1125,7 @@ const runVariantDelete = () => {
               <tr class="text-gray-500">
                 <th scope="col" class="py-2 pr-2 font-medium">Kombinace</th>
                 <th scope="col" class="px-2 py-2 font-medium">Cena (haléře)</th>
+                <th scope="col" class="px-2 py-2 font-medium">Akční cena</th>
                 <th scope="col" class="px-2 py-2 font-medium">SKU</th>
                 <th scope="col" class="px-2 py-2 font-medium">Sleduje sklad</th>
                 <th scope="col" class="px-2 py-2 font-medium">Sklad (ks)</th>
@@ -1095,6 +1148,23 @@ const runVariantDelete = () => {
                     min="0"
                     step="1"
                     placeholder="dědí"
+                    :disabled="!can.edit"
+                    class="w-28 rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-900 focus:ring-gray-900 disabled:bg-gray-100"
+                    @input="markDirty(variant)"
+                  />
+                </td>
+
+                <td class="px-2 py-2">
+                  <label :for="`variant-sale-${variant.id}`" class="sr-only">
+                    Akční cena varianty {{ variant.label }} v haléřích
+                  </label>
+                  <input
+                    :id="`variant-sale-${variant.id}`"
+                    v-model.number="variant.sale_price"
+                    type="number"
+                    min="0"
+                    step="1"
+                    placeholder="bez akce"
                     :disabled="!can.edit"
                     class="w-28 rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-900 focus:ring-gray-900 disabled:bg-gray-100"
                     @input="markDirty(variant)"
