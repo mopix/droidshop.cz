@@ -11,6 +11,33 @@ Pravidla: [`.claude/skills/versioning/SKILL.md`](.claude/skills/versioning/SKILL
 
 > CHANGELOG vede milníky (minor/major). Detail patchů je v `git log`.
 
+## [0.26.0] – 2026-07-28
+
+**Fáze 2 / vlna 2.8 — CSV import a export produktů.** Nájemce naplní a udržuje katalog hromadně: stáhne si ho jako CSV, upraví v Excelu a nahraje zpět. Import zakládá i aktualizuje produkty a varianty podle SKU, chybné řádky přeskočí do protokolu ke stažení. 1565 testů (5475 assertions).
+
+### Formát a round-trip
+- `ProductCsvSchema` je **jediná pravda o formátu pro oba směry** — export produkuje přesně to, co import přijme, a `CsvRoundTripTest` (export → import → katalog beze změny) to hlídá. Sloupec přidaný jen do jednoho směru shodí test okamžitě.
+- Hlavička česká, pořadí sloupců volné, oddělovač `;`, UTF-8 s BOM, ceny v korunách s desetinnou čárkou. Parser je shovívavý ke vstupu (BOM, `,` jako oddělovač, `.` jako desetinná tečka), export přísný na výstup.
+- Varianty mají vlastní řádek (`varianta_rodic_sku` + osy jako `Velikost:M|Barva:černá`); nový `VariantWriter::upsertVariant()` zakládá nebo aktualizuje jednu konkrétní kombinaci.
+
+### Import
+- Upsert **podle SKU**: prázdné zakládá nový produkt, duplicitní (v souboru i proti DB) je chyba řádku, protože import nemá jak vybrat, který aktualizovat.
+- Zápis jde **výhradně přes `ProductWriter`/`VariantWriter`**, takže hromadné nahrání dostane stejnou sanitizaci HTML, unikátní slug, 301 redirect a zápis do historie ceny (Omnibus, vlna 2.7) jako ruční editace.
+- Kategorie se importem **nezakládají** — neexistující cesta je chyba řádku. Sdílený strom by z jednoho překlepu ve 3 000 řádcích dostal větev k ručnímu úklidu. Výrobce naopak firstOrCreate.
+- Limit tarifu platí; vyčerpaná kvóta shodí jen svůj řádek. Prázdná buňka při aktualizaci znamená „neměnit", ne „vymazat".
+- Běh je queued job nad novou tabulkou `product_imports`, **jedna transakce na řádek**, průběžné počty a chybové CSV s číslem řádku a důvodem. Přepínač „jen zkontrolovat" jede stejnou cestou bez zápisu.
+
+### Export a admin
+- Streamovaný export nad `lazy(200)`; nákupní cena jen pro `products.costs`, aby export nebyl zadní vrátka k marži. Volné textové sloupce neutralizované proti CSV formula injection (CWE-1236).
+- Admin `/admin/m/products/import`: upload, přepínač suchého běhu, historie posledních běhů, stažení protokolu chyb. Nahraný soubor i protokol leží na privátním disku, cizí běh vrací 404.
+- Import a export routy jsou registrované **nad** `/{product}` — produkt se váže slugem, takže by se jinak hledal produkt jménem „export".
+
+### Odloženo
+- Obrázky z URL (SSRF plocha), mapování sloupců, plánovaný import z feedu dodavatele, mazání importem, XLSX = `docs/future/csv-import-dalsi-kroky.md`.
+
+### Deploy
+- Jedna nová migrace (`product_imports`). Ověřit běžící `queue:work` — bez workera zůstane import ve stavu `pending`. Zkontrolovat `upload_max_filesize`/`post_max_size` proti `products.import.max_size_kb` (výchozí 5 MB).
+
 ## [0.25.0] – 2026-07-28
 
 **Fáze 2 / vlna 2.7 — akční ceny produktu + evidence nejnižší ceny za 30 dní.** Nájemce zlevní produkt i variantu na určené období; storefront ukáže akční cenu, přeškrtnutou nominální a povinný údaj o nejnižší ceně za posledních 30 dní podle § 12a zákona č. 634/1992 Sb. (směrnice Omnibus). Zároveň se zavírá dluh nesený z vlny 2.6: poplatek za dopravu a platbu bez sazby DPH se účtoval, ale vypadával z rekapitulace. 1514 testů (5326 assertions).
