@@ -84,10 +84,28 @@ final class EloquentDiscountRedemption implements DiscountRedemptionContract
         foreach ($rows as $row) {
             // Stamped released rather than deleted: the row is the record of
             // what this order was given, and the per-e-mail limit counts only
-            // unreleased rows — so the stamp is the whole undo. Filtering on
-            // released_at above is also what makes a repeated release a no-op
-            // (the contract promises idempotence).
-            $row->update(['released_at' => now()]);
+            // unreleased rows — so the stamp is the whole undo.
+            //
+            // Compare-and-swap, not an unconditional UPDATE: the SELECT above
+            // cannot be what makes a repeated release idempotent, because two
+            // concurrent releases of the same order both see the row
+            // unreleased there (final review, wave 2.6 — an admin
+            // double-clicking storno was enough) and would then both stamp it
+            // and both decrement, pushing a usage_limit = 100 coupon to 101
+            // uses. Re-asserting `released_at IS NULL` inside the UPDATE makes
+            // the database decide the winner: exactly one caller sees an
+            // affected row, and only that caller touches the counter.
+            $claimed = DiscountRedemption::query()
+                ->whereKey($row->getKey())
+                ->whereNull('released_at')
+                ->update(['released_at' => now()]);
+
+            if ($claimed === 0) {
+                // Someone else released this row between the read and the
+                // write. They own the decrement below; doing it here too is
+                // precisely the double-release this guard exists to stop.
+                continue;
+            }
 
             // The counter has to come back down with it, or a released
             // redemption would hold a usage_limit slot forever. Guarded

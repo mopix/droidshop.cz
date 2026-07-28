@@ -6,6 +6,7 @@ use App\Core\Catalog\Contracts\ProductCatalog;
 use App\Core\Discounts\Contracts\DiscountRedemption as DiscountRedemptionContract;
 use App\Core\Money\Money;
 use App\Core\Orders\Contracts\OrderSettlement;
+use App\Core\Orders\Exceptions\IllegalTransition;
 use App\Core\Tax\TaxRates;
 use App\Core\Tenancy\TenantContext;
 use App\Models\Tenant;
@@ -396,5 +397,98 @@ class OrderDiscountReleaseTest extends TestCase
         });
 
         $this->context->runAs($this->tenant, fn () => $this->assertSame(0, (int) $discount->fresh()->used_count));
+    }
+
+    /**
+     * Final review (wave 2.6): the SELECT inside release() is NOT what makes a
+     * repeated release safe — two concurrent releases both see the row
+     * unreleased there. The compare-and-swap UPDATE is. Simulated here by
+     * stamping the row from underneath a release that has already read it:
+     * with an unconditional UPDATE the decrement below would fire anyway and a
+     * usage_limit = 100 coupon would become usable 101 times.
+     */
+    public function test_release_does_not_decrement_when_another_writer_already_stamped_the_row(): void
+    {
+        $product = $this->makeProduct();
+        $order = $this->makeOrderWithLine($product, 1, 'kupujici@example.com');
+
+        $discount = $this->context->runAs($this->tenant, fn () => Discount::factory()->code('STO')->percent(10)->create([
+            'usage_limit' => 100,
+        ]));
+
+        $this->context->runAs($this->tenant, function () use ($discount, $order): void {
+            DiscountRedemption::query()->create([
+                'discount_id' => $discount->id,
+                'order_id' => $order->id,
+                'email' => 'kupujici@example.com',
+                'amount' => 10000,
+            ]);
+
+            // A hundred uses on the counter, one of them this order's.
+            $discount->forceFill(['used_count' => 100])->save();
+
+            // The competing writer wins the race: the row is stamped released
+            // before our release() gets to its own UPDATE.
+            DiscountRedemption::query()
+                ->where('order_id', $order->id)
+                ->update(['released_at' => now()]);
+
+            app(DiscountRedemptionContract::class)->release((int) $order->id);
+        });
+
+        // 100, not 99: the loser of the CAS must not give an allowance back
+        // that the winner already gave back.
+        $this->context->runAs($this->tenant, fn () => $this->assertSame(100, (int) $discount->fresh()->used_count));
+    }
+
+    /**
+     * Final review (wave 2.6): OrderEditor::cancel() took no row lock, so an
+     * admin double-click could put two transactions through the whole body —
+     * both returning the stock and both releasing the allowance. The lock plus
+     * OrderWorkflow's graph check now refuse the second one outright; nothing
+     * it would have moved is moved.
+     */
+    public function test_cancelling_an_already_cancelled_order_changes_neither_the_allowance_nor_stock(): void
+    {
+        $product = $this->makeProduct();
+        $order = $this->makeOrderWithLine($product, 1, 'kupujici@example.com');
+
+        $discount = $this->context->runAs($this->tenant, fn () => Discount::factory()->code('JEDEN')->percent(100)->create([
+            'usage_limit' => 1,
+        ]));
+
+        $this->redeem($discount, $order, 'kupujici@example.com');
+
+        $this->context->runAs($this->tenant, function () use ($order): void {
+            app(OrderEditor::class)->cancel($order, 'Zákazník si to rozmyslel.', returnStock: true, sendEmail: false, actorType: 'admin', actorId: null);
+        });
+
+        $stockAfterFirstCancel = $this->stockOf($product);
+
+        // The stale model the double-click would carry: still `new` in memory,
+        // which is exactly what used to slip past the in-memory graph check.
+        $stale = $this->context->runAs($this->tenant, fn () => Order::query()->findOrFail($order->id));
+        $stale->forceFill(['fulfillment_status' => Order::FULFILLMENT_NEW]);
+
+        // try/catch rather than expectException: the state assertions below are
+        // the point of this test, and expectException would end the method the
+        // moment the throw happened.
+        $refused = false;
+
+        try {
+            $this->context->runAs($this->tenant, function () use ($stale): void {
+                app(OrderEditor::class)->cancel($stale, 'Dvojklik.', returnStock: true, sendEmail: false, actorType: 'admin', actorId: null);
+            });
+        } catch (IllegalTransition $e) {
+            $refused = true;
+        }
+
+        $this->assertTrue($refused, 'A second cancel of the same order must be refused.');
+
+        $this->context->runAs($this->tenant, function () use ($discount, $order, $product, $stockAfterFirstCancel): void {
+            $this->assertSame(0, (int) $discount->fresh()->used_count);
+            $this->assertSame(1, DiscountRedemption::query()->where('order_id', $order->id)->count());
+            $this->assertSame($stockAfterFirstCancel, Product::query()->findOrFail($product->id)->stock_qty);
+        });
     }
 }

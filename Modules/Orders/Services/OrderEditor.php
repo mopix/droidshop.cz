@@ -342,6 +342,10 @@ class OrderEditor
      * above: whatever quantity a line holds now is exactly what is still
      * out of stock for it (AK 9).
      *
+     * The order row is locked for the whole transaction, so two concurrent
+     * cancels of the same order serialise here and only the first one moves
+     * anything (see the comment inside).
+     *
      * The cancellation e-mail is queued only when $sendEmail is true, and
      * only after the transaction below has returned — never from inside it,
      * the same discipline OrderPlacer uses for the order-confirmation event
@@ -356,8 +360,28 @@ class OrderEditor
         ?int $actorId,
     ): Order {
         DB::transaction(function () use ($order, $reason, $returnStock, $actorType, $actorId): void {
+            // The order row is locked BEFORE the transition is even asked for,
+            // the same way EloquentOrderSettlement::settleFailed() does it, and
+            // everything below works off the locked instance rather than the
+            // one the caller handed in. OrderWorkflow's graph check is a pure
+            // in-memory lookup on whatever status the passed model happens to
+            // carry, so without this an admin double-clicking "Stornovat" put
+            // two requests through here at once: both read `new`, both passed
+            // the check, both returned the stock and both released the coupon
+            // allowance (final review, wave 2.6). Under the lock the second
+            // one re-reads `cancelled` and IllegalTransition stops it before
+            // anything moves.
+            $locked = Order::query()->whereKey($order->getKey())->lockForUpdate()->first();
+
+            if ($locked === null) {
+                // Orders are never hard-deleted in this codebase, so this is
+                // unreachable in practice — but a vanished row has nothing to
+                // cancel, and inventing a transition for it would be worse.
+                return;
+            }
+
             $this->workflow->transitionFulfillment(
-                $order,
+                $locked,
                 Order::FULFILLMENT_CANCELLED,
                 $actorType,
                 $actorId,
@@ -365,7 +389,7 @@ class OrderEditor
             );
 
             if ($returnStock) {
-                foreach ($order->items()->get() as $item) {
+                foreach ($locked->items()->get() as $item) {
                     if ($item->product_id !== null) {
                         $this->catalog->incrementStock(
                             (int) $item->product_id,
@@ -390,7 +414,7 @@ class OrderEditor
                 // welcome coupon does not become usable again by a flagged
                 // address the moment the shop has already conceded the
                 // goods.
-                $this->redemptions->release((int) $order->id);
+                $this->redemptions->release((int) $locked->id);
             }
         });
 
