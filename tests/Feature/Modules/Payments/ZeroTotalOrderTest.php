@@ -8,9 +8,11 @@ use App\Core\Tenancy\TenantContext;
 use App\Models\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Testing\TestResponse;
 use Modules\Checkout\Models\Cart;
 use Modules\Discounts\Models\Discount;
+use Modules\Orders\Mail\OrderPlacedCustomer;
 use Modules\Orders\Models\Order;
 use Modules\Products\Models\Product;
 use Modules\Products\Services\ProductWriter;
@@ -141,6 +143,15 @@ class ZeroTotalOrderTest extends TestCase
         return $this->makePayment(['provider' => PaymentMethod::PROVIDER_COD, 'name' => 'Dobírka']);
     }
 
+    private function bankTransfer(): PaymentMethod
+    {
+        return $this->makePayment([
+            'provider' => PaymentMethod::PROVIDER_BANK_TRANSFER,
+            'name' => 'Bankovní převod',
+            'settings' => ['account' => 'CZ6508000000192000145399'],
+        ]);
+    }
+
     /**
      * Builds a cart directly through the repository with shipping/payment
      * already chosen, so every scenario here starts from an independent
@@ -258,6 +269,45 @@ class ZeroTotalOrderTest extends TestCase
         $this->assertSame(Order::PAYMENT_PAID, $order->payment_status);
 
         Http::assertNothingSent();
+    }
+
+    /**
+     * A zero-total order with bank transfer chosen must not ask the shopper
+     * to pay anything — no QR, no "Zaplaťte prosím ... 0,00 Kč" instruction,
+     * on the thank-you page or in the confirmation e-mail. Found by review:
+     * the QR block and the mail's paymentInstruction() were gated only on
+     * the provider being bank_transfer, never on the amount, so a fully
+     * discounted order landed the shopper on a QR code for nothing.
+     */
+    public function test_a_fully_discounted_order_with_bank_transfer_asks_for_nothing(): void
+    {
+        Http::fake();
+        Mail::fake();
+
+        $this->context->runAs($this->tenant, fn () => Discount::factory()->code('ZDARMA')->percent(1000)->create(['name' => 'Sleva 100 %']));
+
+        $cart = $this->repoCart($this->makeProduct(), $this->makeFreeShipping(), $this->bankTransfer(), 'ZDARMA');
+
+        $response = $this->place($cart);
+
+        $order = $this->lastOrder();
+        $response->assertRedirect($this->url('/dekujeme/'.$order->uuid));
+        $this->assertSame(0, $order->total->amount);
+        $this->assertSame(Order::PAYMENT_PAID, $order->payment_status);
+
+        Http::assertNothingSent();
+
+        // The confirmation e-mail carries no pay-to instruction — composed
+        // by SendOrderConfirmation inside OrderPlacer::place(), before the
+        // order is ever settled, so it has to read the same zero total the
+        // controller does rather than payment_status.
+        Mail::assertSent(OrderPlacedCustomer::class, fn (OrderPlacedCustomer $mail): bool => $mail->paymentInstruction === null);
+
+        // The thank-you page itself renders no QR and no "Zaplaťte" text.
+        $thankYou = $this->get($this->url('/dekujeme/'.$order->uuid));
+        $thankYou->assertOk();
+        $thankYou->assertDontSee('<svg', false);
+        $thankYou->assertDontSee('Zaplaťte');
     }
 
     /**
