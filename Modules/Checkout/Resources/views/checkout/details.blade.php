@@ -165,11 +165,38 @@
                 @endforeach
             </ul>
 
+            @include('checkout::partials.discount-form', ['returnTo' => 'checkout', 'discountsEnabled' => $discountsEnabled])
+
+            {{--
+                Every row here must reconcile with $total below: Mezisoučet
+                is itemsTotal (pre-discount), Sleva is what the discount
+                engine took off it, and $total already carries payableTotal
+                (= itemsTotal − discountTotal) plus shipping and payment
+                (final review of Task 5 — these two used to disagree because
+                the discount row was missing entirely).
+            --}}
             <dl class="space-y-1 border-t border-slate-200 pt-3 text-sm text-slate-700">
                 <div class="flex justify-between">
                     <dt>Mezisoučet</dt>
                     <dd>{{ $cart->itemsTotal->format() }}</dd>
                 </div>
+                @if ($cart->discountTotal?->isPositive())
+                    {{--
+                        The colour is decorative only — "Sleva" plus the
+                        leading minus sign already say "this is a deduction"
+                        in text, so nothing here relies on colour alone
+                        (WCAG 1.4.1).
+                    --}}
+                    <div class="flex justify-between text-emerald-700">
+                        <dt>
+                            Sleva
+                            @foreach ($cart->discountSources as $source)
+                                <span class="text-slate-500">{{ $source->name }}@if (! $loop->last), @endif</span>
+                            @endforeach
+                        </dt>
+                        <dd>−{{ $cart->discountTotal->format() }}</dd>
+                    </div>
+                @endif
                 <div class="flex justify-between">
                     <dt>Doprava @if ($usingFallback)(osobní odběr)@elseif ($shipping){{ ' — '.$shipping->name() }}@endif</dt>
                     <dd>{{ $shippingCost->isZero() ? 'zdarma' : $shippingCost->format() }}</dd>

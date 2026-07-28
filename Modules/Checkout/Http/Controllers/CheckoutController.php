@@ -34,6 +34,7 @@ use Modules\Checkout\Services\CartPricer;
 use Modules\Checkout\Support\CartCookie;
 use Modules\Checkout\Support\PricedCart;
 use Modules\Storefront\Support\Seo;
+use Modules\Storefront\Support\ShopModules;
 
 /**
  * `/pokladna/doprava` — the shipping + payment step. Same no-JS contract as
@@ -60,6 +61,7 @@ class CheckoutController
         private readonly OrderSettlement $settlement,
         private readonly PickupPointCatalog $points,
         private readonly CarrierRegistry $carriers,
+        private readonly ShopModules $modules,
     ) {}
 
     public function shipping(Request $request): Response|RedirectResponse
@@ -187,13 +189,17 @@ class CheckoutController
 
     /**
      * `/pokladna/udaje` — the contact/address form plus a server-rendered
-     * recap (line items, delivery, payment, VAT breakdown, total) and the
-     * "Objednat s povinností platby" button.
+     * recap (line items, discount, delivery, payment, VAT breakdown, total)
+     * and the "Objednat s povinností platby" button.
      *
      * The recap is built entirely from the priced cart and the chosen options,
      * read fresh — never from anything a client posted (AK 5). The hidden
      * checkout_token minted here is the idempotency key the form posts back
-     * (AK 2).
+     * (AK 2). The discount field on this page (partial shared with /kosik,
+     * wave 2.6) reuses $priced straight from the pricer above — the same
+     * PricedCart the recap totals below come from, so a code applied here
+     * cannot show a different figure than the one the recap already used to
+     * compute $total in resolveSelection().
      */
     public function details(Request $request): Response|RedirectResponse
     {
@@ -238,6 +244,10 @@ class CheckoutController
                 $selection['paymentFee'],
             ),
             'checkoutToken' => Str::random(40),
+            // Same decision as CartController::show(): resolved once here
+            // from ShopModules, not by the partial reaching into the
+            // container itself.
+            'discountsEnabled' => $this->modules->has('discounts'),
             'seo' => new Seo(title: 'Údaje a rekapitulace', noindex: true),
         ]);
 
