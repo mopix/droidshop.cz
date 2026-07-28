@@ -137,9 +137,18 @@ class EloquentProductCatalog implements ProductCatalog
             ]);
         }
 
+        // Ordered by what a shopper actually pays, not by the shelf price: a
+        // discounted product has to land where its sale price puts it, or the
+        // "cheapest first" listing lies about the cheapest item.
+        $now = now();
+
         match ($query->sort) {
-            ProductQuery::SORT_PRICE_ASC => $builder->orderBy('price'),
-            ProductQuery::SORT_PRICE_DESC => $builder->orderByDesc('price'),
+            ProductQuery::SORT_PRICE_ASC => $builder->orderByRaw(
+                Product::effectivePriceExpression().' asc', [$now, $now],
+            ),
+            ProductQuery::SORT_PRICE_DESC => $builder->orderByRaw(
+                Product::effectivePriceExpression().' desc', [$now, $now],
+            ),
             ProductQuery::SORT_NAME => $builder->orderBy('name'),
             default => $builder->orderByDesc('id'),
         };
@@ -285,7 +294,11 @@ class EloquentProductCatalog implements ProductCatalog
         // The PriceModifier chain (customer groups, quantity discounts,
         // coupons) hangs here. Empty today, but the seam exists so those
         // modules never have to reach into the products table.
-        return $product->price;
+        //
+        // The sale price is not a modifier: for the duration of a campaign it
+        // IS the product's price, which is why the cart, orders and documents
+        // charge it without knowing a campaign exists.
+        return $product->effectivePrice();
     }
 
     public function resolveVariant(int $productId, array $optionValueIds): ?CatalogVariant

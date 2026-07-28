@@ -20,7 +20,26 @@ interface CatalogProduct
 
     public function catalogSku(): ?string;
 
+    /**
+     * What a customer actually pays right now — the sale price while a
+     * campaign runs, the nominal price otherwise.
+     */
     public function catalogPrice(): Money;
+
+    /**
+     * The nominal price, struck through next to catalogPrice() during a sale.
+     * Equal to catalogPrice() when no sale runs.
+     */
+    public function catalogRegularPrice(): Money;
+
+    public function catalogIsOnSale(): bool;
+
+    /**
+     * The lowest price this product was actually sold at over the last 30
+     * days — the figure § 12a of the consumer protection act requires next to
+     * an announced discount. Null when no history exists yet.
+     */
+    public function catalogLowestPriceIn30Days(): ?Money;
 
     public function catalogNetPrice(): Money;
 

@@ -24,6 +24,11 @@ interface CatalogVariant
     /** Already resolved: the variant's own price, or the product's. */
     public function catalogVariantPrice(): Money;
 
+    /** The variant's nominal price, struck through while a sale runs. */
+    public function catalogVariantRegularPrice(): Money;
+
+    public function catalogVariantIsOnSale(): bool;
+
     public function catalogVariantIsAvailable(int $quantity = 1): bool;
 
     /**

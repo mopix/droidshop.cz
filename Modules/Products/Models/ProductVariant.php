@@ -36,6 +36,7 @@ class ProductVariant extends Model implements CatalogVariant
     {
         return [
             'price' => MoneyCast::class,
+            'sale_price' => MoneyCast::class,
             'stock_tracked' => 'boolean',
             'stock_qty' => 'integer',
             'active' => 'boolean',
@@ -81,6 +82,14 @@ class ProductVariant extends Model implements CatalogVariant
      */
     public function effectivePrice(): Money
     {
+        return $this->saleAmount() ?? $this->regularPrice();
+    }
+
+    /**
+     * The variant's nominal price: its own, or the product's when it has none.
+     */
+    public function regularPrice(): Money
+    {
         if ($this->price !== null) {
             return $this->price;
         }
@@ -88,6 +97,33 @@ class ProductVariant extends Model implements CatalogVariant
         $this->loadMissing('product');
 
         return $this->product->price;
+    }
+
+    public function saleIsRunning(): bool
+    {
+        return $this->saleAmount() !== null;
+    }
+
+    /**
+     * The sale amount that applies to this variant, or null.
+     *
+     * A variant with its own base price does NOT inherit the product's sale
+     * amount: an absolute discount pinned to a different base would quietly
+     * sell below cost. It inherits only when it inherits the base price too.
+     */
+    private function saleAmount(): ?Money
+    {
+        $this->loadMissing('product');
+
+        if (! $this->product->saleWindowIsOpen()) {
+            return null;
+        }
+
+        if ($this->sale_price !== null) {
+            return $this->sale_price;
+        }
+
+        return $this->price === null ? $this->product->sale_price : null;
     }
 
     public function isAvailable(int $quantity = 1): bool
@@ -116,6 +152,16 @@ class ProductVariant extends Model implements CatalogVariant
     public function catalogVariantPrice(): Money
     {
         return $this->effectivePrice();
+    }
+
+    public function catalogVariantRegularPrice(): Money
+    {
+        return $this->regularPrice();
+    }
+
+    public function catalogVariantIsOnSale(): bool
+    {
+        return $this->saleIsRunning();
     }
 
     public function catalogVariantIsAvailable(int $quantity = 1): bool

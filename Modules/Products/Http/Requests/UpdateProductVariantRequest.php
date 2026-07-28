@@ -20,6 +20,11 @@ class UpdateProductVariantRequest extends FormRequest
         return [
             // null is meaningful: inherit the product's price.
             'price' => ['nullable', 'integer', 'min:0'],
+
+            // null = no sale amount of its own. A variant that inherits the
+            // base price inherits the product's campaign amount too; one with
+            // its own price has to name its own, or it sells at nominal.
+            'sale_price' => ['nullable', 'integer', 'min:0'],
             'sku' => ['nullable', 'string', 'max:64'],
             'ean' => ['nullable', 'string', 'max:14'],
             'stock_tracked' => ['boolean'],

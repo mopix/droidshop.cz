@@ -2,6 +2,7 @@
 
 namespace Modules\Shipping\Http\Requests;
 
+use App\Core\Tenancy\TenantContext;
 use Closure;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -36,7 +37,14 @@ class StorePaymentMethodRequest extends FormRequest
 
             // A surcharge (cash on delivery) in haléře, never a float.
             'fee' => ['required', 'integer', 'min:0'],
-            'tax_rate_id' => ['nullable', 'integer', Rule::exists('tax_rates', 'id')],
+            // A VAT payer's fee has to carry a rate, or it charges the
+            // customer money that never appears in the tax recapitulation on
+            // the invoice (the debt wave 2.6 carried forward). A shop that is
+            // not a payer has no recapitulation to be missing from.
+            'tax_rate_id' => [
+                Rule::requiredIf(fn () => (bool) app(TenantContext::class)->current()?->vat_payer),
+                'nullable', 'integer', Rule::exists('tax_rates', 'id'),
+            ],
 
             'is_active' => ['boolean'],
 

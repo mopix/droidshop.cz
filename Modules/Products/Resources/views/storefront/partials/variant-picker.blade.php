@@ -70,6 +70,8 @@
             'selection' => array_values($variant->catalogVariantSelection()),
             'price' => $variant->catalogVariantPrice()->format(),
             'net_price' => $product->rate()->net($variant->catalogVariantPrice())->format(),
+            'regular_price' => $variant->catalogVariantRegularPrice()->format(),
+            'on_sale' => $variant->catalogVariantIsOnSale(),
             'available' => $variant->catalogVariantIsAvailable(),
         ];
     })->values();

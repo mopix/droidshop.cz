@@ -25,10 +25,19 @@
         <p>
             @if ($product->catalogHasVariants())
                 <span class="text-sm text-slate-500">od</span>
-                <span class="text-lg font-semibold text-slate-900">{{ $product->catalogPriceFrom()->format() }}</span>
-            @else
-                <span class="text-lg font-semibold text-slate-900">{{ $product->catalogPrice()->format() }}</span>
             @endif
+
+            <span class="text-lg font-semibold {{ $product->catalogIsOnSale() ? 'text-red-700' : 'text-slate-900' }}">
+                {{ $product->catalogHasVariants() ? $product->catalogPriceFrom()->format() : $product->catalogPrice()->format() }}
+            </span>
+
+            {{-- The struck-through nominal price only; the statutory 30-day
+                 line lives on the detail page, where the announcement of the
+                 discount is made in full. --}}
+            @if ($product->catalogIsOnSale())
+                <s class="ml-1 text-sm text-slate-500">{{ $product->catalogRegularPrice()->format() }}</s>
+            @endif
+
             <span class="block text-xs text-slate-500">s DPH</span>
         </p>
 
