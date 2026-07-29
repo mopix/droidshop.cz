@@ -70,4 +70,18 @@ class SettingsSchemaTest extends TestCase
         $this->assertFalse($schema->has('b'));
         $this->assertNull($schema->field('b'));
     }
+
+    public function test_defaults_keeps_falsy_values_and_drops_only_null(): void
+    {
+        $schema = SettingsSchema::fromArray([
+            'email_invoice' => ['rules' => 'boolean', 'default' => false],
+            'min_order_total' => ['rules' => 'integer|min:0', 'default' => 0],
+            'note' => ['rules' => 'nullable|string', 'default' => null],
+        ]);
+
+        $this->assertSame(
+            ['email_invoice' => false, 'min_order_total' => 0],
+            $schema->defaults(),
+        );
+    }
 }
