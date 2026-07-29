@@ -11,6 +11,14 @@ Pravidla: [`.claude/skills/versioning/SKILL.md`](.claude/skills/versioning/SKILL
 
 > CHANGELOG vede milníky (minor/major). Detail patchů je v `git log`.
 
+## [0.28.0] – 2026-07-29
+
+**Fáze 2 / vlna 2.10 — nastavení modulů a správa tarifů.** Start implementačního plánu (`docs/superpowers/plans/2026-07-29-vlna-210-nastaveni-modulu.md`), spec `docs/superpowers/specs/2026-07-29-vlna-210-nastaveni-modulu-design.md`.
+
+Zadání: nájemce nastaví chování modulu z adminu na jedné generické obrazovce vygenerované ze schématu v manifestu (`SettingsService::set()` dosud nevolal nikdo, takže sedm nastavení modulu `docs` šlo změnit jen v kódu), `variant_display` se stěhuje z obrazovky Vzhled tam, kam patří, `checkout` dostává minimum objednávky a přepínač nákupu bez registrace, `orders` prefix čísla objednávky. Superadmin dostává obrazovku nad `plan_modules` — přiřazení modulu tarifu dnes jde jen migrací, což je past, do které vlna 2.9 spadla.
+
+Před tím ještě tři opravy nalezené proklikáním dema: prázdná obrazovka produktů v adminu (chybějící import `computed`), slepá ulička v pokladně (krok dopravy se překresloval místo aby pustil dál) a superadmin zamčený ven z `/superadmin/login` tím, že byl přihlášený.
+
 ## [0.27.0] – 2026-07-28
 
 **Fáze 2 / vlna 2.9 — XML feedy pro Heureku a Zboží.cz.** Nájemce zapne feed v adminu a porovnávač si z jeho domény stáhne katalog: `/feed/heureka.xml` a `/feed/zbozi.xml`. Bez feedu český e-shop prakticky neprodává. 1600 testů (5603 assertions).
