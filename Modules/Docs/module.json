@@ -11,6 +11,7 @@
     "listens": ["order.paid", "order.shipped"],
     "permissions": ["docs.manage"],
     "settings_schema": "settings.json",
+    "settings_permission": "docs.manage",
     "nav": [
         { "area": "admin", "label": "Doklady", "route": "admin.docs.index", "icon": "file-text", "order": 55 }
     ]
