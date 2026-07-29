@@ -3,6 +3,7 @@
 namespace Tests\Unit\Core;
 
 use App\Core\Settings\SettingsSchema;
+use InvalidArgumentException;
 use PHPUnit\Framework\TestCase;
 
 class SettingsSchemaTest extends TestCase
@@ -83,5 +84,30 @@ class SettingsSchemaTest extends TestCase
             ['email_invoice' => false, 'min_order_total' => 0],
             $schema->defaults(),
         );
+    }
+
+    public function test_a_list_of_rule_strings_is_joined_with_pipes(): void
+    {
+        // Ordinary Laravel convention — ['integer', 'min:0'] is what
+        // Validator::make() accepts natively — must not silently no-op.
+        $schema = SettingsSchema::fromArray(['due_days' => ['integer', 'min:0']]);
+
+        $this->assertSame('integer|min:0', $schema->field('due_days')->rules);
+    }
+
+    public function test_an_object_with_no_rules_key_throws(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('Settings field [due_days] declares no validation rules.');
+
+        SettingsSchema::fromArray(['due_days' => ['label' => 'Splatnost']]);
+    }
+
+    public function test_an_explicitly_empty_rules_string_throws(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('Settings field [due_days] declares no validation rules.');
+
+        SettingsSchema::fromArray(['due_days' => ['rules' => '']]);
     }
 }

@@ -2,6 +2,8 @@
 
 namespace App\Core\Settings;
 
+use InvalidArgumentException;
+
 /**
  * A module's settings.json, parsed.
  *
@@ -26,8 +28,21 @@ final readonly class SettingsSchema
         $fields = [];
 
         foreach ($raw as $key => $definition) {
+            if (is_array($definition) && array_is_list($definition)) {
+                // Ordinary Laravel convention — Validator::make() accepts an
+                // array of rule strings natively — must not silently no-op
+                // for want of a 'rules' key.
+                $definition = ['rules' => implode('|', $definition)];
+            }
+
             $definition = is_array($definition) ? $definition : ['rules' => (string) $definition];
             $rules = (string) ($definition['rules'] ?? '');
+
+            if ($rules === '') {
+                // A field with no rules is a malformed schema. Silently
+                // authorizing anything is the worst possible reading of it.
+                throw new InvalidArgumentException("Settings field [{$key}] declares no validation rules.");
+            }
 
             $fields[$key] = new SettingsField(
                 key: $key,
