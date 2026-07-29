@@ -10,10 +10,12 @@ use App\Core\Tenancy\TenantContext;
 use App\Models\Module;
 use App\Models\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Concerns\ActivatesModules;
 use Tests\TestCase;
 
 class SettingsServiceTest extends TestCase
 {
+    use ActivatesModules;
     use RefreshDatabase;
 
     private SettingsService $settings;
@@ -24,11 +26,15 @@ class SettingsServiceTest extends TestCase
 
     private Tenant $tenantB;
 
+    private Tenant $tenant;
+
     protected function setUp(): void
     {
         parent::setUp();
 
         config()->set('cache.default', 'array');
+
+        $this->artisan('modules:sync')->assertSuccessful();
 
         $this->settings = app(SettingsService::class);
         $this->context = app(TenantContext::class);
@@ -36,6 +42,11 @@ class SettingsServiceTest extends TestCase
 
         $this->tenantA = Tenant::factory()->create();
         $this->tenantB = Tenant::factory()->create();
+
+        // The docs module ships a real settings.json (due_days, number_prefix,
+        // ...) — reused below instead of a synthetic fixture schema.
+        $this->tenant = Tenant::factory()->withDomain('shop1.droidshop')->create();
+        $this->activateModule($this->tenant, 'docs');
     }
 
     public function test_get_returns_default_when_unset(): void
@@ -124,6 +135,65 @@ class SettingsServiceTest extends TestCase
         $this->assertSame(30, $this->context->runAs($this->tenantA, fn () => $this->settings->get('demo', 'per_page')));
     }
 
+    public function test_an_unset_value_reads_as_the_schema_default(): void
+    {
+        $this->context->runAs($this->tenant, function (): void {
+            $settings = app(SettingsService::class);
+
+            // docs/settings.json declares due_days default 14
+            $this->assertSame(14, $settings->get('docs', 'due_days'));
+        });
+    }
+
+    public function test_set_many_writes_every_value(): void
+    {
+        $this->context->runAs($this->tenant, function (): void {
+            $settings = app(SettingsService::class);
+
+            $settings->setMany('docs', ['due_days' => 30, 'number_prefix' => 'FV']);
+
+            $this->assertSame(30, $settings->get('docs', 'due_days'));
+            $this->assertSame('FV', $settings->get('docs', 'number_prefix'));
+        });
+    }
+
+    public function test_set_many_writes_nothing_when_one_value_is_invalid(): void
+    {
+        $this->context->runAs($this->tenant, function (): void {
+            $settings = app(SettingsService::class);
+            $settings->setMany('docs', ['due_days' => 30]);
+
+            try {
+                $settings->setMany('docs', ['due_days' => 45, 'number_prefix' => str_repeat('x', 500)]);
+                $this->fail('Expected InvalidSetting.');
+            } catch (InvalidSetting) {
+                // expected
+            }
+
+            $this->assertSame(30, $settings->get('docs', 'due_days'));
+        });
+    }
+
+    public function test_set_many_refuses_a_key_the_schema_does_not_declare(): void
+    {
+        $this->context->runAs($this->tenant, function (): void {
+            $this->expectException(InvalidSetting::class);
+
+            app(SettingsService::class)->setMany('docs', ['nonsense' => 1]);
+        });
+    }
+
+    public function test_one_tenants_settings_never_leak_into_another(): void
+    {
+        $other = Tenant::factory()->withDomain('shop2.droidshop')->create();
+
+        $this->context->runAs($this->tenant, fn () => app(SettingsService::class)->setMany('docs', ['due_days' => 30]));
+
+        $this->context->runAs($other, function (): void {
+            $this->assertSame(14, app(SettingsService::class)->get('docs', 'due_days'));
+        });
+    }
+
     /**
      * Registers a module whose manifest points at a settings schema on disk.
      */
@@ -132,7 +202,7 @@ class SettingsServiceTest extends TestCase
         $dir = base_path('Modules/Demo');
         @mkdir($dir, 0777, true);
         file_put_contents($dir.'/settings.json', json_encode([
-            'per_page' => ['integer', 'min:1', 'max:100'],
+            'per_page' => 'integer|min:1|max:100',
         ]));
 
         Module::create([

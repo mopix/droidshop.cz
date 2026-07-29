@@ -38,7 +38,7 @@ class SettingsService
     {
         $tenantId = $this->requireTenant();
 
-        return Cache::remember(
+        $stored = Cache::remember(
             "settings:{$tenantId}:{$module}",
             now()->addHour(),
             fn () => DB::table('settings')
@@ -48,6 +48,11 @@ class SettingsService
                 ->map(fn ($json) => json_decode($json, true))
                 ->all()
         );
+
+        // The schema is the single source of the default. Leaving it to each
+        // call site (get('docs', 'due_days', config(...))) means schema and code
+        // can disagree about what an untouched shop is running on.
+        return [...$this->schemaFor($module)?->defaults() ?? [], ...$stored];
     }
 
     public function set(string $module, string $key, mixed $value): void
@@ -64,17 +69,44 @@ class SettingsService
         $this->forget($module);
     }
 
+    /**
+     * Validate the whole set, then write it in one transaction.
+     *
+     * Per-key writing would leave a form half-applied when the sixth value is
+     * rejected — the shop would then be running a mix of the old and the new
+     * configuration with nothing on screen saying so.
+     *
+     * @param  array<string, mixed>  $values
+     */
+    public function setMany(string $module, array $values): void
+    {
+        $tenantId = $this->requireTenant();
+
+        foreach ($values as $key => $value) {
+            $this->validate($module, $key, $value);
+        }
+
+        DB::transaction(function () use ($tenantId, $module, $values): void {
+            foreach ($values as $key => $value) {
+                DB::table('settings')->updateOrInsert(
+                    ['tenant_id' => $tenantId, 'module' => $module, 'key' => $key],
+                    ['value' => json_encode($value), 'updated_at' => now(), 'created_at' => now()],
+                );
+            }
+        });
+
+        $this->forget($module);
+    }
+
     public function forget(string $module): void
     {
         Cache::forget("settings:{$this->requireTenant()}:{$module}");
     }
 
     /**
-     * The JSON-schema-ish rules a module declares for its settings, or null.
-     *
-     * @return array<string, mixed>|null
+     * The settings schema a module declares, or null when it has none.
      */
-    public function schemaFor(string $module): ?array
+    public function schemaFor(string $module): ?SettingsSchema
     {
         $model = $this->registry->all()->get($module);
 
@@ -94,7 +126,7 @@ class SettingsService
             return null;
         }
 
-        return json_decode((string) file_get_contents($path), true);
+        return SettingsSchema::fromArray(json_decode((string) file_get_contents($path), true) ?? []);
     }
 
     private function validate(string $module, string $key, mixed $value): void
@@ -109,11 +141,11 @@ class SettingsService
             return;
         }
 
-        if (! isset($schema[$key])) {
+        if (! $schema->has($key)) {
             throw InvalidSetting::unknownKey($module, $key);
         }
 
-        $validator = Validator::make([$key => $value], [$key => $schema[$key]]);
+        $validator = Validator::make([$key => $value], [$key => $schema->field($key)->rules]);
 
         if ($validator->fails()) {
             throw InvalidSetting::failedValidation($module, $key, $validator->errors()->first($key));
