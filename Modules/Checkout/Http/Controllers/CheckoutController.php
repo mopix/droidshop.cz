@@ -182,8 +182,18 @@ class CheckoutController
             $this->carts->choosePickupPoint($cart, null);
         }
 
+        // The step answers two questions on one page, and the payment radios
+        // only exist once a shipping method is stored — so the first submit
+        // has to come back here to show them. Once both halves are answered
+        // (and a pickup-point carrier has its branch), "Pokračovat" moves on:
+        // re-rendering the same page again is a dead end, since nothing else
+        // on it links to /pokladna/udaje.
+        $ready = $shippingId !== null
+            && $paymentId !== null
+            && (! $this->requiresPickupPoint($method) || $cart->cartPickupPointCode() !== null);
+
         return CartCookie::attach(
-            redirect()->route('storefront.checkout.shipping'),
+            redirect()->route($ready ? 'storefront.checkout.details' : 'storefront.checkout.shipping'),
             $cart,
             $request,
         );

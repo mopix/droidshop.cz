@@ -114,6 +114,15 @@ $app = Application::configure(basePath: dirname(__DIR__))
                 return route('storefront.customers.account');
             }
 
+            // Same dead end one guard over: a signed-in superadmin reopening
+            // /superadmin/login would be sent to /dashboard, which its
+            // platform session cannot open, and from there to the tenant
+            // staff /login — locked out of the platform by having been
+            // logged into it.
+            if (in_array('guest:platform', $routeMiddleware, true)) {
+                return route('platform.dashboard');
+            }
+
             return route('dashboard');
         });
     })
