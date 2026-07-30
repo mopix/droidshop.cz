@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<dat:dataPack xmlns:inv="http://www.stormware.cz/schema/version_2/invoice.xsd" xmlns:typ="http://www.stormware.cz/schema/version_2/type.xsd" version="2.0" application="DroidShop" ico="12345678" xmlns:dat="http://www.stormware.cz/schema/version_2/data.xsd">
+ <dat:dataPackItem version="2.0" id="20260001">
+  <inv:invoice version="2.0">
+   <inv:invoiceHeader>
+    <inv:invoiceType>issuedInvoice</inv:invoiceType>
+    <inv:number>
+     <typ:numberRequested>20260001</typ:numberRequested>
+    </inv:number>
+    <inv:date>2026-07-30</inv:date>
+    <inv:dateTax>2026-07-30</inv:dateTax>
+    <inv:dateDue>2026-08-13</inv:dateDue>
+    <inv:symVar>20260001</inv:symVar>
+    <inv:partnerIdentity>
+     <typ:address>
+      <typ:company>Jana Nováková</typ:company>
+      <typ:street>Hlavní 1</typ:street>
+      <typ:city>Praha</typ:city>
+      <typ:zip>110 00</typ:zip>
+      <typ:ico></typ:ico>
+      <typ:dic></typ:dic>
+     </typ:address>
+    </inv:partnerIdentity>
+    <inv:accounting>
+     <typ:ids>3Fv</typ:ids>
+    </inv:accounting>
+   </inv:invoiceHeader>
+   <inv:invoiceDetail>
+    <inv:invoiceItem>
+     <inv:text>Klávesnice Acme</inv:text>
+     <inv:quantity>2</inv:quantity>
+     <inv:rateVAT>high</inv:rateVAT>
+     <inv:homeCurrency>
+      <typ:unitPrice>999.00</typ:unitPrice>
+     </inv:homeCurrency>
+    </inv:invoiceItem>
+   </inv:invoiceDetail>
+   <inv:invoiceSummary>
+    <inv:homeCurrency>
+     <typ:priceHigh>1733.06</typ:priceHigh>
+     <typ:priceHighVAT>363.94</typ:priceHighVAT>
+    </inv:homeCurrency>
+   </inv:invoiceSummary>
+  </inv:invoice>
+ </dat:dataPackItem>
+</dat:dataPack>
