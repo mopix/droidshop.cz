@@ -44,8 +44,12 @@ class DemoShopSeeder extends Seeder
         $tenant = Tenant::firstWhere('name', 'Demo obchod');
 
         if (! $tenant) {
-            // Demo plan must grant every deployed module so provisioning activates them all.
-            foreach (Module::query()->pluck('key') as $key) {
+            // Demo plan must grant every deployed module so provisioning
+            // activates them all — except core ones, which run in every shop
+            // regardless of tarif. A core grant row grants nothing and lands in
+            // the deactivate set of PlanModuleReconciler/TenantPlanSwitcher,
+            // where ModuleRegistry::deactivate() throws.
+            foreach (Module::query()->where('core', false)->pluck('key') as $key) {
                 if (! $plan->modules()->where('module_key', $key)->exists()) {
                     $plan->modules()->attach($key);
                 }

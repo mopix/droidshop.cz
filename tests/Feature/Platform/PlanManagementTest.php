@@ -61,6 +61,21 @@ class PlanManagementTest extends TestCase
                 ->where('plans.0.modules', 3));
     }
 
+    public function test_the_list_counts_only_the_modules_the_plan_can_actually_grant(): void
+    {
+        // A core key can sit in plan_modules (DemoShopSeeder attaches every
+        // deployed module to the demo plan). The detail screen leaves core out
+        // of the checkboxes, so counting raw rows here made the list say 13
+        // where the detail offered 12.
+        $this->plan->modules()->attach('storefront');
+
+        $this->actingAsPlatformAdmin();
+
+        $this->get($this->url())
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page->where('plans.0.modules', 3));
+    }
+
     public function test_the_detail_lists_every_deployed_module_with_the_plan_selection(): void
     {
         $this->actingAsPlatformAdmin();

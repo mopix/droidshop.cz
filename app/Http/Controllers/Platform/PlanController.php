@@ -8,6 +8,7 @@ use App\Core\Services\AuditLog;
 use App\Http\Controllers\Controller;
 use App\Models\Module;
 use App\Models\Plan;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -32,7 +33,14 @@ class PlanController extends Controller
     public function index(): Response
     {
         $plans = Plan::query()
-            ->withCount(['tenants', 'modules'])
+            ->withCount([
+                'tenants',
+                // Core keys can sit in plan_modules (DemoShopSeeder attaches
+                // every deployed module to the demo plan) but carry no checkbox
+                // on the detail screen, so counting raw rows made this list
+                // claim one module more than the detail actually offers.
+                'modules' => fn (Builder $query) => $query->where('modules.core', false),
+            ])
             ->orderBy('id')
             ->get()
             ->map(fn (Plan $plan) => [
