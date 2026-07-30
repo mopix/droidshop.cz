@@ -89,6 +89,8 @@ CACHE_STORE=array SESSION_DRIVER=file QUEUE_CONNECTION=sync php artisan serve --
 | **Vlastní doména (2.1)** | http://obchod.droidshop:8000/admin/nastaveni/domena |
 | **Vzhled — logo/barvy (2.2)** | http://obchod.droidshop:8000/admin/nastaveni/vzhled |
 | **Nastavení modulů (2.10)** | http://obchod.droidshop:8000/admin/nastaveni/moduly |
+| **Účetní export — Pohoda/ISDOC (2.11)** | http://obchod.droidshop:8000/admin/m/accounting |
+| **Nastavení předkontací (2.11)** | http://obchod.droidshop:8000/admin/nastaveni/moduly/accounting |
 | Předplatné (Stripe) | http://obchod.droidshop:8000/admin/predplatne |
 | Faktury předplatného | http://obchod.droidshop:8000/admin/predplatne/faktury |
 | „Moje e-shopy" (dashboard) | http://obchod.droidshop:8000/dashboard |
