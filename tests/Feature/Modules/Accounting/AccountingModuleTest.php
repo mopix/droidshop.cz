@@ -23,6 +23,10 @@ class AccountingModuleTest extends TestCase
 
     private User $owner;
 
+    private Plan $base;
+
+    private Plan $premium;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -30,17 +34,22 @@ class AccountingModuleTest extends TestCase
         config()->set('cache.default', 'array');
         config()->set('tenancy.platform_domain', 'droidshop');
 
-        // The premium plan must exist before the sync runs: PlanModuleDefaults
+        // Both plans must exist before the sync runs: PlanModuleDefaults
         // grants a freshly-registered module only to the plans that exist at
-        // that exact moment (see its docblock) — a plan created afterwards
-        // would never see the grant, regardless of its level.
-        $premium = Plan::factory()->premium()->create(['key' => 'premium']);
+        // that exact moment (see its docblock). Creating only the premium
+        // plan here would make the "base does not get it" half of the test
+        // pass for the wrong reason — a plan absent at sync time never gets
+        // the grant regardless of its level, so that assertion would hold
+        // even if the manifest said `level: base`. Both must be present so
+        // the difference between them is actually attributable to `level`.
+        $this->base = Plan::factory()->create(['key' => 'base']);
+        $this->premium = Plan::factory()->premium()->create(['key' => 'premium']);
 
         $this->artisan('modules:sync')->assertSuccessful();
 
         app(TenantContext::class)->forget();
 
-        $this->tenant = Tenant::factory()->withDomain('shop1.droidshop')->create(['plan_id' => $premium->id]);
+        $this->tenant = Tenant::factory()->withDomain('shop1.droidshop')->create(['plan_id' => $this->premium->id]);
         $this->owner = User::factory()->create();
         $this->tenant->users()->attach($this->owner, ['role' => 'owner', 'joined_at' => now()]);
     }
@@ -52,13 +61,11 @@ class AccountingModuleTest extends TestCase
 
     public function test_the_module_is_premium_only(): void
     {
-        $base = Plan::factory()->create(['key' => 'base']);
-
-        $this->assertFalse($base->modules()->where('modules.key', 'accounting')->exists());
-        $this->assertTrue(
-            Plan::where('key', 'premium')->firstOrFail()
-                ->modules()->where('modules.key', 'accounting')->exists()
-        );
+        // Both plans existed before modules:sync ran (setUp), so this is a
+        // genuine assertion about `level: premium` in the manifest, not an
+        // artifact of one plan missing at grant time.
+        $this->assertFalse($this->base->modules()->where('modules.key', 'accounting')->exists());
+        $this->assertTrue($this->premium->modules()->where('modules.key', 'accounting')->exists());
     }
 
     public function test_a_shop_without_the_module_gets_a_404(): void
