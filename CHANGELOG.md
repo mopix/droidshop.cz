@@ -11,6 +11,28 @@ Pravidla: [`.claude/skills/versioning/SKILL.md`](.claude/skills/versioning/SKILL
 
 > CHANGELOG vede milníky (minor/major). Detail patchů je v `git log`.
 
+## [0.30.0] – 2026-07-30
+
+**Tarify se skládají z `level` v manifestu.** `App\Core\Modules\PlanModuleDefaults` je jediné místo, které říká, který tarif modul uděluje.
+
+Vyšlo to z otázky „proč seznam tarifů hlásí 13 modulů, když detail nabízí 12". Odpověď (core `storefront` v `plan_modules`) byla jen vrchol: `level` v manifestu **nikdy nic neautorizoval** — jediný gate je řádek v `plan_modules` — a ordinární moduly tam nikdo nevložil. V čerstvé produkční DB udělovaly tarify jen `discounts` a `feeds`, takže onboardovaný nájemce dostal e-shop **bez katalogu a bez pokladny**.
+
+### Pravidlo
+- `core` → žádný tarif (běží všude tak jako tak; grant řádek by nic neudělal a spadl by do deaktivační sady, kde `deactivate()` vyhazuje)
+- `level: base` → všechny tarify
+- `level: premium` → jen tarify s vlastním levelem premium
+
+Volají ho `PlanSeeder` (čerstvá instalace), migrace `2026_07_30_100000_grant_plan_modules_by_manifest_level` (backfill nasazené DB) a `modules:sync` **jen pro modul, který právě vytvořil** — vědomé odebrání modulu z tarifu na `/superadmin/tarify` deploy nepřepíše. Nový modul tedy nepotřebuje vlastní attach migraci, jen správný `level`.
+
+### Rozdělení tarifů (rozhodnutí vlastníka)
+- **base** = celý prodejní e-shop: katalog, pokladna, objednávky, doprava, platby, zákazníci, stránky, faktury, feedy pro Heureku/Zboží, Zásilkovna
+- **premium** = base + marketingové nástroje (dnes `discounts`) a vyšší limity (produkty 500→5000, storage 2→20 GB, e-maily 3k→30k)
+
+`DemoShopSeeder` zakládá demo na premium a moduly tarifu nepřiřazuje sám — dřív demo tarifu přiřadil všechno včetně core, čímž se do `plan_modules` dostal `storefront`.
+
+### Testy
+1670 zelených (5895 assertions). `PlanModuleDefaultsTest::test_the_real_manifests_compose_the_shipped_tarifs` hlídá nad **reálnými manifesty**, že base tarif uděluje všechno, s čím se prodává — kontrola, která ve vlně 2.9 chyběla.
+
 ## [0.29.0] – 2026-07-30
 
 **Fáze 2 / vlna 2.10 — nastavení modulů (nájemce) a správa tarifů (superadmin).** Uzavření vlny (`docs/as-is/2026-07-29-nastaveni-modulu.md`). 1658 testů (5845 assertions).

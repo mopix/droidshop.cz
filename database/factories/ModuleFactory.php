@@ -55,6 +55,11 @@ class ModuleFactory extends Factory
         return $this->state(fn () => ['core' => true]);
     }
 
+    public function premium(): static
+    {
+        return $this->state(fn () => ['level' => PlanLevel::Premium]);
+    }
+
     public function killed(): static
     {
         return $this->state(fn () => ['enabled_globally' => false]);
