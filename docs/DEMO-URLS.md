@@ -88,6 +88,7 @@ CACHE_STORE=array SESSION_DRIVER=file QUEUE_CONNECTION=sync php artisan serve --
 | Fakturační profil | http://obchod.droidshop:8000/admin/nastaveni/fakturace |
 | **Vlastní doména (2.1)** | http://obchod.droidshop:8000/admin/nastaveni/domena |
 | **Vzhled — logo/barvy (2.2)** | http://obchod.droidshop:8000/admin/nastaveni/vzhled |
+| **Nastavení modulů (2.10)** | http://obchod.droidshop:8000/admin/nastaveni/moduly |
 | Předplatné (Stripe) | http://obchod.droidshop:8000/admin/predplatne |
 | Faktury předplatného | http://obchod.droidshop:8000/admin/predplatne/faktury |
 | „Moje e-shopy" (dashboard) | http://obchod.droidshop:8000/dashboard |
@@ -102,10 +103,11 @@ CACHE_STORE=array SESSION_DRIVER=file QUEUE_CONNECTION=sync php artisan serve --
 | Dashboard | http://droidshop:8000/superadmin |
 | Tenanti | http://droidshop:8000/superadmin/tenanti |
 | Moduly (kill switch) | http://droidshop:8000/superadmin/moduly |
+| **Tarify — složení modulů (2.10)** | http://droidshop:8000/superadmin/tarify |
 
 Odtud přes navigaci: tenanti (stavy, tarify, moduly, kill switch), platformní faktury, impersonace nájemce. Detaily rout: `php artisan route:list | grep superadmin`.
 
-> `/superadmin/moduly` je jen přehled + globální kill switch. Zapnutí modulu **konkrétnímu** nájemci je na detailu tenanta; mapování tarif↔modul UI nemá (jen `plan_modules` migrací). Nastavení uvnitř modulu (`settings_schema`) zatím nemá obrazovku vůbec.
+> `/superadmin/moduly` je jen přehled + globální kill switch. Zapnutí modulu **konkrétnímu** nájemci je na detailu tenanta; složení tarifu se od vlny 2.10 edituje na `/superadmin/tarify` (uložení rekonciluje moduly všem e-shopům tarifu, odebrání vyžaduje důvod). Nastavení uvnitř modulu (`settings_schema`) má od 2.10 obrazovku v adminu nájemce (`/admin/nastaveni/moduly`).
 >
 > **Demo tenant je starší než pozdější vlny**, takže moduly přidané po jeho založení (`docs`, `discounts`, `packeta`, `pages`, `feeds`) mu musí být dozapnuté — buď na detailu tenanta v superadminu, nebo tinkerem přes `ModuleRegistry::activate()`. Nový tenant z `TenantProvisioner` je dostane rovnou.
 

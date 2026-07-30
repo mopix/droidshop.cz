@@ -1723,7 +1723,7 @@ git commit -m "feat(platform): manage plan modules from the superadmin"
 
 ### Task 10: Uzavření vlny
 
-- [ ] **Krok 1: Spusť celou sadu**
+- [x] **Krok 1: Spusť celou sadu**
 
 Spusť: `php artisan test --compact`
 Očekávej: PASS, žádný pád.
@@ -1732,15 +1732,15 @@ Očekávej: PASS, žádný pád.
 
 `php artisan serve`, přihlas se jako `admin@demo.cz`, projdi `/admin/nastaveni/moduly`, změň `docs.auto_issue_on` na „Při odeslání", zaplať objednávku (faktura nesmí vzniknout), odešli ji (faktura musí vzniknout). Jako superadmin změň složení tarifu a zkontroluj, že se to na e-shopu projeví.
 
-- [ ] **Krok 3: Napiš as-is**
+- [x] **Krok 3: Napiš as-is**
 
 `docs/as-is/2026-07-29-nastaveni-modulu.md` podle `.claude/rules/as-is-on-milestone.md`, včetně povinné sekce Odchylky od specifikace.
 
-- [ ] **Krok 4: Zapiš rozhodnutí do `CLAUDE.md`**
+- [x] **Krok 4: Zapiš rozhodnutí do `CLAUDE.md`**
 
 Minimálně: `settings_permission` jako manifestový klíč a proč nestačí konvence `<klíč>.manage`; obrazovka v jádře místo `/admin/m/{modul}/nastaveni` kvůli kolizi s vazbou produktu na slug; rekonciliace tarifu se řídí živým stavem, ne diffem editace.
 
-- [ ] **Krok 5: Aktualizuj `docs/DEMO-URLS.md`**
+- [x] **Krok 5: Aktualizuj `docs/DEMO-URLS.md`**
 
 Přidej `/admin/nastaveni/moduly` a `/superadmin/tarify`.
 
