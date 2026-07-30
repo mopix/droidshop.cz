@@ -54,14 +54,17 @@ class AccountingExportController
         $settings = $this->settings->all('accounting');
         $base = 'ucetni-export-'.$from->format('Y-m-d').'_'.$to->format('Y-m-d');
 
+        // Audited only once the file actually exists: a writer that throws
+        // mid-generation (e.g. an unsupported VAT rate) must not leave behind
+        // an "exported" row for an export that never reached the nájemce.
+        $file = $format->writeBatch($documents, $settings, $base);
+
         $this->audit->log('accounting.exported', null, [
             'format' => $format->key(),
             'from' => $from->toDateString(),
             'to' => $to->toDateString(),
             'documents' => $documents->count(),
         ]);
-
-        $file = $format->writeBatch($documents, $settings, $base);
 
         // deleteFileAfterSend: the archive is a temporary artefact and must not
         // linger in the system temp directory or count against storage_mb.

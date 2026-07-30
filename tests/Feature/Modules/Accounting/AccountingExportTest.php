@@ -152,4 +152,23 @@ class AccountingExportTest extends DocsTestCase
             'action' => 'accounting.exported',
         ]);
     }
+
+    public function test_a_failed_generation_leaves_no_audit_row(): void
+    {
+        // A document whose line carries a rate VatRateMap::pohoda() does not
+        // know (21/12/0 are the only ones) makes writeDetail() throw
+        // UnsupportedVatRate mid-loop — a real failure raised by the writer's
+        // own code, the same lever IsdocFormatTest uses for "a document the
+        // writer cannot honestly render". The export must not audit an
+        // "exported" event for a file that never reached the nájemce.
+        $invoice = $this->issueInvoice();
+
+        $items = $invoice->items;
+        $items[0]['tax_rate'] = '15.00';
+        \DB::table('documents')->where('id', $invoice->id)->update(['items' => json_encode($items)]);
+
+        $this->actingAs($this->owner)->get($this->exportUrl('pohoda'));
+
+        $this->assertDatabaseMissing('audit_log', ['action' => 'accounting.exported']);
+    }
 }
