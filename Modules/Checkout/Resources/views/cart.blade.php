@@ -115,10 +115,16 @@
             @endif
         </div>
 
-        <p class="mt-4 text-right">
-            <a href="{{ route('storefront.checkout.shipping') }}" class="btn btn-primary">
-                Pokračovat k pokladně
-            </a>
-        </p>
+        @if ($minimumOrderTotal)
+            <p role="status" class="mt-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">
+                Minimální hodnota objednávky je {{ $minimumOrderTotal->format() }}. Přidejte prosím další zboží.
+            </p>
+        @else
+            <p class="mt-4 text-right">
+                <a href="{{ route('storefront.checkout.shipping') }}" class="btn btn-primary">
+                    Pokračovat k pokladně
+                </a>
+            </p>
+        @endif
     @endif
 @endsection

@@ -1150,7 +1150,7 @@ git commit -m "refactor(products): move the variant display to module settings"
 - Konzumuje: `SettingsService`, `PricedCart::$payableTotal`/`$itemsTotal`.
 - Produkuje: nic pro další úkoly.
 
-- [ ] **Krok 1: Napiš padající test**
+- [x] **Krok 1: Napiš padající test**
 
 ```php
 public function test_a_cart_below_the_minimum_cannot_be_ordered(): void
@@ -1222,12 +1222,12 @@ public function test_the_minimum_also_refuses_a_direct_post_to_place(): void
 }
 ```
 
-- [ ] **Krok 2: Spusť test, ověř pád**
+- [x] **Krok 2: Spusť test, ověř pád**
 
 Spusť: `php artisan test --filter=CheckoutSettingsTest`
 Očekávej: FAIL — nastavení neexistuje, pokladna pustí dál.
 
-- [ ] **Krok 3: Přidej schéma**
+- [x] **Krok 3: Přidej schéma**
 
 `Modules/Checkout/settings.json`:
 
@@ -1252,7 +1252,7 @@ Očekávej: FAIL — nastavení neexistuje, pokladna pustí dál.
 
 `Modules/Checkout/module.json`: `"permissions": ["checkout.manage"]`, `"settings_schema": "settings.json"`, `"settings_permission": "checkout.manage"`.
 
-- [ ] **Krok 4: Vynuť pravidla v `CheckoutController`**
+- [x] **Krok 4: Vynuť pravidla v `CheckoutController`**
 
 Do `details()` hned za kontrolu prázdného košíku a do `place()` před založení objednávky:
 
@@ -1313,12 +1313,12 @@ private function refuseGuest(Request $request): ?RedirectResponse
 
 Do košíkové Blade šablony přidej hlášku, když je `payableTotal` pod minimem, a schovej tlačítko „Pokračovat k pokladně".
 
-- [ ] **Krok 5: Spusť testy**
+- [x] **Krok 5: Spusť testy**
 
 Spusť: `php artisan test tests/Feature/Modules/Checkout`
 Očekávej: PASS včetně stávajících 80 testů.
 
-- [ ] **Krok 6: Commit**
+- [x] **Krok 6: Commit**
 
 ```bash
 ./vendor/bin/pint Modules/Checkout
