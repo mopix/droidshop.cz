@@ -11,6 +11,39 @@ Pravidla: [`.claude/skills/versioning/SKILL.md`](.claude/skills/versioning/SKILL
 
 > CHANGELOG vede milníky (minor/major). Detail patchů je v `git log`.
 
+## [0.32.0] – 2026-07-30
+
+**Fáze 2 / vlna 2.11 — modul `accounting`: export dokladů do Pohody a ISDOC (premium).** Uzavření vlny (`docs/as-is/2026-07-30-accounting-export.md`). 1734 testů (6126 assertions).
+
+Nájemcova účetní dostávala z e-shopu jen CSV se souhrnem DPH — doklady musela do účetního programu opsat. Modul vydá tytéž doklady ve formátech, které se importují: **Pohoda XML** (dávka za období) a **ISDOC 6.0.1** (ZIP, jeden soubor per doklad), plus jednotlivý doklad jako `.isdoc` ze seznamu dokladů. První nový **premium** modul; premium tarif dosud odlišoval jen `discounts` a limity.
+
+### Modul
+- `level: premium`, právo `accounting.export`, **bez `requires` na `docs`** — null binding `DocumentLedger` vrací prázdno a obrazovka řekne, že není co exportovat. Přiřazení tarifu proběhne samo přes `PlanModuleDefaults`, žádná migrace.
+- Registry formátů uvnitř modulu (`AccountingFormat` + `AccountingFormats`, vzor `PaymentGatewayRegistry`); třetí formát bude nový soubor bez zásahu do stávajících.
+- Konfigurace předkontací (předkontace faktury/dobropisu, členění DPH, středisko, činnost) jede na generické obrazovce nastavení modulů z vlny 2.10 — nulový nový UI kód.
+- `DocumentLedger` rozšířen o `findTaxDocument($number, $type)`; **typ je povinný**, protože číslo je od vlny 1.6 unikátní jen v rámci `(tenant, type)`.
+
+### Co zachytilo až finální review (a bylo by to v účetnictví vidět)
+- **Ceny ve snímku jsou s DPH, obě cílová pole jsou bez DPH.** Hrubé částky se zapisovaly do čistých polí, takže import by seděl zhruba o 21 % výš. `DocumentLines` teď převádí přes `TaxRate::net()` celočíselně, Pohoda značí `inv:payVAT`. Golden files to nechytily (porovnávaly jen strukturu), proto k nim přibyly hodnotové aserce počítané nezávisle na exportéru.
+- **Snímek nenese dopravu ani poplatek za platbu**, takže řádky neseděly s `documents.total`; rozdíl se dopočítá per sazba jako řádek „Doprava a poplatky“. Tatáž díra je v zákaznickém PDF — dluh v `Modules/Docs`.
+- `ZipArchive::addFromString()` a `close()` se nekontrolovaly (archiv s tiše chybějící fakturou), audit se zapisoval před generováním, neznámá sazba vracela 500 místo 422, ISDOC obcházel kontrolu sazeb, validační chyby nebyly na obrazovce vidět. Vše opraveno.
+
+### Deploy
+1. `php artisan modules:sync` **před** `migrate`
+2. `npm run build`
+3. Pre-deploy: reálný import Pohoda XML do Pohody a validace ISDOC proti XSD 6.0.1 — tvary elementů i znaménko dobropisu jsou z veřejné dokumentace, ne z XSD.
+
+### Follow-up
+Zákaznické PDF faktury nesečte řádky na „Celkem k úhradě“ (`InvoiceSnapshot`, patří do `Modules/Docs`); u neplátce DPH se dopočtený řádek nevytvoří, ale `PayableAmount` se bere z celkové částky; ISDOC příloha pro odběratele, Money S3, filtry a plná mapovací obrazovka = `docs/future/accounting-dalsi-kroky.md`.
+
+## [0.31.0] – 2026-07-30
+
+**Fáze 2 / vlna 2.11 — modul `accounting`: export dokladů do Pohody a ISDOC (premium).** Start implementačního plánu (`docs/superpowers/plans/2026-07-30-vlna-211-accounting-export.md`), spec `docs/superpowers/specs/2026-07-30-vlna-211-accounting-export-design.md`.
+
+Zadání: nájemcova účetní dnes dostane jen CSV se souhrnem DPH — doklady musí do účetního programu opsat. Modul `accounting` vydá tytéž doklady v Pohoda XML (dávka za období) a ISDOC 6.0.1 (ZIP, jeden soubor per doklad), plus jednotlivý doklad jako `.isdoc` z detailu. Je to zároveň **první nový premium modul**; premium tarif dosud odlišoval jen `discounts` a limity.
+
+Adresátem je účetní nájemce, ne odběratel — ISDOC příloha k faktuře pro zákazníka, Money S3, filtry exportu a plná mapovací obrazovka jsou v `docs/future/accounting-dalsi-kroky.md`.
+
 ## [0.30.0] – 2026-07-30
 
 **Tarify se skládají z `level` v manifestu.** `App\Core\Modules\PlanModuleDefaults` je jediné místo, které říká, který tarif modul uděluje.

@@ -3,6 +3,7 @@
 namespace App\Core\Documents;
 
 use App\Core\Documents\Contracts\DocumentLedger;
+use App\Core\Documents\Contracts\DocumentView;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Collection;
 
@@ -16,5 +17,10 @@ final class NullDocumentLedger implements DocumentLedger
     public function taxableBetween(CarbonInterface $from, CarbonInterface $to): Collection
     {
         return collect();
+    }
+
+    public function findTaxDocument(string $number, string $type): ?DocumentView
+    {
+        return null;
     }
 }

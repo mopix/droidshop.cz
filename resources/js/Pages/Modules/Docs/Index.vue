@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { Link } from '@inertiajs/vue3'
 import AdminLayout from '@/Layouts/AdminLayout.vue'
 import DataTable, { type Column } from '@/Components/Ui/DataTable.vue'
@@ -19,6 +19,7 @@ type DocumentRow = {
 
 const props = defineProps<{
   documents: { data: DocumentRow[]; links: PaginationLink[]; meta?: PaginationMeta }
+  accountingEnabled: boolean
 }>()
 
 const TYPE_LABELS: Record<string, string> = {
@@ -27,14 +28,20 @@ const TYPE_LABELS: Record<string, string> = {
   credit_note: 'Dobropis',
 }
 
-const columns: Column[] = [
+// The ISDOC column is dropped entirely — not just its per-row link — for a
+// shop that does not run the accounting module or a member without the export
+// permission: an always-present column of em dashes advertises a feature that
+// is not there, and a screen reader still reads its header on every row
+// (final review, wave 2.11).
+const columns = computed<Column[]>(() => [
   { key: 'number', label: 'Číslo dokladu' },
   { key: 'order', label: 'Objednávka' },
   { key: 'issued_at', label: 'Vystaveno' },
   { key: 'total', label: 'Celkem', align: 'right' },
   { key: 'sent', label: 'Odesláno' },
   { key: 'download', label: 'Stažení' },
-]
+  ...(props.accountingEnabled ? [{ key: 'isdoc', label: 'ISDOC' } as Column] : []),
+])
 
 const money = (haler: number, currency: string) =>
   new Intl.NumberFormat('cs-CZ', { style: 'currency', currency }).format(haler / 100)
@@ -130,6 +137,17 @@ const vatTo = ref(toIsoDate(today))
           Stáhnout PDF
         </a>
         <span v-else class="text-gray-700">Připravuje se…</span>
+      </template>
+
+      <template #cell-isdoc="{ row }">
+        <a
+          v-if="(row as DocumentRow).type === 'invoice' || (row as DocumentRow).type === 'credit_note'"
+          :href="route('admin.accounting.isdoc', { number: (row as DocumentRow).number, type: (row as DocumentRow).type })"
+          class="text-sm font-medium text-gray-700 underline hover:no-underline"
+        >
+          ISDOC
+        </a>
+        <span v-else class="text-gray-700">—</span>
       </template>
     </DataTable>
 

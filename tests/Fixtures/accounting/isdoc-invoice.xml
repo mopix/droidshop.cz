@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Invoice xmlns="http://isdoc.cz/namespace/2013" version="6.0.1">
+ <DocumentType>1</DocumentType>
+ <ID>20260001</ID>
+ <UUID>014f0ec5-77f1-5193-ae7c-a6f712014eeb</UUID>
+ <IssueDate>2026-07-30</IssueDate>
+ <TaxPointDate>2026-07-30</TaxPointDate>
+ <VATApplicable>true</VATApplicable>
+ <LocalCurrencyCode>CZK</LocalCurrencyCode>
+ <CurrRate>1</CurrRate>
+ <AccountingSupplierParty>
+  <Party>
+   <PartyIdentification>
+    <ID>12345678</ID>
+   </PartyIdentification>
+   <PartyName>
+    <Name>Shop One s.r.o.</Name>
+   </PartyName>
+   <PostalAddress>
+    <StreetName>Hlavní 1</StreetName>
+    <CityName>Praha</CityName>
+    <PostalZone>110 00</PostalZone>
+   </PostalAddress>
+   <PartyTaxScheme>
+    <CompanyID>CZ12345678</CompanyID>
+    <TaxScheme>VAT</TaxScheme>
+   </PartyTaxScheme>
+  </Party>
+ </AccountingSupplierParty>
+ <AccountingCustomerParty>
+  <Party>
+   <PartyIdentification>
+    <ID></ID>
+   </PartyIdentification>
+   <PartyName>
+    <Name>Jana Nováková</Name>
+   </PartyName>
+   <PostalAddress>
+    <StreetName>Hlavní 1</StreetName>
+    <CityName>Praha</CityName>
+    <PostalZone>110 00</PostalZone>
+   </PostalAddress>
+  </Party>
+ </AccountingCustomerParty>
+ <InvoiceLines>
+  <InvoiceLine>
+   <ID>1</ID>
+   <InvoicedQuantity>2</InvoicedQuantity>
+   <LineExtensionAmount>1651.24</LineExtensionAmount>
+   <LineExtensionAmountTaxInclusive>1998.00</LineExtensionAmountTaxInclusive>
+   <LineExtensionTaxAmount>346.76</LineExtensionTaxAmount>
+   <UnitPrice>825.62</UnitPrice>
+   <UnitPriceTaxInclusive>999.00</UnitPriceTaxInclusive>
+   <ClassifiedTaxCategory>
+    <Percent>21</Percent>
+   </ClassifiedTaxCategory>
+   <Item>
+    <Description>Klávesnice Acme</Description>
+   </Item>
+  </InvoiceLine>
+  <InvoiceLine>
+   <ID>2</ID>
+   <InvoicedQuantity>1</InvoicedQuantity>
+   <LineExtensionAmount>81.82</LineExtensionAmount>
+   <LineExtensionAmountTaxInclusive>99.00</LineExtensionAmountTaxInclusive>
+   <LineExtensionTaxAmount>17.18</LineExtensionTaxAmount>
+   <UnitPrice>81.82</UnitPrice>
+   <UnitPriceTaxInclusive>99.00</UnitPriceTaxInclusive>
+   <ClassifiedTaxCategory>
+    <Percent>21</Percent>
+   </ClassifiedTaxCategory>
+   <Item>
+    <Description>Doprava a poplatky</Description>
+   </Item>
+  </InvoiceLine>
+ </InvoiceLines>
+ <TaxTotal>
+  <TaxSubTotal>
+   <TaxableAmount>1733.06</TaxableAmount>
+   <TaxAmount>363.94</TaxAmount>
+   <TaxInclusiveAmount>2097.00</TaxInclusiveAmount>
+   <ClassifiedTaxCategory>
+    <Percent>21</Percent>
+   </ClassifiedTaxCategory>
+  </TaxSubTotal>
+  <TaxAmount>363.94</TaxAmount>
+ </TaxTotal>
+ <LegalMonetaryTotal>
+  <TaxExclusiveAmount>1733.06</TaxExclusiveAmount>
+  <TaxInclusiveAmount>2097.00</TaxInclusiveAmount>
+  <PayableAmount>2097.00</PayableAmount>
+ </LegalMonetaryTotal>
+</Invoice>

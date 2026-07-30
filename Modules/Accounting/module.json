@@ -1,0 +1,30 @@
+{
+    "name": "accounting",
+    "version": "1.0.0",
+    "title": {
+        "cs": "Účetní export"
+    },
+    "description": {
+        "cs": "Export dokladů do účetnictví — Pohoda XML a ISDOC."
+    },
+    "core": false,
+    "billable": false,
+    "level": "premium",
+    "requires": {},
+    "provides": [],
+    "listens": [],
+    "permissions": [
+        "accounting.export"
+    ],
+    "settings_schema": "settings.json",
+    "settings_permission": "accounting.export",
+    "nav": [
+        {
+            "area": "admin",
+            "label": "Účetní export",
+            "route": "admin.accounting.index",
+            "icon": "file-spreadsheet",
+            "order": 57
+        }
+    ]
+}
