@@ -65,6 +65,37 @@ class IsdocFormatTest extends DocsTestCase
         $this->assertTrue(collect($names)->contains(fn (string $n) => str_starts_with($n, 'dobropis-')));
     }
 
+    public function test_a_failed_batch_write_does_not_leave_a_temp_file_behind(): void
+    {
+        // The first document writes fine; the second's in-memory total is
+        // corrupted to null (never persisted — bypasses the model's
+        // immutability guard the same way test_tenant_written_text_is_escaped
+        // does in PohodaXmlFormatTest) so writeOne() fails on a real PHP error
+        // reading ->amount off null, mid-loop, with the archive already
+        // holding one entry. This is a genuine failure raised by the writer's
+        // own code, not a mocked ZipArchive — the same class of "document the
+        // writer cannot honestly render" as Pohoda's unsupported VAT rate.
+        $good = $this->invoice();
+
+        $uuid = $this->placePaidOrder();
+        app(DocumentIssuer::class)->issue($uuid, Document::TYPE_INVOICE);
+        $bad = Document::query()->where('type', Document::TYPE_INVOICE)->latest('id')->firstOrFail();
+        $bad->setRawAttributes(array_merge($bad->getAttributes(), ['total' => null]), true);
+
+        $tempDir = rtrim(sys_get_temp_dir(), '/');
+        $before = glob($tempDir.'/isdoc-*') ?: [];
+
+        try {
+            (new IsdocFormat)->writeBatch(collect([$good, $bad]), [], 'isdoc-fail');
+            $this->fail('Expected writeBatch() to propagate the failure.');
+        } catch (\Throwable $e) {
+            // Expected: writeOne() throws while rendering the corrupted document.
+        }
+
+        $after = glob($tempDir.'/isdoc-*') ?: [];
+        $this->assertSame($before, $after, 'A failed batch write must not leave a temp archive behind.');
+    }
+
     public function test_the_structure_matches_the_golden_file(): void
     {
         $xml = (new IsdocFormat)->writeOne($this->invoice(), []);

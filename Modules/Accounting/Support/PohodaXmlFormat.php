@@ -55,8 +55,18 @@ class PohodaXmlFormat implements AccountingFormat
 
     public function writeBatch(Collection $documents, array $settings, string $filenameBase): array
     {
+        // tempnam() creates the file before wrap() runs, so a failure while
+        // building the XML (e.g. an unsupported VAT rate) must not leave it
+        // behind — the export fails loudly, just without litter.
         $path = tempnam(sys_get_temp_dir(), 'pohoda-');
-        file_put_contents($path, $this->wrap($documents, $settings));
+
+        try {
+            file_put_contents($path, $this->wrap($documents, $settings));
+        } catch (\Throwable $e) {
+            @unlink($path);
+
+            throw $e;
+        }
 
         return [
             'path' => $path,

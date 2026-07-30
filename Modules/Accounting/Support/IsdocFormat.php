@@ -130,18 +130,43 @@ class IsdocFormat implements AccountingFormat
 
     public function writeBatch(Collection $documents, array $settings, string $filenameBase): array
     {
+        // tempnam() creates the file before ZipArchive ever touches it, so any
+        // failure below — open, a single document, or the final close — must
+        // unlink it in the catch block. The export is allowed to fail loudly;
+        // it must not litter the temp directory while doing so.
         $path = tempnam(sys_get_temp_dir(), 'isdoc-');
-        $zip = new ZipArchive;
 
-        if ($zip->open($path, ZipArchive::OVERWRITE) !== true) {
-            throw new RuntimeException('Could not open a temporary archive for the ISDOC export.');
+        try {
+            $zip = new ZipArchive;
+
+            if ($zip->open($path, ZipArchive::OVERWRITE) !== true) {
+                throw new RuntimeException('Could not open a temporary archive for the ISDOC export.');
+            }
+
+            foreach ($documents as $document) {
+                $added = $zip->addFromString($this->filenameFor($document), $this->writeOne($document, $settings));
+
+                if ($added === false) {
+                    throw new RuntimeException(
+                        "Could not add document [{$document->documentNumber()}] to the ISDOC archive."
+                    );
+                }
+            }
+
+            if ($zip->close() !== true) {
+                throw new RuntimeException('Could not finalise the ISDOC archive.');
+            }
+        } catch (\Throwable $e) {
+            // ZipArchive buffers pending entries and flushes them on
+            // destruction even when close() was never called — unlinking
+            // $path alone is not enough, or the destructor recreates the very
+            // file this catch just removed. Close (discarding whatever
+            // partial state it holds) first, then unlink.
+            @$zip->close();
+            @unlink($path);
+
+            throw $e;
         }
-
-        foreach ($documents as $document) {
-            $zip->addFromString($this->filenameFor($document), $this->writeOne($document, $settings));
-        }
-
-        $zip->close();
 
         return [
             'path' => $path,
