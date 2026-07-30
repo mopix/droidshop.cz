@@ -1338,7 +1338,7 @@ git commit -m "feat(checkout): add a minimum order value and a guest checkout sw
 **Rozhraní:**
 - Konzumuje: `SettingsService`, `SequenceService::next('orders')`.
 
-- [ ] **Krok 1: Napiš padající test**
+- [x] **Krok 1: Napiš padající test**
 
 ```php
 public function test_a_new_order_carries_the_configured_prefix(): void
@@ -1365,12 +1365,12 @@ public function test_existing_numbers_are_untouched_by_a_later_prefix_change(): 
 }
 ```
 
-- [ ] **Krok 2: Spusť test, ověř pád**
+- [x] **Krok 2: Spusť test, ověř pád**
 
 Spusť: `php artisan test --filter=OrderNumberPrefixTest`
 Očekávej: FAIL — prefix se ignoruje.
 
-- [ ] **Krok 3: Přidej schéma**
+- [x] **Krok 3: Přidej schéma**
 
 `Modules/Orders/settings.json`:
 
@@ -1388,7 +1388,7 @@ Očekávej: FAIL — prefix se ignoruje.
 
 `Modules/Orders/module.json`: `"settings_schema": "settings.json"`, `"settings_permission": "orders.edit"`.
 
-- [ ] **Krok 4: Slož číslo v `OrderPlacer`**
+- [x] **Krok 4: Slož číslo v `OrderPlacer`**
 
 ```php
 // 7. A gap-free order number for the current tenant. The prefix is a
@@ -1399,12 +1399,12 @@ $number = $this->settings->get('orders', 'number_prefix', '').$this->sequences->
 
 `SettingsService` přidej do konstruktoru `OrderPlacer`.
 
-- [ ] **Krok 5: Spusť testy**
+- [x] **Krok 5: Spusť testy**
 
 Spusť: `php artisan test tests/Feature/Modules/Orders tests/Feature/Modules/Checkout`
 Očekávej: PASS.
 
-- [ ] **Krok 6: Commit**
+- [x] **Krok 6: Commit**
 
 ```bash
 ./vendor/bin/pint Modules/Orders

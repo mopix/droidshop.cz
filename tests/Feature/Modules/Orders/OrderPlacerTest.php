@@ -14,6 +14,7 @@ use App\Core\Orders\Exceptions\PriceChanged;
 use App\Core\Orders\NullOrderPlacement;
 use App\Core\Orders\PlacementRequest;
 use App\Core\Sequences\SequenceService;
+use App\Core\Settings\SettingsService;
 use App\Core\Shipping\Contracts\CarrierRegistry;
 use App\Core\Shipping\Contracts\PaymentOptions;
 use App\Core\Shipping\Contracts\PickupPointCatalog;
@@ -307,7 +308,7 @@ class OrderPlacerTest extends TestCase
         // is forced to miss, so it proceeds to an insert that collides with the
         // winner's row. The catch must re-read and return the winner.
         $result = $this->context->runAs($this->tenant, function () use ($cart, $token) {
-            $placer = new class(app(ShopModules::class), app(ProductCatalog::class), app(ShippingOptions::class), app(PaymentOptions::class), app(SequenceService::class), app(TaxRates::class), app(CarrierRegistry::class), app(PickupPointCatalog::class), app(DiscountEngine::class), app(DiscountRedemption::class)) extends OrderPlacer
+            $placer = new class(app(ShopModules::class), app(ProductCatalog::class), app(ShippingOptions::class), app(PaymentOptions::class), app(SequenceService::class), app(SettingsService::class), app(TaxRates::class), app(CarrierRegistry::class), app(PickupPointCatalog::class), app(DiscountEngine::class), app(DiscountRedemption::class)) extends OrderPlacer
             {
                 public int $lookupCalls = 0;
 

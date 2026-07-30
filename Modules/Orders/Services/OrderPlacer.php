@@ -21,6 +21,7 @@ use App\Core\Orders\Exceptions\PriceChanged;
 use App\Core\Orders\Exceptions\ShippingMethodUnavailable;
 use App\Core\Orders\PlacementRequest;
 use App\Core\Sequences\SequenceService;
+use App\Core\Settings\SettingsService;
 use App\Core\Shipping\Contracts\CarrierRegistry;
 use App\Core\Shipping\Contracts\PaymentOption;
 use App\Core\Shipping\Contracts\PaymentOptions;
@@ -69,6 +70,7 @@ class OrderPlacer implements OrderPlacement
         private readonly ShippingOptions $shippingOptions,
         private readonly PaymentOptions $paymentOptions,
         private readonly SequenceService $sequences,
+        private readonly SettingsService $settings,
         private readonly TaxRates $taxRates,
         private readonly CarrierRegistry $carriers,
         private readonly PickupPointCatalog $points,
@@ -220,8 +222,12 @@ class OrderPlacer implements OrderPlacement
             $total = $itemsTotal->plus($shippingTotal)->plus($paymentFee);
             $vatSummary = $this->vatSummary($lines, $shippingOption, $shippingTotal, $paymentOption, $paymentFee, $currency);
 
-            // 7. A gap-free order number for the current tenant.
-            $number = $this->sequences->next('orders');
+            // 7. A gap-free order number for the current tenant. The prefix is
+            // a tenant setting rather than part of the sequence row, so
+            // changing it never rewrites numbers already handed out — the same
+            // split InvoiceIssuer uses for document numbers.
+            $prefix = $this->settings->get('orders', 'number_prefix', '');
+            $number = (is_string($prefix) ? $prefix : '').$this->sequences->next('orders');
 
             $shippingSnapshot = $this->shippingSnapshot($shippingOption, $shippingTotal);
 
