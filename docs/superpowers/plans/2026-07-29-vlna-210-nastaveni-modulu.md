@@ -55,7 +55,7 @@
 **Rozhraní:**
 - Produkuje: `Manifest::$settingsPermission` (`?string`), klíč `settings_permission` v `toArray()`.
 
-- [ ] **Krok 1: Napiš padající test**
+- [x] **Krok 1: Napiš padající test**
 
 ```php
 public function test_a_module_with_a_settings_schema_must_name_the_permission_that_guards_it(): void
@@ -95,12 +95,12 @@ public function test_a_module_without_a_schema_needs_no_settings_permission(): v
 }
 ```
 
-- [ ] **Krok 2: Spusť test, ověř pád**
+- [x] **Krok 2: Spusť test, ověř pád**
 
 Spusť: `php artisan test --filter=ManifestValidatorTest`
 Očekávej: FAIL — `settings_permission` se ignoruje, výjimka nepřijde.
 
-- [ ] **Krok 3: Doplň vlastnost do `Manifest`**
+- [x] **Krok 3: Doplň vlastnost do `Manifest`**
 
 V konstruktoru za `settingsSchema`:
 
@@ -111,7 +111,7 @@ public ?string $settingsPermission = null,
 V `fromArray()`: `settingsPermission: $data['settings_permission'] ?? null,`
 V `toArray()`: `'settings_permission' => $this->settingsPermission,`
 
-- [ ] **Krok 4: Doplň pravidlo a křížovou kontrolu do `ManifestValidator`**
+- [x] **Krok 4: Doplň pravidlo a křížovou kontrolu do `ManifestValidator`**
 
 Do pole pravidel:
 
@@ -155,16 +155,16 @@ private function checkSettingsPermission(Validator $validator, array $data): voi
 }
 ```
 
-- [ ] **Krok 5: Doplň `settings_permission` do `Modules/Docs/module.json`**
+- [x] **Krok 5: Doplň `settings_permission` do `Modules/Docs/module.json`**
 
 `"settings_permission": "docs.manage",` hned za `settings_schema` — jinak `modules:sync` spadne na jediném modulu, který dnes schéma má.
 
-- [ ] **Krok 6: Spusť testy**
+- [x] **Krok 6: Spusť testy**
 
 Spusť: `php artisan test --filter=ManifestValidatorTest` a `php artisan test tests/Feature/Core`
 Očekávej: PASS.
 
-- [ ] **Krok 7: Commit**
+- [x] **Krok 7: Commit**
 
 ```bash
 ./vendor/bin/pint app/Core/Modules/Manifest.php app/Core/Modules/ManifestValidator.php
@@ -185,7 +185,7 @@ git commit -m "feat(modules): let a manifest name the permission guarding its se
 - Produkuje: `SettingsSchema::fromArray(array $raw): self`, `->fields(): list<SettingsField>`, `->field(string $key): ?SettingsField`, `->has(string $key): bool`, `->rules(): array<string, string>`, `->defaults(): array<string, mixed>`.
   `SettingsField` = readonly `{string $key, string $rules, string $label, string $type, mixed $default, ?string $help, array<string,string> $options}`.
 
-- [ ] **Krok 1: Napiš padající test**
+- [x] **Krok 1: Napiš padající test**
 
 ```php
 public function test_a_plain_string_is_read_as_rules_only(): void
@@ -253,12 +253,12 @@ public function test_an_unknown_key_has_no_field(): void
 }
 ```
 
-- [ ] **Krok 2: Spusť test, ověř pád**
+- [x] **Krok 2: Spusť test, ověř pád**
 
 Spusť: `php artisan test --filter=SettingsSchemaTest`
 Očekávej: FAIL — `Class "App\Core\Settings\SettingsSchema" not found`.
 
-- [ ] **Krok 3: Napiš `SettingsField`**
+- [x] **Krok 3: Napiš `SettingsField`**
 
 ```php
 <?php
@@ -286,7 +286,7 @@ final readonly class SettingsField
 }
 ```
 
-- [ ] **Krok 4: Napiš `SettingsSchema`**
+- [x] **Krok 4: Napiš `SettingsSchema`**
 
 ```php
 <?php
@@ -405,12 +405,12 @@ final readonly class SettingsSchema
 }
 ```
 
-- [ ] **Krok 5: Spusť testy**
+- [x] **Krok 5: Spusť testy**
 
 Spusť: `php artisan test --filter=SettingsSchemaTest`
 Očekávej: PASS (5 testů).
 
-- [ ] **Krok 6: Commit**
+- [x] **Krok 6: Commit**
 
 ```bash
 ./vendor/bin/pint app/Core/Settings tests/Unit/Core/SettingsSchemaTest.php
@@ -430,7 +430,7 @@ git commit -m "feat(settings): parse a module settings schema into typed fields"
 - Konzumuje: `SettingsSchema` z Tasku 2.
 - Produkuje: `schemaFor(string $module): ?SettingsSchema`, `setMany(string $module, array<string, mixed> $values): void`; `all()` nově vrací uložené hodnoty **slité s defaulty**.
 
-- [ ] **Krok 1: Napiš padající test**
+- [x] **Krok 1: Napiš padající test**
 
 Test si vyrobí dočasný modul s vlastním schématem přes existující `ActivatesModules` a fixture soubor; pokud fixture cesta v projektu ještě není, použij modul `docs` a jeho reálné schéma.
 
@@ -495,12 +495,12 @@ public function test_one_tenants_settings_never_leak_into_another(): void
 }
 ```
 
-- [ ] **Krok 2: Spusť test, ověř pád**
+- [x] **Krok 2: Spusť test, ověř pád**
 
 Spusť: `php artisan test --filter=SettingsServiceTest`
 Očekávej: FAIL — `setMany()` neexistuje, `get()` vrací `null` místo defaultu.
 
-- [ ] **Krok 3: Přepiš `schemaFor()` na `SettingsSchema`**
+- [x] **Krok 3: Přepiš `schemaFor()` na `SettingsSchema`**
 
 ```php
 public function schemaFor(string $module): ?SettingsSchema
@@ -527,7 +527,7 @@ public function schemaFor(string $module): ?SettingsSchema
 }
 ```
 
-- [ ] **Krok 4: Slij defaulty v `all()` a přepiš `validate()`**
+- [x] **Krok 4: Slij defaulty v `all()` a přepiš `validate()`**
 
 ```php
 public function all(string $module): array
@@ -577,7 +577,7 @@ private function validate(string $module, string $key, mixed $value): void
 }
 ```
 
-- [ ] **Krok 5: Přidej `setMany()`**
+- [x] **Krok 5: Přidej `setMany()`**
 
 ```php
 /**
@@ -610,7 +610,7 @@ public function setMany(string $module, array $values): void
 }
 ```
 
-- [ ] **Krok 6: Přepiš `Modules/Docs/settings.json` na objektový tvar**
+- [x] **Krok 6: Přepiš `Modules/Docs/settings.json` na objektový tvar**
 
 ```json
 {
@@ -667,12 +667,12 @@ public function setMany(string $module, array $values): void
 }
 ```
 
-- [ ] **Krok 7: Spusť testy**
+- [x] **Krok 7: Spusť testy**
 
 Spusť: `php artisan test tests/Feature/Core tests/Unit/Core tests/Feature/Modules/Docs`
 Očekávej: PASS. `docs` testy hlídají, že defaulty ze schématu odpovídají tomu, co dosud předával kód (`due_days` = `config('documents.default_due_days')`); pokud se rozejdou, sedni si na config hodnotu, ne naopak.
 
-- [ ] **Krok 8: Commit**
+- [x] **Krok 8: Commit**
 
 ```bash
 ./vendor/bin/pint app/Core/Settings
@@ -693,7 +693,7 @@ git commit -m "feat(settings): merge schema defaults and add an all-or-nothing w
 - Konzumuje: `SettingsService::schemaFor()`, `all()`, `setMany()`; `Manifest::$settingsPermission`; `ModuleRegistry::isEnabled()`.
 - Produkuje: routy `admin.settings.modules.index|edit|update`.
 
-- [ ] **Krok 1: Napiš padající test**
+- [x] **Krok 1: Napiš padající test**
 
 ```php
 public function test_the_owner_sees_the_form_built_from_the_schema(): void
@@ -763,12 +763,12 @@ public function test_the_index_lists_only_modules_with_a_schema(): void
 }
 ```
 
-- [ ] **Krok 2: Spusť test, ověř pád**
+- [x] **Krok 2: Spusť test, ověř pád**
 
 Spusť: `php artisan test --filter=ModuleSettingsTest`
 Očekávej: FAIL — routa neexistuje (404 na všech).
 
-- [ ] **Krok 3: Přidej routy**
+- [x] **Krok 3: Přidej routy**
 
 Do `routes/tenant.php` za blok `/admin/nastaveni/vzhled`:
 
@@ -778,7 +778,7 @@ Route::get('/admin/nastaveni/moduly/{module}', [ModuleSettingsController::class,
 Route::patch('/admin/nastaveni/moduly/{module}', [ModuleSettingsController::class, 'update'])->name('admin.settings.modules.update');
 ```
 
-- [ ] **Krok 4: Napiš controller**
+- [x] **Krok 4: Napiš controller**
 
 ```php
 <?php
@@ -901,7 +901,7 @@ class ModuleSettingsController extends Controller
 }
 ```
 
-- [ ] **Krok 5: Napiš FormRequest**
+- [x] **Krok 5: Napiš FormRequest**
 
 ```php
 <?php
@@ -956,7 +956,7 @@ class UpdateModuleSettingsRequest extends FormRequest
 }
 ```
 
-- [ ] **Krok 6: Napiš Vue stránky**
+- [x] **Krok 6: Napiš Vue stránky**
 
 `resources/js/Pages/Tenant/ModuleSettings.vue` — `<script setup lang="ts">`, `useForm({ values: { ...props.values } })`, pole podle `field.type`:
 
@@ -990,12 +990,12 @@ class UpdateModuleSettingsRequest extends FormRequest
 
 `ModuleSettingsIndex.vue` je prostý seznam `<Link :href="route('admin.settings.modules.edit', m.key)">{{ m.name }}</Link>`.
 
-- [ ] **Krok 7: Spusť testy a build**
+- [x] **Krok 7: Spusť testy a build**
 
 Spusť: `php artisan test --filter=ModuleSettingsTest` a `npm run build`
 Očekávej: PASS a čistý build.
 
-- [ ] **Krok 8: Commit**
+- [x] **Krok 8: Commit**
 
 ```bash
 ./vendor/bin/pint app/Http/Controllers/Tenant/ModuleSettingsController.php app/Http/Requests/Tenant/UpdateModuleSettingsRequest.php
