@@ -1605,7 +1605,7 @@ git commit -m "feat(modules): reconcile every tenant of a plan when its modules 
 - Konzumuje: `PlanModuleReconciler` z Tasku 8.
 - Produkuje: routy `platform.plans.index|show|impact|modules`.
 
-- [ ] **Krok 1: Napiš padající test**
+- [x] **Krok 1: Napiš padající test**
 
 ```php
 public function test_the_plan_list_shows_shops_and_module_counts(): void
@@ -1653,12 +1653,12 @@ public function test_a_tenant_admin_cannot_reach_the_screen(): void
 }
 ```
 
-- [ ] **Krok 2: Spusť test, ověř pád**
+- [x] **Krok 2: Spusť test, ověř pád**
 
 Spusť: `php artisan test --filter=PlanManagementTest`
 Očekávej: FAIL — routy neexistují.
 
-- [ ] **Krok 3: Přidej routy**
+- [x] **Krok 3: Přidej routy**
 
 Do skupiny `['auth:platform', 'platform.2fa']` v `routes/platform.php`:
 
@@ -1669,7 +1669,7 @@ Route::get('/superadmin/tarify/{plan}/dopad', [PlanController::class, 'impact'])
 Route::patch('/superadmin/tarify/{plan}/moduly', [PlanController::class, 'updateModules'])->name('platform.plans.modules');
 ```
 
-- [ ] **Krok 4: Napiš controller**
+- [x] **Krok 4: Napiš controller**
 
 ```php
 public function updateModules(Request $request, Plan $plan, PlanModuleReconciler $reconciler): RedirectResponse
@@ -1702,16 +1702,16 @@ public function updateModules(Request $request, Plan $plan, PlanModuleReconciler
 
 `index()` vrací tarify s `tenants_count` a počtem modulů; `show()` posílá seznam všech modulů (`ModuleRegistry::all()`), zaškrtnuté klíče tarifu a příznak `core` (core moduly jsou v seznamu jen informativně, bez checkboxu); `impact()` vrací JSON z `PlanModuleReconciler::impact()`.
 
-- [ ] **Krok 5: Napiš Vue stránky**
+- [x] **Krok 5: Napiš Vue stránky**
 
 `Show.vue`: checkboxy modulů, tlačítko „Spočítat dopad" (`router.get` na `platform.plans.impact` s `preserveState`), panel s výsledkem („dotkne se N e-shopů, zapne X, vypne Y"), povinné pole důvodu, které se zobrazí jen když dopad obsahuje deaktivace, a potvrzovací dialog před odesláním.
 
-- [ ] **Krok 6: Spusť testy a build**
+- [x] **Krok 6: Spusť testy a build**
 
 Spusť: `php artisan test tests/Feature/Platform` a `npm run build`
 Očekávej: PASS.
 
-- [ ] **Krok 7: Commit**
+- [x] **Krok 7: Commit**
 
 ```bash
 ./vendor/bin/pint app/Http/Controllers/Platform/PlanController.php
