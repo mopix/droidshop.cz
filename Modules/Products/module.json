@@ -22,7 +22,8 @@
         "products.edit",
         "products.costs"
     ],
-    "settings_schema": null,
+    "settings_schema": "settings.json",
+    "settings_permission": "products.edit",
     "nav": [
         {
             "area": "admin",

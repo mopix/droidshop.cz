@@ -2,8 +2,8 @@
 
 namespace App\Core\Theme;
 
+use App\Core\Settings\SettingsService;
 use App\Core\Tenancy\TenantContext;
-use App\Models\TenantTheme;
 
 /**
  * How the storefront asks a shopper to pick a variant: radio buttons or a
@@ -12,6 +12,10 @@ use App\Models\TenantTheme;
  * A separate small class rather than a field on ThemeData: ThemeData is
  * built per request for the layout composer, while this is asked for by a
  * single product page and only when that product actually has variants.
+ *
+ * The shop-wide value lives in the products module's own settings, not on
+ * tenant_theme (wave 2.10): it is catalogue presentation, not branding. It sat
+ * next to the logo only because no module settings screen existed yet.
  */
 class VariantDisplay
 {
@@ -21,19 +25,20 @@ class VariantDisplay
 
     public const DEFAULT = self::RADIO;
 
-    public function __construct(private readonly TenantContext $context) {}
+    public function __construct(
+        private readonly TenantContext $context,
+        private readonly SettingsService $settings,
+    ) {}
 
     public function forCurrentTenant(): string
     {
-        $tenant = $this->context->current();
-
-        if ($tenant === null) {
+        if ($this->context->current() === null) {
             return self::DEFAULT;
         }
 
-        $stored = TenantTheme::query()->where('tenant_id', $tenant->id)->value('variant_display');
+        $stored = $this->settings->get('products', 'variant_display');
 
-        return self::sanitize($stored);
+        return self::sanitize(is_string($stored) ? $stored : null);
     }
 
     /**

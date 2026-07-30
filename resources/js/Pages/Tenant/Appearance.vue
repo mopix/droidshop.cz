@@ -11,7 +11,6 @@ const props = defineProps<{
     logo_url: string | null
     favicon_url: string | null
     contrast_ratio: number
-    variant_display: 'radio' | 'select'
   }
 }>()
 
@@ -20,7 +19,6 @@ const form = useForm({
   accent_color: props.appearance.accent_color,
   logo: null as File | null,
   favicon: null as File | null,
-  variant_display: props.appearance.variant_display,
 })
 
 const logoInput = ref<HTMLInputElement | null>(null)
@@ -290,28 +288,6 @@ const faviconDescribedBy = computed(() =>
               {{ form.errors.favicon }}
             </p>
           </div>
-        </fieldset>
-
-        <fieldset class="rounded-md border border-gray-200 p-4">
-          <legend class="px-1 text-sm font-medium text-gray-700">Výběr varianty na produktu</legend>
-          <p class="mt-1 text-sm text-gray-500">
-            Jak si zákazník vybere velikost nebo barvu. U jednotlivého produktu lze nastavení přepsat.
-          </p>
-
-          <div class="mt-3 space-y-2">
-            <label class="flex items-center gap-2">
-              <input v-model="form.variant_display" type="radio" value="radio" name="variant_display" />
-              <span>Přepínače (radio)</span>
-            </label>
-            <label class="flex items-center gap-2">
-              <input v-model="form.variant_display" type="radio" value="select" name="variant_display" />
-              <span>Rozbalovací seznam</span>
-            </label>
-          </div>
-
-          <p v-if="form.errors.variant_display" class="mt-2 text-sm text-red-600">
-            {{ form.errors.variant_display }}
-          </p>
         </fieldset>
 
         <div class="flex justify-end">

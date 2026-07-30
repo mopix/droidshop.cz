@@ -1016,7 +1016,7 @@ git commit -m "feat(settings): add the generic module settings screen"
 - Konzumuje: `SettingsService` z Tasku 3.
 - Produkuje: `VariantDisplay::forCurrentTenant()` beze změny podpisu, nově čte `settings('products','variant_display')`.
 
-- [ ] **Krok 1: Napiš padající test**
+- [x] **Krok 1: Napiš padající test**
 
 ```php
 public function test_the_variant_display_comes_from_the_products_module_settings(): void
@@ -1043,12 +1043,12 @@ public function test_the_appearance_screen_no_longer_carries_the_display(): void
 }
 ```
 
-- [ ] **Krok 2: Spusť test, ověř pád**
+- [x] **Krok 2: Spusť test, ověř pád**
 
 Spusť: `php artisan test --filter=VariantDisplay`
 Očekávej: FAIL — hodnota se čte z `tenant_theme`, ne ze settings.
 
-- [ ] **Krok 3: Přidej schéma modulu `products`**
+- [x] **Krok 3: Přidej schéma modulu `products`**
 
 `Modules/Products/settings.json`:
 
@@ -1070,7 +1070,7 @@ Očekávej: FAIL — hodnota se čte z `tenant_theme`, ne ze settings.
 
 V `Modules/Products/module.json` doplň `"settings_schema": "settings.json"` a `"settings_permission": "products.edit"`.
 
-- [ ] **Krok 4: Přepiš `VariantDisplay`**
+- [x] **Krok 4: Přepiš `VariantDisplay`**
 
 ```php
 public function __construct(
@@ -1090,7 +1090,7 @@ public function forCurrentTenant(): string
 
 `sanitize()` beze změny — je to poslední pojistka proti hodnotě, na kterou by Blade nenašel widget.
 
-- [ ] **Krok 5: Napiš migraci**
+- [x] **Krok 5: Napiš migraci**
 
 ```php
 public function up(): void
@@ -1120,16 +1120,16 @@ public function down(): void
 }
 ```
 
-- [ ] **Krok 6: Vyndej pole ze vzhledu**
+- [x] **Krok 6: Vyndej pole ze vzhledu**
 
 `AppearanceController::edit()` — smaž `'variant_display' => …` z propů; `update()` — smaž z `$data`; `UpdateAppearanceRequest` — smaž pravidlo i hlášku; `Appearance.vue` — smaž typ, `useForm` klíč a celý blok obou radio inputů.
 
-- [ ] **Krok 7: Spusť testy a migraci**
+- [x] **Krok 7: Spusť testy a migraci**
 
 Spusť: `php artisan migrate`, `php artisan test tests/Feature/Theme tests/Feature/Tenant tests/Feature/Modules/Products`
 Očekávej: PASS.
 
-- [ ] **Krok 8: Commit**
+- [x] **Krok 8: Commit**
 
 ```bash
 ./vendor/bin/pint app/Core/Theme app/Http database/migrations

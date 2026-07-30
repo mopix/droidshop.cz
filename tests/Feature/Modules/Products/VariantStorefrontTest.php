@@ -2,10 +2,10 @@
 
 namespace Tests\Feature\Modules\Products;
 
+use App\Core\Settings\SettingsService;
 use App\Core\Tax\TaxRates;
 use App\Core\Tenancy\TenantContext;
 use App\Models\Tenant;
-use App\Models\TenantTheme;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Modules\Checkout\Models\CartItem;
 use Modules\Products\Models\Product;
@@ -149,10 +149,9 @@ class VariantStorefrontTest extends TestCase
 
         $this->get($this->url('/produkt/tricko-acme'))->assertSee('type="radio"', escape: false);
 
-        TenantTheme::updateOrCreate(
-            ['tenant_id' => $this->tenant->id],
-            ['variant_display' => 'select'],
-        );
+        $this->context->runAs($this->tenant, function (): void {
+            app(SettingsService::class)->setMany('products', ['variant_display' => 'select']);
+        });
 
         $response = $this->get($this->url('/produkt/tricko-acme'));
         $response->assertSee('<select', escape: false);
