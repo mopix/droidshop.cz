@@ -10,6 +10,7 @@ use App\Core\Tenancy\TenantContext;
 use App\Models\Module;
 use App\Models\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use InvalidArgumentException;
 use Tests\Concerns\ActivatesModules;
 use Tests\TestCase;
 
@@ -194,6 +195,19 @@ class SettingsServiceTest extends TestCase
         });
     }
 
+    public function test_all_propagates_a_malformed_on_disk_schema_instead_of_swallowing_it(): void
+    {
+        // modules:sync (see ModulesSyncTest) is supposed to keep this out of
+        // a running shop, but SettingsService::all() must not paper over it
+        // either — it is the runtime backstop, not a second gate that hides
+        // the same defect behind a silently empty settings array.
+        $this->registerBrokenSchemaModule();
+
+        $this->expectException(InvalidArgumentException::class);
+
+        $this->context->runAs($this->tenantA, fn () => app(SettingsService::class)->all('brokenmod'));
+    }
+
     /**
      * Registers a module whose manifest points at a settings schema on disk.
      */
@@ -218,11 +232,40 @@ class SettingsServiceTest extends TestCase
         app(ModuleRegistry::class)->flush();
     }
 
+    /**
+     * Registers a module whose on-disk schema itself is malformed (a field
+     * with no rules) — the shape modules:sync is meant to reject before it
+     * ever reaches here, exercised directly against SettingsService::all()
+     * without going through the sync command.
+     */
+    private function registerBrokenSchemaModule(): void
+    {
+        $dir = base_path('Modules/Brokenmod');
+        @mkdir($dir, 0777, true);
+        file_put_contents($dir.'/settings.json', json_encode([
+            'due_days' => ['label' => 'No rules here'],
+        ]));
+
+        Module::create([
+            'key' => 'brokenmod',
+            'version' => '1.0.0',
+            'manifest' => [
+                'name' => 'brokenmod',
+                'version' => '1.0.0',
+                'settings_schema' => 'settings.json',
+            ],
+        ]);
+
+        app(ModuleRegistry::class)->flush();
+    }
+
     protected function tearDown(): void
     {
-        $dir = base_path('Modules/Demo');
-        @unlink($dir.'/settings.json');
-        @rmdir($dir);
+        foreach (['Demo', 'Brokenmod'] as $moduleDir) {
+            $dir = base_path('Modules/'.$moduleDir);
+            @unlink($dir.'/settings.json');
+            @rmdir($dir);
+        }
 
         parent::tearDown();
     }
