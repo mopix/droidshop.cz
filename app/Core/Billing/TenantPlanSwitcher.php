@@ -44,9 +44,21 @@ class TenantPlanSwitcher
         $newKeys = $newPlan->modules()->pluck('module_key')->all();
         $enabledKeys = $this->registry->enabledFor($tenant)->keys()->all();
 
-        // Every module key ANY plan can grant. Excludes core modules (never in
-        // plan_modules) — critical so deactivation never targets a core module.
-        $planCatalogKeys = DB::table('plan_modules')->distinct()->pluck('module_key')->all();
+        // Every module key ANY plan can grant, core modules subtracted —
+        // critical so deactivation never targets a core module.
+        //
+        // The subtraction is explicit rather than assumed: a core key CAN sit in
+        // plan_modules (DemoShopSeeder attaches every deployed module to the
+        // demo plan), and trusting the table would put it in the deactivate set,
+        // where ModuleRegistry::deactivate() throws for a core module. Inside
+        // StripeWebhookHandler's single transaction that throw rolls back the
+        // idempotency claim as well, so Stripe redelivers the event forever —
+        // the same failure mode Risk B below guards against.
+        $coreKeys = $this->registry->all()->filter->core->keys()->all();
+        $planCatalogKeys = array_values(array_diff(
+            DB::table('plan_modules')->distinct()->pluck('module_key')->all(),
+            $coreKeys,
+        ));
 
         // Risk B (re-review): a plan-assigned module can be globally
         // kill-switched (Module::enabled_globally = false) by superadmin. It

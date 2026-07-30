@@ -156,6 +156,30 @@ class TenantPlanSwitcherTest extends TestCase
      *
      * @return array{0: Plan, 1: Plan, 2: string, 3: string}
      */
+    public function test_switch_to_never_deactivates_a_core_module_that_is_listed_in_plan_modules(): void
+    {
+        // "Core modules are never in plan_modules" was an assumption written in
+        // a comment, not something the data guarantees: DemoShopSeeder attaches
+        // every deployed module to the demo plan, core included. With a core key
+        // in the catalogue, the deactivate set contains it and
+        // ModuleRegistry::deactivate() throws for a core module — inside
+        // StripeWebhookHandler's single transaction that rolls back the
+        // idempotency claim too, so Stripe redelivers the event forever.
+        [$base, $premium, $baseKey] = $this->seedPlans();
+
+        $coreModule = Module::factory()->key('core-module')->core()->create();
+        $premium->modules()->attach($coreModule->key);
+
+        $tenant = Tenant::factory()->create(['plan_id' => $premium->id]);
+        $registry = app(ModuleRegistry::class);
+        $registry->activate($tenant, $baseKey);
+
+        app(TenantPlanSwitcher::class)->switchTo($tenant->fresh(), $base, BillingInterval::Month);
+
+        $this->assertTrue($registry->isEnabled($tenant->fresh(), $coreModule->key));
+        $this->assertSame($base->id, $tenant->fresh()->plan_id);
+    }
+
     private function seedPlans(): array
     {
         $baseModule = Module::factory()->key('base-module')->create();

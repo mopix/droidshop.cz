@@ -88,14 +88,25 @@ class PlanModuleReconciler
     }
 
     /**
-     * Every module key some plan grants. Core modules are never in
-     * plan_modules, which is what keeps them out of reach of deactivation.
+     * Every module key some plan grants, core modules excluded — that exclusion
+     * is what keeps deactivation from ever targeting a core module.
+     *
+     * The filter is deliberate rather than assumed: a core key CAN sit in
+     * plan_modules (DemoShopSeeder attached every deployed module to the demo
+     * plan), and trusting the table would put `storefront` in the deactivate
+     * set, where ModuleRegistry::deactivate() throws for a core module — after
+     * the plan_modules sync had already run, leaving the change half applied.
      *
      * @return list<string>
      */
     private function planCatalog(): array
     {
-        return DB::table('plan_modules')->distinct()->pluck('module_key')->all();
+        $core = $this->registry->all()->filter->core->keys()->all();
+
+        return array_values(array_diff(
+            DB::table('plan_modules')->distinct()->pluck('module_key')->all(),
+            $core,
+        ));
     }
 
     /**

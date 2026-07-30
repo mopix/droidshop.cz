@@ -136,6 +136,15 @@ Celá sada: **1658 zelených**.
 4. **Obrazovka nastavení sedí v jádře (`/admin/nastaveni/moduly/{modul}`), ne pod `/admin/m/{modul}/nastaveni`.** Modulová cesta by u `products` kolidovala s vazbou produktu na slug (`/admin/m/products/{product}`) — `nastaveni` by se hledalo jako produkt toho jména. Precedent: routy importu/exportu ve vlně 2.8.
 5. **Ruční ověření na demu (AK 1 end-to-end, plán Task 10 krok 2) neproběhlo.** Mechanika je pokrytá testy včetně `AutoIssueTest`, ale proklikání dema zbývá.
 
+## Oprava po uzavření vlny (2026-07-30)
+
+Nesrovnalost „tarif hlásí 13 modulů, detail nabízí 12" odkryla vadu se širším dosahem než počítadlo. V `plan_modules` ležel core modul `storefront` (dostal ho tam `DemoShopSeeder`, který demo tarifu přiřazoval **všechny** nasazené moduly). `PlanModuleReconciler` i `TenantPlanSwitcher` z vlny 1.9 odvozují „co smí tarif odebrat" z téhle tabulky a spoléhaly na předpoklad zapsaný jen v komentáři, takže core klíč spadl do deaktivační sady, kde `ModuleRegistry::deactivate()` vyhodí výjimku:
+
+- superadmin uložení tarifu → 500 **po** tom, co `sync()` už `plan_modules` přepsal (napůl aplikovaná změna),
+- `TenantPlanSwitcher` → throw uvnitř transakce Stripe webhooku vrátí i idempotenční claim, takže Stripe doručuje event navždy (přesně scénář, proti kterému 1.9 stavěla guard na kill-switchnuté moduly).
+
+Opraveno: oba callery core klíče odečítají explicitně; migrace `2026_07_30_090000_remove_core_modules_from_plan_modules` řádky uklidila; `DemoShopSeeder` core přeskakuje; počítadlo v seznamu tarifů počítá jen grantable moduly. Čtyři nové testy (reconciler, switcher, seznam tarifů) — celkem 1662 zelených.
+
 ## Technický dluh
 
 1. **Ruční ověření na demu.** `/admin/nastaveni/moduly` → `docs.auto_issue_on` na „Při odeslání“ → zaplatit objednávku (faktura nesmí vzniknout) → odeslat (musí vzniknout). Plus změna složení tarifu superadminem a kontrola, že se to na e-shopu projeví.

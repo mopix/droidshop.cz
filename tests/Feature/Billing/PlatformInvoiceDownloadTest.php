@@ -37,7 +37,7 @@ class PlatformInvoiceDownloadTest extends TestCase
         $invoice = $this->invoiceFor($tenant);
 
         $this->actingAs($owner)
-            ->get("http://shop.".config('tenancy.platform_domain')."/admin/predplatne/faktury/{$invoice->id}/pdf")
+            ->get('http://shop.'.config('tenancy.platform_domain')."/admin/predplatne/faktury/{$invoice->id}/pdf")
             ->assertOk();
     }
 
@@ -52,7 +52,7 @@ class PlatformInvoiceDownloadTest extends TestCase
         $foreign = $this->invoiceFor($other);
 
         $this->actingAs($owner)
-            ->get("http://shop.".config('tenancy.platform_domain')."/admin/predplatne/faktury/{$foreign->id}/pdf")
+            ->get('http://shop.'.config('tenancy.platform_domain')."/admin/predplatne/faktury/{$foreign->id}/pdf")
             ->assertNotFound();
     }
 }

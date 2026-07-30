@@ -132,6 +132,32 @@ class PlanModuleReconcilerTest extends TestCase
         $this->assertSame([], $impact['deactivate']);
     }
 
+    public function test_a_core_module_listed_in_plan_modules_is_still_never_deactivated(): void
+    {
+        // DemoShopSeeder attaches every deployed module to the demo plan, core
+        // included, so "core is never in plan_modules" cannot be assumed. With
+        // a core key in the catalogue the deactivate set contains it and
+        // ModuleRegistry::deactivate() throws — after plan_modules was already
+        // synced, leaving the change half applied.
+        $this->plan->modules()->attach('storefront');
+        app(ModuleRegistry::class)->activate($this->tenant, 'storefront');
+
+        $this->reconciler()->apply($this->plan, $this->proposed());
+
+        $this->assertTrue(app(ModuleRegistry::class)->isEnabled($this->tenant->fresh(), 'storefront'));
+        $this->assertTrue(app(ModuleRegistry::class)->isEnabled($this->tenant->fresh(), 'feeds'));
+    }
+
+    public function test_the_impact_never_reports_a_core_module_as_lost(): void
+    {
+        $this->plan->modules()->attach('storefront');
+        app(ModuleRegistry::class)->activate($this->tenant, 'storefront');
+
+        $impact = $this->reconciler()->impact($this->plan, $this->proposed());
+
+        $this->assertSame(['orders'], $impact['deactivate'][$this->tenant->id]);
+    }
+
     public function test_every_touched_tenant_gets_its_own_audit_entry(): void
     {
         $this->reconciler()->apply($this->plan, $this->proposed());
