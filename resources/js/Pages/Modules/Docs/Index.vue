@@ -19,6 +19,7 @@ type DocumentRow = {
 
 const props = defineProps<{
   documents: { data: DocumentRow[]; links: PaginationLink[]; meta?: PaginationMeta }
+  accountingEnabled: boolean
 }>()
 
 const TYPE_LABELS: Record<string, string> = {
@@ -34,6 +35,7 @@ const columns: Column[] = [
   { key: 'total', label: 'Celkem', align: 'right' },
   { key: 'sent', label: 'Odesláno' },
   { key: 'download', label: 'Stažení' },
+  { key: 'isdoc', label: 'ISDOC' },
 ]
 
 const money = (haler: number, currency: string) =>
@@ -130,6 +132,17 @@ const vatTo = ref(toIsoDate(today))
           Stáhnout PDF
         </a>
         <span v-else class="text-gray-700">Připravuje se…</span>
+      </template>
+
+      <template #cell-isdoc="{ row }">
+        <a
+          v-if="props.accountingEnabled && ((row as DocumentRow).type === 'invoice' || (row as DocumentRow).type === 'credit_note')"
+          :href="route('admin.accounting.isdoc', { number: (row as DocumentRow).number, type: (row as DocumentRow).type })"
+          class="text-sm font-medium text-gray-700 underline hover:no-underline"
+        >
+          ISDOC
+        </a>
+        <span v-else class="text-gray-700">—</span>
       </template>
     </DataTable>
 

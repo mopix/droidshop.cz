@@ -13,6 +13,7 @@ use Modules\Docs\Exceptions\CreditNoteNotAllowed;
 use Modules\Docs\Http\Requests\StoreDocumentRequest;
 use Modules\Docs\Jobs\GenerateDocumentPdf;
 use Modules\Docs\Models\Document;
+use Modules\Storefront\Support\ShopModules;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
@@ -54,6 +55,11 @@ class DocumentAdminController
 
         return inertia('Modules/Docs/Index', [
             'documents' => $documents->through(fn (Document $document) => $this->summarise($document)),
+            // Resolved here, once, rather than by the Vue page reaching into the
+            // container: the ISDOC button belongs to the accounting module, and
+            // a shop that does not run it must not see a dead link. Same pattern
+            // the cart uses for the discounts field.
+            'accountingEnabled' => app(ShopModules::class)->has('accounting'),
         ]);
     }
 
