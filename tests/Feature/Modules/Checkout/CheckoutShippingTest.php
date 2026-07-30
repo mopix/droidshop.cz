@@ -175,7 +175,9 @@ class CheckoutShippingTest extends TestCase
                 'payment_method_id' => $cod->id,
             ]);
 
-        $choosePayment->assertRedirect($this->url('/pokladna/doprava'));
+        // Both halves of the step are now answered, so "Pokračovat" moves on
+        // instead of re-rendering the page it was submitted from.
+        $choosePayment->assertRedirect($this->url('/pokladna/udaje'));
         $choosePayment->assertSessionDoesntHaveErrors();
 
         $final = $this->withCookie('cart_token', $token)->get($this->url('/pokladna/doprava'));
@@ -225,6 +227,8 @@ class CheckoutShippingTest extends TestCase
         $page->assertDontSee('name="shipping_method_id"', false);
         // items 1 000,00 Kč, delivery free, nothing else added.
         $page->assertSee($this->czk(100_000));
+        // Nothing is submitted here, so the way onward has to be a link.
+        $page->assertSee('href="'.$this->url('/pokladna/udaje').'"', false);
     }
 
     public function test_a_spoofed_shipping_price_in_the_post_body_is_ignored(): void

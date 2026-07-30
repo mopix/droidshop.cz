@@ -12,6 +12,7 @@ use Modules\Checkout\Models\Cart;
 use Modules\Packeta\Models\PickupPoint;
 use Modules\Products\Models\Product;
 use Modules\Products\Services\ProductWriter;
+use Modules\Shipping\Models\PaymentMethod;
 use Modules\Shipping\Models\ShippingMethod;
 use Tests\Concerns\ActivatesModules;
 use Tests\Support\FakeCarrierRegistry;
@@ -259,5 +260,46 @@ class PickupPointCheckoutTest extends TestCase
 
         $cart = $this->context->runAs($this->tenant, fn () => Cart::query()->firstOrFail());
         $this->assertSame('1001', $cart->pickup_point_code);
+    }
+
+    /**
+     * A carrier that delivers to a branch is only fully answered once the
+     * branch is picked, so the shipping step keeps the shopper on the page
+     * until then — even with both a method and a payment chosen.
+     */
+    public function test_a_packeta_method_advances_only_once_a_point_is_chosen(): void
+    {
+        $packeta = $this->makePacketaShipping();
+        $this->carriers()->enable(ShippingMethod::PROVIDER_PACKETA);
+
+        $cod = $this->context->runAs($this->tenant, fn () => PaymentMethod::create([
+            'provider' => PaymentMethod::PROVIDER_COD,
+            'name' => 'Dobírka',
+            'fee' => 0,
+            'is_active' => true,
+            'position' => 1,
+        ]));
+
+        $this->addToCart($this->makeProduct());
+        $token = $this->cartToken();
+
+        $withoutPoint = $this->withCookie('cart_token', $token)
+            ->post($this->url('/pokladna/doprava'), [
+                'shipping_method_id' => $packeta->id,
+                'payment_method_id' => $cod->id,
+            ]);
+
+        $withoutPoint->assertRedirect($this->url('/pokladna/doprava'));
+
+        $this->withCookie('cart_token', $token)
+            ->post($this->url('/pokladna/vydejni-misto'), ['pickup_point_code' => '1001']);
+
+        $withPoint = $this->withCookie('cart_token', $token)
+            ->post($this->url('/pokladna/doprava'), [
+                'shipping_method_id' => $packeta->id,
+                'payment_method_id' => $cod->id,
+            ]);
+
+        $withPoint->assertRedirect($this->url('/pokladna/udaje'));
     }
 }

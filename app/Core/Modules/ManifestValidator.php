@@ -57,6 +57,7 @@ class ManifestValidator
             'permissions' => ['sometimes', 'array'],
             'permissions.*' => ['string'],
             'settings_schema' => ['sometimes', 'nullable', 'string'],
+            'settings_permission' => ['sometimes', 'nullable', 'string'],
             'nav' => ['sometimes', 'array'],
             'nav.*.area' => ['required_with:nav', 'in:admin,storefront'],
             'nav.*.label' => ['required_with:nav', 'string'],
@@ -69,6 +70,7 @@ class ManifestValidator
         $validator->after(function ($validator) use ($data): void {
             $this->checkVersion($validator, $data);
             $this->checkRequires($validator, $data);
+            $this->checkSettingsPermission($validator, $data);
         });
 
         if ($validator->fails()) {
@@ -111,6 +113,32 @@ class ManifestValidator
             } catch (Throwable) {
                 $validator->errors()->add('requires', "[{$constraint}] is not a valid constraint for [{$module}].");
             }
+        }
+    }
+
+    /**
+     * A settings screen without a permission would be a surface nobody guards;
+     * a permission the module does not declare would be one TenantPermissions
+     * never grants, locking the screen even for the owner.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    private function checkSettingsPermission(mixed $validator, array $data): void
+    {
+        if (($data['settings_schema'] ?? null) === null) {
+            return;
+        }
+
+        $permission = $data['settings_permission'] ?? null;
+
+        if ($permission === null) {
+            $validator->errors()->add('settings_permission', 'is required when settings_schema is set.');
+
+            return;
+        }
+
+        if (! in_array($permission, $data['permissions'] ?? [], true)) {
+            $validator->errors()->add('settings_permission', 'must be one of the permissions this module declares.');
         }
     }
 }

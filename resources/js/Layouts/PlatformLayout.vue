@@ -78,6 +78,15 @@ const logout = (url: string) => router.post(url)
                   Moduly
                 </Link>
               </li>
+              <li>
+                <Link
+                  :href="route('platform.plans.index')"
+                  :aria-current="route().current('platform.plans.*') ? 'page' : undefined"
+                  class="rounded-md px-3 py-2 text-sm font-medium text-slate-200 hover:bg-slate-800 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900 aria-[current=page]:bg-slate-800 aria-[current=page]:text-white"
+                >
+                  Tarify
+                </Link>
+              </li>
             </ul>
           </nav>
         </div>

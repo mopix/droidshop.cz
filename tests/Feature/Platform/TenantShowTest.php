@@ -3,11 +3,13 @@
 namespace Tests\Feature\Platform;
 
 use App\Core\Services\AuditLog;
+use App\Core\Storage\FileStorage;
 use App\Core\Tenancy\TenantContext;
 use App\Models\Module;
 use App\Models\Tenant;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Storage;
 use Tests\Concerns\ActivatesModules;
 use Tests\Concerns\ActsAsPlatformAdmin;
 use Tests\TestCase;
@@ -24,6 +26,12 @@ class TenantShowTest extends TestCase
 
         $this->usePlatformHost();
         $this->actingAsPlatformAdmin();
+
+        // The storage limit is measured off the real disk, and tenant ids are
+        // reused across runs — a leftover directory from an earlier test would
+        // otherwise report megabytes this tenant never stored.
+        Storage::fake(FileStorage::PUBLIC_DISK);
+        Storage::fake(FileStorage::PRIVATE_DISK);
     }
 
     private function detailUrl(Tenant $tenant): string

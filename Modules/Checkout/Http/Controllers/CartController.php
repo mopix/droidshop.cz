@@ -4,6 +4,8 @@ namespace Modules\Checkout\Http\Controllers;
 
 use App\Core\Catalog\Contracts\ProductCatalog;
 use App\Core\Checkout\Contracts\CartRepository;
+use App\Core\Money\Money;
+use App\Core\Settings\SettingsService;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -35,6 +37,7 @@ class CartController
         private readonly CartPricer $pricer,
         private readonly ProductCatalog $catalog,
         private readonly ShopModules $modules,
+        private readonly SettingsService $settings,
     ) {}
 
     public function show(Request $request): Response
@@ -44,8 +47,16 @@ class CartController
 
         StaleCoupon::clear($this->carts, $cart, $priced);
 
+        // Below the shop's own floor the cart says so and drops the continue
+        // button. Presentation only — CheckoutController enforces the same
+        // floor on the server, so a stale tab cannot post its way past it.
+        $minimum = (int) $this->settings->get('checkout', 'min_order_total', 0);
+        $payable = $priced->payableTotal ?? $priced->itemsTotal;
+        $belowMinimum = $minimum > 0 && ! $priced->isEmpty() && $payable->amount < $minimum;
+
         $view = view('checkout::cart', [
             'cart' => $priced,
+            'minimumOrderTotal' => $belowMinimum ? new Money($minimum, $payable->currency) : null,
             'seo' => new Seo(title: 'Košík', noindex: true),
             // The discount field renders only for a shop that actually runs
             // the module — decided here, once, rather than the partial

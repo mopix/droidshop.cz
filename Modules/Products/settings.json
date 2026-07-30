@@ -1,0 +1,13 @@
+{
+    "variant_display": {
+        "rules": "in:radio,select",
+        "label": "Výběr varianty na detailu produktu",
+        "type": "select",
+        "default": "radio",
+        "options": {
+            "radio": "Přepínače",
+            "select": "Rozbalovací seznam"
+        },
+        "help": "Výchozí pro celý e-shop. Jednotlivý produkt může mít vlastní nastavení."
+    }
+}

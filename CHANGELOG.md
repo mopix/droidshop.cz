@@ -11,6 +11,47 @@ Pravidla: [`.claude/skills/versioning/SKILL.md`](.claude/skills/versioning/SKILL
 
 > CHANGELOG vede milníky (minor/major). Detail patchů je v `git log`.
 
+## [0.29.0] – 2026-07-30
+
+**Fáze 2 / vlna 2.10 — nastavení modulů (nájemce) a správa tarifů (superadmin).** Uzavření vlny (`docs/as-is/2026-07-29-nastaveni-modulu.md`). 1658 testů (5845 assertions).
+
+Do této vlny existoval `SettingsService`, ale **nikdo nevolal jeho `set()`**: sedm nastavení modulu `docs` (splatnost, prefixy číselných řad, patička faktury, kdy se faktura vystaví) šlo změnit jen zásahem do kódu. Přiřadit modul tarifu šlo jen migrací — past, do které vlna 2.9 spadla, protože modul, který není v žádném tarifu, si nájemce nemůže zapnout.
+
+### Jádro — schéma nastavení
+- `SettingsField` + `SettingsSchema`: `rules` je autorita nad tím, co smí být uloženo, `type` jen informace, čím to nakreslit. Starý tvar „klíč → string pravidel" se dál parsuje (typ se odvodí z pravidel), takže žádný existující manifest se nemusel měnit.
+- Pole **bez** pravidel je chyba — takové by tiše přijalo cokoli. Padá při `modules:sync`, ne uvnitř `SettingsService::all()` na hot path (checkout, vystavení faktury, generování PDF); runtime cesta ji přesto propaguje, aby druhá brána tu samou vadu neschovala za tiše prázdné pole.
+- `SettingsService::setMany()` je all-or-nothing (validace celé sady, pak zápis v jedné transakci); `all()` slévá defaulty ze schématu, takže schéma je jediná pravda o tom, na čem běží nedotčený e-shop.
+- Manifestový klíč `settings_permission` + křížová kontrola ve `ManifestValidator`, že jmenované právo modul opravdu deklaruje.
+
+### Obrazovka nájemce
+- `/admin/nastaveni/moduly` a `/admin/nastaveni/moduly/{modul}` — jeden generický formulář z manifestového schématu, takže nový modul dostane nastavení bez vlastní obrazovky. Modul, který e-shop neběží, je **404** (403 by prozradilo, které moduly e-shopu chybí); právo je to, které jmenuje manifest.
+- Obrazovka sedí v jádře, ne pod `/admin/m/{modul}/nastaveni`: modulová cesta by u `products` kolidovala s vazbou produktu na slug.
+
+### Nové nastavení
+- `products.variant_display` — přesun z `tenant_theme` (+ drop sloupce). Migrace hodnoty přenese **před** dropem, aby se e-shop nastavený na rozbalovací seznam po deployi nepřepnul na přepínače. Uzavírá odchylku vlny 2.4.
+- `checkout.min_order_total` a `checkout.guest_checkout` (nové právo `checkout.manage`) — obojí vynucuje server v `details()` i `place()` před jakýmkoli zápisem; skryté tlačítko v košíku je prezentace, ne pravidlo. Minimum se měří na zboží po slevě, **bez dopravy a platby**: drahý dopravce nesmí zákazníka přenést přes hranici, kterou si nájemce sám nastavil.
+- `orders.number_prefix` — platí od další objednávky, už vydaná čísla se nemění (stejné dělení, jaké `InvoiceIssuer` používá pro doklady).
+
+### Superadmin — složení tarifů
+- `/superadmin/tarify`: checkboxy modulů, endpoint „dopad" (kolika e-shopů se změna dotkne, co se zapne a co vypne) a povinný důvod při odebrání — vyžádaný podle **spočítaného dopadu**, ne podle formuláře.
+- `PlanModuleReconciler` počítá z **živě zapnuté sady** tenanta, ne z diffu editace (idempotentní, nezávislý na pořadí; stejný tvar jako `TenantPlanSwitcher` z 1.9). Katalog plan-grantable klíčů se snímá **před** zápisem — přečtený po `sync()` už neobsahuje klíč, který ta samá editace odebrala, a nevypnulo by se nikdy nic. Globálně kill-switchnutý modul se přeskočí místo výjimky, core modul se nikdy nevypne, audit per tenant.
+
+### Deploy
+1. `php artisan modules:sync` **před** `migrate` (nová manifestová pole a schémata; sync odmítne vadné schéma)
+2. `php artisan migrate` (přesun `variant_display` + drop sloupce)
+3. `npm run build`
+
+### Follow-up
+Ruční proklikání dema; rekonciliace tarifu běží synchronně v requestu (kandidát na queued job); ručně vypnutý tarifní modul se editací tarifu znovu zapne (stejný trade-off jako `TenantPlanSwitcher`); nastavení se needituje hromadně přes moduly.
+
+## [0.28.0] – 2026-07-29
+
+**Fáze 2 / vlna 2.10 — nastavení modulů a správa tarifů.** Start implementačního plánu (`docs/superpowers/plans/2026-07-29-vlna-210-nastaveni-modulu.md`), spec `docs/superpowers/specs/2026-07-29-vlna-210-nastaveni-modulu-design.md`.
+
+Zadání: nájemce nastaví chování modulu z adminu na jedné generické obrazovce vygenerované ze schématu v manifestu (`SettingsService::set()` dosud nevolal nikdo, takže sedm nastavení modulu `docs` šlo změnit jen v kódu), `variant_display` se stěhuje z obrazovky Vzhled tam, kam patří, `checkout` dostává minimum objednávky a přepínač nákupu bez registrace, `orders` prefix čísla objednávky. Superadmin dostává obrazovku nad `plan_modules` — přiřazení modulu tarifu dnes jde jen migrací, což je past, do které vlna 2.9 spadla.
+
+Před tím ještě tři opravy nalezené proklikáním dema: prázdná obrazovka produktů v adminu (chybějící import `computed`), slepá ulička v pokladně (krok dopravy se překresloval místo aby pustil dál) a superadmin zamčený ven z `/superadmin/login` tím, že byl přihlášený.
+
 ## [0.27.0] – 2026-07-28
 
 **Fáze 2 / vlna 2.9 — XML feedy pro Heureku a Zboží.cz.** Nájemce zapne feed v adminu a porovnávač si z jeho domény stáhne katalog: `/feed/heureka.xml` a `/feed/zbozi.xml`. Bez feedu český e-shop prakticky neprodává. 1600 testů (5603 assertions).

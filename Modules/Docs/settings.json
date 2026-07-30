@@ -1,9 +1,52 @@
 {
-    "auto_issue_on": "in:paid,shipped,manual",
-    "email_invoice": "boolean",
-    "invoice_footer": "nullable|string|max:2000",
-    "due_days": "integer|min:0|max:90",
-    "number_prefix": "nullable|string|max:20",
-    "credit_note_prefix": "nullable|string|max:20",
-    "proforma_prefix": "nullable|string|max:20"
+    "auto_issue_on": {
+        "rules": "in:paid,shipped,manual",
+        "label": "Faktura se vystaví",
+        "type": "select",
+        "default": "paid",
+        "options": {
+            "paid": "Při zaplacení objednávky",
+            "shipped": "Při odeslání objednávky",
+            "manual": "Jen ručně"
+        },
+        "help": "Automatické vystavení lze kdykoli doplnit ručním vystavením v detailu objednávky."
+    },
+    "email_invoice": {
+        "rules": "boolean",
+        "label": "Poslat fakturu zákazníkovi e-mailem",
+        "type": "boolean",
+        "default": true
+    },
+    "due_days": {
+        "rules": "integer|min:0|max:90",
+        "label": "Splatnost faktury (dny)",
+        "type": "number",
+        "default": 14,
+        "help": "Počet dnů od vystavení do data splatnosti."
+    },
+    "invoice_footer": {
+        "rules": "nullable|string|max:2000",
+        "label": "Patička faktury",
+        "type": "textarea",
+        "default": "",
+        "help": "Text pod položkami — například zápis v obchodním rejstříku."
+    },
+    "number_prefix": {
+        "rules": "nullable|string|max:20",
+        "label": "Prefix čísla faktury",
+        "type": "text",
+        "default": ""
+    },
+    "credit_note_prefix": {
+        "rules": "nullable|string|max:20",
+        "label": "Prefix čísla dobropisu",
+        "type": "text",
+        "default": ""
+    },
+    "proforma_prefix": {
+        "rules": "nullable|string|max:20",
+        "label": "Prefix čísla proformy",
+        "type": "text",
+        "default": ""
+    }
 }

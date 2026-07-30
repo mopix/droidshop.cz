@@ -228,7 +228,9 @@ class PacketaEndToEndTest extends TestCase
                 'shipping_method_id' => $shipping->id,
                 'payment_method_id' => $payment->id,
             ]);
-        $choosePayment->assertRedirect($this->url('/pokladna/doprava'));
+        // Method, point and payment are all answered, so the step is done and
+        // hands the shopper on to the recap.
+        $choosePayment->assertRedirect($this->url('/pokladna/udaje'));
 
         // --- Step 9: the details/recap page. A real form with a real hidden
         // idempotency token, never a container waiting for a fetch.

@@ -1,0 +1,9 @@
+{
+    "number_prefix": {
+        "rules": "nullable|string|max:10",
+        "label": "Prefix čísla objednávky",
+        "type": "text",
+        "default": "",
+        "help": "Platí od další objednávky. Už vystavená čísla se nemění."
+    }
+}

@@ -34,6 +34,7 @@ readonly class Manifest
         public array $listens = [],
         public array $permissions = [],
         public ?string $settingsSchema = null,
+        public ?string $settingsPermission = null,
         public array $nav = [],
     ) {}
 
@@ -55,6 +56,7 @@ readonly class Manifest
             listens: $data['listens'] ?? [],
             permissions: $data['permissions'] ?? [],
             settingsSchema: $data['settings_schema'] ?? null,
+            settingsPermission: $data['settings_permission'] ?? null,
             nav: $data['nav'] ?? [],
         );
     }
@@ -77,6 +79,7 @@ readonly class Manifest
             'listens' => $this->listens,
             'permissions' => $this->permissions,
             'settings_schema' => $this->settingsSchema,
+            'settings_permission' => $this->settingsPermission,
             'nav' => $this->nav,
         ];
     }

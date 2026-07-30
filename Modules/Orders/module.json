@@ -20,7 +20,8 @@
         "orders.edit",
         "orders.cancel"
     ],
-    "settings_schema": null,
+    "settings_schema": "settings.json",
+    "settings_permission": "orders.edit",
     "nav": [
         {
             "area": "admin",

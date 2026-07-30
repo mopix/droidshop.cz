@@ -4,6 +4,7 @@ use App\Http\Controllers\Tenant\AdminHomeController;
 use App\Http\Controllers\Tenant\AppearanceController;
 use App\Http\Controllers\Tenant\BillingProfileController;
 use App\Http\Controllers\Tenant\DomainController;
+use App\Http\Controllers\Tenant\ModuleSettingsController;
 use App\Http\Controllers\Tenant\SubscriptionController;
 use App\Http\Controllers\Tenant\SubscriptionInvoiceController;
 use Illuminate\Support\Facades\Route;
@@ -21,6 +22,10 @@ Route::get('/admin/nastaveni/vzhled', [AppearanceController::class, 'edit'])->na
 Route::post('/admin/nastaveni/vzhled', [AppearanceController::class, 'update'])->name('admin.appearance.update');
 Route::delete('/admin/nastaveni/vzhled/logo', [AppearanceController::class, 'destroyLogo'])->name('admin.appearance.logo.destroy');
 Route::delete('/admin/nastaveni/vzhled/favicon', [AppearanceController::class, 'destroyFavicon'])->name('admin.appearance.favicon.destroy');
+
+Route::get('/admin/nastaveni/moduly', [ModuleSettingsController::class, 'index'])->name('admin.settings.modules.index');
+Route::get('/admin/nastaveni/moduly/{module}', [ModuleSettingsController::class, 'edit'])->name('admin.settings.modules.edit');
+Route::patch('/admin/nastaveni/moduly/{module}', [ModuleSettingsController::class, 'update'])->name('admin.settings.modules.update');
 
 Route::get('/admin/nastaveni/domena', [DomainController::class, 'edit'])->name('admin.domain.edit');
 Route::post('/admin/nastaveni/domena', [DomainController::class, 'store'])->name('admin.domain.store');

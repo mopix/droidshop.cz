@@ -16,6 +16,7 @@ use App\Core\Orders\Exceptions\ShippingMethodUnavailable;
 use App\Core\Orders\PlacementRequest;
 use App\Core\Payments\Contracts\PaymentGatewayRegistry;
 use App\Core\Payments\Exceptions\GatewayError;
+use App\Core\Settings\SettingsService;
 use App\Core\Shipping\Contracts\CarrierRegistry;
 use App\Core\Shipping\Contracts\PaymentOption;
 use App\Core\Shipping\Contracts\PaymentOptions;
@@ -64,6 +65,7 @@ class CheckoutController
         private readonly PickupPointCatalog $points,
         private readonly CarrierRegistry $carriers,
         private readonly ShopModules $modules,
+        private readonly SettingsService $settings,
     ) {}
 
     public function shipping(Request $request): Response|RedirectResponse
@@ -182,8 +184,18 @@ class CheckoutController
             $this->carts->choosePickupPoint($cart, null);
         }
 
+        // The step answers two questions on one page, and the payment radios
+        // only exist once a shipping method is stored — so the first submit
+        // has to come back here to show them. Once both halves are answered
+        // (and a pickup-point carrier has its branch), "Pokračovat" moves on:
+        // re-rendering the same page again is a dead end, since nothing else
+        // on it links to /pokladna/udaje.
+        $ready = $shippingId !== null
+            && $paymentId !== null
+            && (! $this->requiresPickupPoint($method) || $cart->cartPickupPointCode() !== null);
+
         return CartCookie::attach(
-            redirect()->route('storefront.checkout.shipping'),
+            redirect()->route($ready ? 'storefront.checkout.details' : 'storefront.checkout.shipping'),
             $cart,
             $request,
         );
@@ -214,6 +226,18 @@ class CheckoutController
                 $cart,
                 $request,
             );
+        }
+
+        // Both gates run on the server before anything is written; hiding the
+        // cart's continue button is presentation, not the rule. The cart page
+        // states the reason, which is what makes a refusal readable without
+        // JavaScript.
+        if ($blocked = $this->refuseBelowMinimum($priced)) {
+            return CartCookie::attach($blocked, $cart, $request);
+        }
+
+        if ($blocked = $this->refuseGuest($request)) {
+            return CartCookie::attach($blocked, $cart, $request);
         }
 
         $selection = $this->resolveSelection($cart, $priced);
@@ -275,6 +299,47 @@ class CheckoutController
     }
 
     /**
+     * The shop's own floor, measured on the goods after discount: adding
+     * delivery would let an expensive carrier carry the shopper over it.
+     */
+    private function refuseBelowMinimum(PricedCart $priced): ?RedirectResponse
+    {
+        $minimum = (int) $this->settings->get('checkout', 'min_order_total', 0);
+
+        if ($minimum <= 0) {
+            return null;
+        }
+
+        $payable = $priced->payableTotal ?? $priced->itemsTotal;
+
+        if ($payable->amount >= $minimum) {
+            return null;
+        }
+
+        $floor = new Money($minimum, $payable->currency);
+
+        return redirect()->route('storefront.checkout.show')
+            ->with('status', 'Minimální hodnota objednávky je '.$floor->format().'.');
+    }
+
+    /**
+     * A shop that turned guest checkout off wants an account behind every
+     * order; the shopper is sent to sign in, never silently through.
+     */
+    private function refuseGuest(Request $request): ?RedirectResponse
+    {
+        if ((bool) $this->settings->get('checkout', 'guest_checkout', true)) {
+            return null;
+        }
+
+        if (Auth::guard('customer')->check()) {
+            return null;
+        }
+
+        return redirect()->guest(route('storefront.customers.login'));
+    }
+
+    /**
      * POST `/pokladna/udaje` — validate, then hand the cart and the shopper's
      * choices to OrderPlacement::place(). No price is recomputed here:
      * OrderPlacer is the single pricing authority (AK 5), and the chosen
@@ -299,6 +364,18 @@ class CheckoutController
                 $cart,
                 $request,
             );
+        }
+
+        // Both gates run on the server before anything is written; hiding the
+        // cart's continue button is presentation, not the rule. The cart page
+        // states the reason, which is what makes a refusal readable without
+        // JavaScript.
+        if ($blocked = $this->refuseBelowMinimum($priced)) {
+            return CartCookie::attach($blocked, $cart, $request);
+        }
+
+        if ($blocked = $this->refuseGuest($request)) {
+            return CartCookie::attach($blocked, $cart, $request);
         }
 
         $placement = new PlacementRequest(

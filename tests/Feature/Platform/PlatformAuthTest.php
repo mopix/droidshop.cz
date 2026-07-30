@@ -110,6 +110,23 @@ class PlatformAuthTest extends TestCase
         $this->assertGuest('platform');
     }
 
+    /**
+     * A signed-in superadmin who opens the login page again must land back in
+     * the platform, not on the tenant staff login. `guest:platform` bounces
+     * them through redirectUsersTo, whose default (route('dashboard')) is a
+     * web-guard page the platform session cannot open — so the admin fell
+     * through /dashboard onto /login with no way back into /superadmin.
+     */
+    public function test_a_signed_in_admin_reopening_the_login_page_goes_to_the_platform(): void
+    {
+        $admin = $this->admin();
+
+        $this->actingAs($admin, 'platform')
+            ->withSession(['platform.2fa_passed' => true])
+            ->get('http://droidshop/superadmin/login')
+            ->assertRedirect(route('platform.dashboard'));
+    }
+
     public function test_logout(): void
     {
         $admin = $this->admin();

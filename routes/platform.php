@@ -4,6 +4,7 @@ use App\Http\Controllers\Platform\Auth\LoginController;
 use App\Http\Controllers\Platform\Auth\TwoFactorController;
 use App\Http\Controllers\Platform\ImpersonationController;
 use App\Http\Controllers\Platform\ModuleController;
+use App\Http\Controllers\Platform\PlanController;
 use App\Http\Controllers\Platform\PlatformInvoiceDownloadController;
 use App\Http\Controllers\Platform\TenantController;
 use App\Http\Controllers\Platform\TenantModuleController;
@@ -71,6 +72,18 @@ Route::middleware('platform.host')->group(function () {
 
         Route::patch('/superadmin/moduly/{module}/globalni-stav', [ModuleController::class, 'updateGlobalState'])
             ->name('platform.modules.global-state');
+
+        Route::get('/superadmin/tarify', [PlanController::class, 'index'])
+            ->name('platform.plans.index');
+
+        Route::get('/superadmin/tarify/{plan}', [PlanController::class, 'show'])
+            ->name('platform.plans.show');
+
+        Route::get('/superadmin/tarify/{plan}/dopad', [PlanController::class, 'impact'])
+            ->name('platform.plans.impact');
+
+        Route::patch('/superadmin/tarify/{plan}/moduly', [PlanController::class, 'updateModules'])
+            ->name('platform.plans.modules');
 
         Route::post('/superadmin/impersonace', [ImpersonationController::class, 'start'])
             ->name('platform.impersonate');

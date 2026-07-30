@@ -27,6 +27,13 @@
                 Tento e-shop momentálně nenabízí výběr dopravy. Objednávku si vyzvednete osobně, bez poplatku.
             </p>
         </div>
+
+        {{--
+            Nothing is submitted in this branch, so the step needs its own way
+            onward — without it the shopper is stranded on a page whose only
+            other outbound link goes back to the cart.
+        --}}
+        <a href="{{ route('storefront.checkout.details') }}" class="btn btn-primary mt-6 inline-flex">Pokračovat</a>
     @else
         <form method="POST" action="{{ route('storefront.checkout.chooseShipping') }}" class="mt-6 space-y-6">
             @csrf

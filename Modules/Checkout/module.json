@@ -9,7 +9,8 @@
     "requires": { "products": "*" },
     "provides": ["cart"],
     "listens": [],
-    "permissions": [],
-    "settings_schema": null,
+    "permissions": ["checkout.manage"],
+    "settings_schema": "settings.json",
+    "settings_permission": "checkout.manage",
     "nav": []
 }
