@@ -1424,7 +1424,7 @@ git commit -m "feat(orders): make the order number prefix a tenant setting"
 - Konzumuje: `ModuleRegistry::available()|enabledFor()|activate()|deactivate()`, tabulka `plan_modules`.
 - Produkuje: `impact(Plan $plan, array $keys): array{tenants: int, activate: array<string, list<string>>, deactivate: array<string, list<string>>}` (klíč vnějšího pole = tenant id) a `apply(Plan $plan, array $keys): void`.
 
-- [ ] **Krok 1: Napiš padající test**
+- [x] **Krok 1: Napiš padající test**
 
 ```php
 public function test_the_impact_counts_what_would_change(): void
@@ -1474,12 +1474,12 @@ public function test_every_touched_tenant_gets_its_own_audit_entry(): void
 }
 ```
 
-- [ ] **Krok 2: Spusť test, ověř pád**
+- [x] **Krok 2: Spusť test, ověř pád**
 
 Spusť: `php artisan test --filter=PlanModuleReconcilerTest`
 Očekávej: FAIL — třída neexistuje.
 
-- [ ] **Krok 3: Napiš službu**
+- [x] **Krok 3: Napiš službu**
 
 ```php
 <?php
@@ -1579,12 +1579,12 @@ class PlanModuleReconciler
 
 Pozor na pořadí v `apply()`: `sync()` musí proběhnout **před** rekonciliací, protože `ModuleRegistry::activate()` guarduje, že modul patří do tarifu tenanta.
 
-- [ ] **Krok 4: Spusť testy**
+- [x] **Krok 4: Spusť testy**
 
 Spusť: `php artisan test --filter=PlanModuleReconcilerTest`
 Očekávej: PASS (5 testů).
 
-- [ ] **Krok 5: Commit**
+- [x] **Krok 5: Commit**
 
 ```bash
 ./vendor/bin/pint app/Core/Modules/PlanModuleReconciler.php
