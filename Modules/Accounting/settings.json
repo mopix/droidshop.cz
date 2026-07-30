@@ -1,0 +1,35 @@
+{
+    "pohoda_predkontace_faktura": {
+        "rules": "nullable|string|max:20",
+        "label": "Předkontace faktury",
+        "type": "text",
+        "default": "",
+        "help": "Identifikátor z vašeho účetnictví, například 3Fv. Prázdné = Pohoda použije výchozí předkontaci."
+    },
+    "pohoda_predkontace_dobropis": {
+        "rules": "nullable|string|max:20",
+        "label": "Předkontace dobropisu",
+        "type": "text",
+        "default": "",
+        "help": "Například 3FvKr."
+    },
+    "pohoda_cleneni_dph": {
+        "rules": "nullable|string|max:20",
+        "label": "Členění DPH",
+        "type": "text",
+        "default": "",
+        "help": "Například UD."
+    },
+    "pohoda_stredisko": {
+        "rules": "nullable|string|max:20",
+        "label": "Středisko",
+        "type": "text",
+        "default": ""
+    },
+    "pohoda_cinnost": {
+        "rules": "nullable|string|max:20",
+        "label": "Činnost",
+        "type": "text",
+        "default": ""
+    }
+}
