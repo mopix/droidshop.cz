@@ -22,6 +22,9 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  */
 class AccountingExportController
 {
+    /** The only document types an accounting export may serve. */
+    private const TAX_TYPES = ['invoice', 'credit_note'];
+
     public function __construct(
         private readonly DocumentLedger $ledger,
         private readonly AccountingFormats $formats,
@@ -76,11 +79,25 @@ class AccountingExportController
             ->deleteFileAfterSend();
     }
 
+    /**
+     * One document as ISDOC. `type` is REQUIRED: since wave 1.6 a printed
+     * number is only unique per (tenant, type), so defaulting it to `invoice`
+     * let a stale or hand-edited URL for a credit-note number serve the
+     * invoice that happens to print the same number (final review, wave 2.11).
+     * An absent or unknown type 404s rather than 422 — which documents exist is
+     * not the caller's business, the same reasoning as a foreign number.
+     */
     public function isdoc(Request $request, string $number): HttpResponse
     {
         abort_unless($request->user('web')?->can('accounting.export'), 403);
 
-        $type = (string) $request->query('type', 'invoice');
+        $type = $request->query('type');
+
+        // Literals, not Modules\Docs\Models\Document::TYPE_*: this controller
+        // reads issued documents only through the kernel contract and must not
+        // import another module's Eloquent model (see the class docblock).
+        abort_unless(is_string($type) && in_array($type, self::TAX_TYPES, true), 404);
+
         $document = $this->ledger->findTaxDocument($number, $type);
 
         abort_if($document === null, 404);
@@ -95,9 +112,12 @@ class AccountingExportController
             'documents' => 1,
         ]);
 
+        // The name comes from the format, which already carries the type prefix
+        // and strips anything a number must not put into a header — the same
+        // one code path the batch archive names its entries with.
         return response($body, 200, [
             'Content-Type' => 'application/xml',
-            'Content-Disposition' => 'attachment; filename="'.$number.'.isdoc"',
+            'Content-Disposition' => 'attachment; filename="'.$format->filenameFor($document).'"',
             'X-Robots-Tag' => 'noindex',
         ]);
     }

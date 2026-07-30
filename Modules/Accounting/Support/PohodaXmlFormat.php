@@ -28,6 +28,12 @@ class PohodaXmlFormat implements AccountingFormat
 
     private const NS_TYPE = 'http://www.stormware.cz/schema/version_2/type.xsd';
 
+    /** Type prefixes for a single-document filename. */
+    private const FILENAME_PREFIX = [
+        'invoice' => 'faktura',
+        'credit_note' => 'dobropis',
+    ];
+
     public function key(): string
     {
         return 'pohoda';
@@ -51,6 +57,14 @@ class PohodaXmlFormat implements AccountingFormat
     public function writeOne(DocumentView $document, array $settings): string
     {
         return $this->wrap(collect([$document]), $settings);
+    }
+
+    public function filenameFor(DocumentView $document): string
+    {
+        $prefix = self::FILENAME_PREFIX[$document->documentType()] ?? 'doklad';
+        $number = preg_replace('/[^A-Za-z0-9._-]/', '-', $document->documentNumber());
+
+        return "{$prefix}-{$number}.xml";
     }
 
     public function writeBatch(Collection $documents, array $settings, string $filenameBase): array
@@ -114,9 +128,11 @@ class PohodaXmlFormat implements AccountingFormat
         $writer->startElementNs('inv', 'invoice', null);
         $writer->writeAttribute('version', '2.0');
 
+        $amounts = DocumentLines::for($document);
+
         $this->writeHeader($writer, $document, $settings, $isCreditNote);
-        $this->writeDetail($writer, $document);
-        $this->writeSummary($writer, $document);
+        $this->writeDetail($writer, $document, $amounts);
+        $this->writeSummary($writer, $document, $amounts);
 
         $writer->endElement(); // inv:invoice
         $writer->endElement(); // dat:dataPackItem
@@ -179,22 +195,29 @@ class PohodaXmlFormat implements AccountingFormat
         $writer->endElement();
     }
 
-    private function writeDetail(XMLWriter $writer, DocumentView $document): void
+    private function writeDetail(XMLWriter $writer, DocumentView $document, DocumentLines $amounts): void
     {
-        /** @var Document $document */
         $writer->startElementNs('inv', 'invoiceDetail', null);
 
-        foreach ($document->items ?? [] as $item) {
+        foreach ($amounts->lines as $line) {
             $writer->startElementNs('inv', 'invoiceItem', null);
-            $writer->writeElementNs('inv', 'text', null, (string) ($item['name'] ?? ''));
-            $writer->writeElementNs('inv', 'quantity', null, (string) ((int) ($item['quantity'] ?? 1)));
+            $writer->writeElementNs('inv', 'text', null, $line['name']);
+            $writer->writeElementNs('inv', 'quantity', null, (string) $line['quantity']);
+            // Pohoda reads a unit price as being WITHOUT VAT unless the item
+            // says otherwise, and every price on our snapshots is gross — left
+            // unsaid, an import landed about 21 % high (final review, wave
+            // 2.11). payVAT states the convention instead of converting, so
+            // the figure Pohoda receives is the exact one that was invoiced.
+            $writer->writeElementNs('inv', 'payVAT', null, 'true');
             $writer->writeElementNs('inv', 'rateVAT', null, VatRateMap::pohoda(
-                (float) ($item['tax_rate'] ?? 0),
+                $line['rate'],
                 $document->documentNumber(),
             ));
 
             $writer->startElementNs('inv', 'homeCurrency', null);
-            $writer->writeElementNs('typ', 'unitPrice', null, DocumentAmounts::decimal((int) ($item['unit_price'] ?? 0)));
+            $writer->writeElementNs('typ', 'unitPrice', null, DocumentAmounts::decimal(
+                $this->signed($line['unit_gross'])
+            ));
             $writer->endElement();
 
             $writer->endElement(); // inv:invoiceItem
@@ -203,16 +226,15 @@ class PohodaXmlFormat implements AccountingFormat
         $writer->endElement(); // inv:invoiceDetail
     }
 
-    private function writeSummary(XMLWriter $writer, DocumentView $document): void
+    private function writeSummary(XMLWriter $writer, DocumentView $document, DocumentLines $amounts): void
     {
-        /** @var Document $document */
         $writer->startElementNs('inv', 'invoiceSummary', null);
         $writer->startElementNs('inv', 'homeCurrency', null);
 
-        foreach ($document->vat_summary ?? [] as $row) {
-            $level = VatRateMap::pohoda((float) ($row['rate'] ?? 0), $document->documentNumber());
-            $base = DocumentAmounts::decimal((int) ($row['base'] ?? 0));
-            $vat = DocumentAmounts::decimal((int) ($row['vat'] ?? 0));
+        foreach ($amounts->vatSummary as $row) {
+            $level = VatRateMap::pohoda($row['rate'], $document->documentNumber());
+            $base = DocumentAmounts::decimal($this->signed($row['base']));
+            $vat = DocumentAmounts::decimal($this->signed($row['vat']));
 
             match ($level) {
                 'high' => $this->writePair($writer, 'priceHigh', $base, 'priceHighVAT', $vat),
@@ -223,6 +245,28 @@ class PohodaXmlFormat implements AccountingFormat
 
         $writer->endElement(); // inv:homeCurrency
         $writer->endElement(); // inv:invoiceSummary
+    }
+
+    /**
+     * The sign convention for a credit note, in one place. UNVERIFIED.
+     *
+     * Modules\Docs\Services\CreditNoteSnapshot already negates every amount on
+     * a credit note, and this writer additionally marks the document
+     * `issuedCreditNotice`. Whether Pohoda expects the negation ON TOP of that
+     * document type, or expects positive amounts and derives the direction from
+     * the type alone, cannot be settled without a real Pohoda import — which
+     * the spec already schedules as a pre-deploy step.
+     *
+     * So this method deliberately does nothing: it passes the snapshotted sign
+     * through unchanged, preserving the behaviour that shipped, and exists only
+     * so the convention has a name, a docblock and a test
+     * (PohodaXmlFormatTest::test_a_credit_note_keeps_the_snapshotted_sign).
+     * When the pre-deploy import answers the question, this is the single line
+     * to change — and the test will make the change deliberate.
+     */
+    private function signed(int $minorUnits): int
+    {
+        return $minorUnits;
     }
 
     private function writePair(XMLWriter $writer, string $baseName, string $base, string $vatName, string $vat): void

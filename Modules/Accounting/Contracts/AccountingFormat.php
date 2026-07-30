@@ -30,6 +30,17 @@ interface AccountingFormat
     public function writeOne(DocumentView $document, array $settings): string;
 
     /**
+     * The download name for one document, type prefix included and sanitised.
+     *
+     * Part of the contract rather than each caller's business: the single-file
+     * download endpoint used to build its own name from the raw number, so a
+     * document number carrying a slash or a quote reached Content-Disposition
+     * verbatim, and an invoice and a credit note printing the same number
+     * downloaded under one name (final review, wave 2.11).
+     */
+    public function filenameFor(DocumentView $document): string;
+
+    /**
      * Writes a whole period to a temporary file and describes what to send.
      *
      * Returns a path rather than a string because ISDOC batches are ZIPs, which

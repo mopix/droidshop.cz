@@ -87,6 +87,7 @@ class IsdocFormat implements AccountingFormat
         $writer->writeAttribute('version', self::VERSION);
 
         $isCreditNote = $document->documentType() === 'credit_note';
+        $amounts = DocumentLines::for($document);
 
         $writer->writeElement('DocumentType', $isCreditNote ? '2' : '1');
         $writer->writeElement('ID', $document->documentNumber());
@@ -97,6 +98,10 @@ class IsdocFormat implements AccountingFormat
         ));
         $writer->writeElement('IssueDate', $document->issued_at->format('Y-m-d'));
         $writer->writeElement('TaxPointDate', optional($document->taxable_at)->format('Y-m-d') ?? '');
+        // Required by 6.0.1 and read by importers to decide whether to book the
+        // tax at all. Taken from the supplier snapshot, so a shop that was not
+        // a VAT payer when it invoiced still exports as one that was not.
+        $writer->writeElement('VATApplicable', ($document->supplier['vat_payer'] ?? true) ? 'true' : 'false');
         $writer->writeElement('LocalCurrencyCode', $document->documentCurrency());
         $writer->writeElement('CurrRate', '1');
 
@@ -115,11 +120,19 @@ class IsdocFormat implements AccountingFormat
             'address' => $billing,
         ]);
 
-        $this->writeLines($writer, $document);
-        $this->writeTaxTotal($writer, $document);
+        $this->writeLines($writer, $amounts);
+        $this->writeTaxTotal($writer, $amounts);
 
+        // 6.0.1 expects all three: the tax-exclusive and tax-inclusive totals
+        // and what is actually payable. Only TaxInclusiveAmount was written,
+        // which left an importer to guess the base (final review, wave 2.11).
+        // TaxExclusiveAmount is the sum of the lines' own net figures and
+        // TaxInclusiveAmount is documents.total, so the three agree with the
+        // lines above and with TaxTotal by construction — see DocumentLines.
         $writer->startElement('LegalMonetaryTotal');
-        $writer->writeElement('TaxInclusiveAmount', DocumentAmounts::decimal($document->total->amount));
+        $writer->writeElement('TaxExclusiveAmount', DocumentAmounts::decimal($this->signed($amounts->taxExclusive)));
+        $writer->writeElement('TaxInclusiveAmount', DocumentAmounts::decimal($this->signed($amounts->taxInclusive)));
+        $writer->writeElement('PayableAmount', DocumentAmounts::decimal($this->signed($amounts->taxInclusive)));
         $writer->endElement();
 
         $writer->endElement(); // Invoice
@@ -175,7 +188,7 @@ class IsdocFormat implements AccountingFormat
         ];
     }
 
-    private function filenameFor(DocumentView $document): string
+    public function filenameFor(DocumentView $document): string
     {
         $prefix = self::FILENAME_PREFIX[$document->documentType()] ?? 'doklad';
         $number = preg_replace('/[^A-Za-z0-9._-]/', '-', $document->documentNumber());
@@ -216,24 +229,39 @@ class IsdocFormat implements AccountingFormat
         $writer->endElement(); // $element
     }
 
-    private function writeLines(XMLWriter $writer, DocumentView $document): void
+    /**
+     * ISDOC defines LineExtensionAmount and UnitPrice as tax-EXCLUSIVE, and
+     * both used to receive the snapshot's gross figure — the document then
+     * contradicted its own TaxTotal, which reported the correct net base
+     * (final review, wave 2.11). The tax-exclusive fields now carry genuine net
+     * figures (derived once, in DocumentLines, through TaxRate) and 6.0.1's
+     * tax-inclusive counterparts carry the gross ones, so both readings of the
+     * line are available and neither is a lie.
+     */
+    private function writeLines(XMLWriter $writer, DocumentLines $amounts): void
     {
-        /** @var Document $document */
         $writer->startElement('InvoiceLines');
 
-        foreach (array_values($document->items ?? []) as $index => $item) {
+        foreach ($amounts->lines as $index => $line) {
             $writer->startElement('InvoiceLine');
             $writer->writeElement('ID', (string) ($index + 1));
-            $writer->writeElement('InvoicedQuantity', (string) ((int) ($item['quantity'] ?? 1)));
-            $writer->writeElement('LineExtensionAmount', DocumentAmounts::decimal((int) ($item['line_total'] ?? 0)));
-            $writer->writeElement('UnitPrice', DocumentAmounts::decimal((int) ($item['unit_price'] ?? 0)));
+            $writer->writeElement('InvoicedQuantity', (string) $line['quantity']);
+            $writer->writeElement('LineExtensionAmount', DocumentAmounts::decimal($this->signed($line['line_net'])));
+            $writer->writeElement('LineExtensionAmountTaxInclusive', DocumentAmounts::decimal(
+                $this->signed($line['line_gross'])
+            ));
+            $writer->writeElement('LineExtensionTaxAmount', DocumentAmounts::decimal(
+                $this->signed($line['line_gross'] - $line['line_net'])
+            ));
+            $writer->writeElement('UnitPrice', DocumentAmounts::decimal($this->signed($line['unit_net'])));
+            $writer->writeElement('UnitPriceTaxInclusive', DocumentAmounts::decimal($this->signed($line['unit_gross'])));
 
             $writer->startElement('ClassifiedTaxCategory');
-            $writer->writeElement('Percent', (string) (float) ($item['tax_rate'] ?? 0));
+            $writer->writeElement('Percent', VatRateMap::percent($line['rate'], $amounts->number));
             $writer->endElement();
 
             $writer->startElement('Item');
-            $writer->writeElement('Description', (string) ($item['name'] ?? ''));
+            $writer->writeElement('Description', $line['name']);
             $writer->endElement();
 
             $writer->endElement(); // InvoiceLine
@@ -242,28 +270,47 @@ class IsdocFormat implements AccountingFormat
         $writer->endElement(); // InvoiceLines
     }
 
-    private function writeTaxTotal(XMLWriter $writer, DocumentView $document): void
+    private function writeTaxTotal(XMLWriter $writer, DocumentLines $amounts): void
     {
-        /** @var Document $document */
         $writer->startElement('TaxTotal');
 
-        foreach ($document->vat_summary ?? [] as $row) {
+        foreach ($amounts->vatSummary as $row) {
             $writer->startElement('TaxSubTotal');
-            $writer->writeElement('TaxableAmount', DocumentAmounts::decimal((int) ($row['base'] ?? 0)));
-            $writer->writeElement('TaxAmount', DocumentAmounts::decimal((int) ($row['vat'] ?? 0)));
+            $writer->writeElement('TaxableAmount', DocumentAmounts::decimal($this->signed($row['base'])));
+            $writer->writeElement('TaxAmount', DocumentAmounts::decimal($this->signed($row['vat'])));
             $writer->writeElement('TaxInclusiveAmount', DocumentAmounts::decimal(
-                (int) ($row['base'] ?? 0) + (int) ($row['vat'] ?? 0)
+                $this->signed($row['base'] + $row['vat'])
             ));
             $writer->startElement('ClassifiedTaxCategory');
-            $writer->writeElement('Percent', (string) (float) ($row['rate'] ?? 0));
+            $writer->writeElement('Percent', VatRateMap::percent($row['rate'], $amounts->number));
             $writer->endElement();
             $writer->endElement(); // TaxSubTotal
         }
 
-        $writer->writeElement('TaxAmount', DocumentAmounts::decimal(
-            collect($document->vat_summary ?? [])->sum(fn (array $row) => (int) ($row['vat'] ?? 0))
-        ));
+        $writer->writeElement('TaxAmount', DocumentAmounts::decimal($this->signed($amounts->taxAmount)));
 
         $writer->endElement(); // TaxTotal
+    }
+
+    /**
+     * The sign convention for a credit note, in one place. UNVERIFIED.
+     *
+     * Modules\Docs\Services\CreditNoteSnapshot already negates every amount on
+     * a credit note, and this writer additionally sets DocumentType 2. Whether
+     * an ISDOC reader expects the negation ON TOP of that type, or positive
+     * amounts with the direction taken from the type alone, cannot be settled
+     * without validating against the official XSD and a real importer — which
+     * the spec already schedules as a pre-deploy step.
+     *
+     * So this method deliberately does nothing: it passes the snapshotted sign
+     * through unchanged, preserving the behaviour that shipped, and exists only
+     * so the convention has a name, a docblock and a test
+     * (IsdocFormatTest::test_a_credit_note_keeps_the_snapshotted_sign). When
+     * the pre-deploy validation answers the question, this is the single line
+     * to change — and the test will make the change deliberate.
+     */
+    private function signed(int $minorUnits): int
+    {
+        return $minorUnits;
     }
 }

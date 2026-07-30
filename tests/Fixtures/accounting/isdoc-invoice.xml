@@ -5,6 +5,7 @@
  <UUID>014f0ec5-77f1-5193-ae7c-a6f712014eeb</UUID>
  <IssueDate>2026-07-30</IssueDate>
  <TaxPointDate>2026-07-30</TaxPointDate>
+ <VATApplicable>true</VATApplicable>
  <LocalCurrencyCode>CZK</LocalCurrencyCode>
  <CurrRate>1</CurrRate>
  <AccountingSupplierParty>
@@ -45,13 +46,31 @@
   <InvoiceLine>
    <ID>1</ID>
    <InvoicedQuantity>2</InvoicedQuantity>
-   <LineExtensionAmount>1998.00</LineExtensionAmount>
-   <UnitPrice>999.00</UnitPrice>
+   <LineExtensionAmount>1651.24</LineExtensionAmount>
+   <LineExtensionAmountTaxInclusive>1998.00</LineExtensionAmountTaxInclusive>
+   <LineExtensionTaxAmount>346.76</LineExtensionTaxAmount>
+   <UnitPrice>825.62</UnitPrice>
+   <UnitPriceTaxInclusive>999.00</UnitPriceTaxInclusive>
    <ClassifiedTaxCategory>
     <Percent>21</Percent>
    </ClassifiedTaxCategory>
    <Item>
     <Description>Klávesnice Acme</Description>
+   </Item>
+  </InvoiceLine>
+  <InvoiceLine>
+   <ID>2</ID>
+   <InvoicedQuantity>1</InvoicedQuantity>
+   <LineExtensionAmount>81.82</LineExtensionAmount>
+   <LineExtensionAmountTaxInclusive>99.00</LineExtensionAmountTaxInclusive>
+   <LineExtensionTaxAmount>17.18</LineExtensionTaxAmount>
+   <UnitPrice>81.82</UnitPrice>
+   <UnitPriceTaxInclusive>99.00</UnitPriceTaxInclusive>
+   <ClassifiedTaxCategory>
+    <Percent>21</Percent>
+   </ClassifiedTaxCategory>
+   <Item>
+    <Description>Doprava a poplatky</Description>
    </Item>
   </InvoiceLine>
  </InvoiceLines>
@@ -67,6 +86,8 @@
   <TaxAmount>363.94</TaxAmount>
  </TaxTotal>
  <LegalMonetaryTotal>
+  <TaxExclusiveAmount>1733.06</TaxExclusiveAmount>
   <TaxInclusiveAmount>2097.00</TaxInclusiveAmount>
+  <PayableAmount>2097.00</PayableAmount>
  </LegalMonetaryTotal>
 </Invoice>

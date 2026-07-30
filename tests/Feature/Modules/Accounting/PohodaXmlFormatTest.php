@@ -4,6 +4,7 @@ namespace Tests\Feature\Modules\Accounting;
 
 use App\Core\Documents\Contracts\DocumentIssuer;
 use App\Core\Documents\Contracts\DocumentLedger;
+use Modules\Accounting\Exceptions\UnsupportedVatRate;
 use Modules\Accounting\Support\PohodaXmlFormat;
 use Modules\Docs\Models\Document;
 use Modules\Orders\Models\Order;
@@ -52,6 +53,19 @@ class PohodaXmlFormatTest extends DocsTestCase
         $this->assertStringContainsString('issuedCreditNotice', $this->xmlFor($note));
     }
 
+    public function test_an_unsupported_rate_is_refused_before_anything_is_written(): void
+    {
+        // 20.6 used to round onto `high` and book a rate nobody charged.
+        $invoice = $this->invoice();
+        $items = $invoice->items;
+        $items[0]['tax_rate'] = '20.60';
+        \DB::table('documents')->where('id', $invoice->id)->update(['items' => json_encode($items)]);
+
+        $this->expectException(UnsupportedVatRate::class);
+
+        $this->xmlFor($invoice->fresh());
+    }
+
     public function test_configured_predkontace_appears_and_an_empty_one_is_omitted(): void
     {
         $invoice = $this->invoice();
@@ -83,6 +97,78 @@ class PohodaXmlFormatTest extends DocsTestCase
         $dom = new \DOMDocument;
         $this->assertTrue($dom->loadXML($xml));
         $this->assertStringNotContainsString('<script>', $xml);
+    }
+
+    /**
+     * The figures, not just the element names.
+     *
+     * The golden file compares structure only, which is exactly why the export
+     * shipped writing gross amounts into tax-exclusive fields (final review,
+     * wave 2.11). Everything asserted here is computed from DocsTestCase's own
+     * order — two keyboards at 999 Kč gross plus 99 Kč shipping, all at 21 % —
+     * with plain arithmetic, never read back out of the writer.
+     */
+    public function test_the_amounts_are_the_ones_that_were_invoiced(): void
+    {
+        $itemsGross = 2 * 99900;      // two keyboards, gross (prices include VAT)
+        $shippingGross = 9900;        // the courier line, gross
+        $total = $itemsGross + $shippingGross;
+
+        $base = (int) round($total * 100 / 121);
+        $vat = $total - $base;
+
+        $xml = $this->xmlFor($this->invoice());
+
+        // Unit prices stay gross — payVAT says so, so Pohoda does not subtract
+        // a tax that was never added on top.
+        $this->assertStringContainsString('<inv:payVAT>true</inv:payVAT>', $xml);
+        $this->assertStringContainsString('<typ:unitPrice>999.00</typ:unitPrice>', $xml);
+
+        // The shipping the snapshot never carried as a line, so the item lines
+        // add up to what the summary and documents.total say.
+        $this->assertStringContainsString('<typ:unitPrice>99.00</typ:unitPrice>', $xml);
+        $this->assertSame($total, $itemsGross + $shippingGross);
+
+        // The recap, per rate, is the base and the tax — 1733.06 + 363.94.
+        $this->assertStringContainsString('<typ:priceHigh>'.$this->decimal($base).'</typ:priceHigh>', $xml);
+        $this->assertStringContainsString('<typ:priceHighVAT>'.$this->decimal($vat).'</typ:priceHighVAT>', $xml);
+        $this->assertSame($total, $base + $vat);
+    }
+
+    /**
+     * Locks in TODAY's credit-note sign, deliberately.
+     *
+     * CreditNoteSnapshot negates every amount and this writer additionally
+     * marks the document `issuedCreditNotice`. Whether Pohoda wants both is
+     * unverified (see PohodaXmlFormat::signed()), so the behaviour that shipped
+     * is preserved and pinned here: changing it means changing this test, which
+     * makes the change a decision rather than a slip.
+     */
+    public function test_a_credit_note_keeps_the_snapshotted_sign(): void
+    {
+        $xml = $this->xmlFor($this->creditNote());
+
+        $this->assertStringContainsString('issuedCreditNotice', $xml);
+        $this->assertStringContainsString('<typ:unitPrice>-999.00</typ:unitPrice>', $xml);
+        $this->assertStringContainsString('<typ:unitPrice>-99.00</typ:unitPrice>', $xml);
+        $this->assertStringContainsString('<typ:priceHigh>-1733.06</typ:priceHigh>', $xml);
+        $this->assertStringContainsString('<typ:priceHighVAT>-363.94</typ:priceHighVAT>', $xml);
+    }
+
+    private function creditNote(): Document
+    {
+        $uuid = $this->placePaidOrder();
+        app(DocumentIssuer::class)->issue($uuid, Document::TYPE_INVOICE);
+        Order::query()->where('uuid', $uuid)->update(['fulfillment_status' => Order::FULFILLMENT_CANCELLED]);
+        app(DocumentIssuer::class)->issue($uuid, Document::TYPE_CREDIT_NOTE);
+
+        return Document::query()->where('type', Document::TYPE_CREDIT_NOTE)->latest('id')->firstOrFail();
+    }
+
+    /** Haléře as the writer prints them, without asking the writer. */
+    private function decimal(int $minorUnits): string
+    {
+        return intdiv($minorUnits, 100).'.'.str_pad((string) ($minorUnits % 100), 2, '0', STR_PAD_LEFT);
     }
 
     public function test_the_batch_matches_the_golden_file(): void

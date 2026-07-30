@@ -39,10 +39,15 @@ class EloquentDocumentLedger implements DocumentLedger
         }
 
         // Document's BelongsToTenant global scope keeps this tenant-isolated,
-        // exactly like taxableBetween() above.
+        // exactly like taxableBetween() above. The null-DUZP predicate is the
+        // same one taxableBetween() applies: without it this path could hand
+        // out a document the batch would never include, and an accounting
+        // export would carry an empty tax point date the batch cannot produce
+        // (final review, wave 2.11).
         return Document::query()
             ->where('type', $type)
             ->where('number', $number)
+            ->whereNotNull('taxable_at')
             ->first();
     }
 }

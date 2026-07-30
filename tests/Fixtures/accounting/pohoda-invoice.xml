@@ -29,9 +29,19 @@
     <inv:invoiceItem>
      <inv:text>Klávesnice Acme</inv:text>
      <inv:quantity>2</inv:quantity>
+     <inv:payVAT>true</inv:payVAT>
      <inv:rateVAT>high</inv:rateVAT>
      <inv:homeCurrency>
       <typ:unitPrice>999.00</typ:unitPrice>
+     </inv:homeCurrency>
+    </inv:invoiceItem>
+    <inv:invoiceItem>
+     <inv:text>Doprava a poplatky</inv:text>
+     <inv:quantity>1</inv:quantity>
+     <inv:payVAT>true</inv:payVAT>
+     <inv:rateVAT>high</inv:rateVAT>
+     <inv:homeCurrency>
+      <typ:unitPrice>99.00</typ:unitPrice>
      </inv:homeCurrency>
     </inv:invoiceItem>
    </inv:invoiceDetail>
