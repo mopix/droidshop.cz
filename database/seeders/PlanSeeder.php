@@ -3,12 +3,14 @@
 namespace Database\Seeders;
 
 use App\Core\Enums\PlanLevel;
-use App\Models\Module;
+use App\Core\Modules\PlanModuleDefaults;
 use App\Models\Plan;
 use Illuminate\Database\Seeder;
 
 class PlanSeeder extends Seeder
 {
+    public function __construct(private readonly PlanModuleDefaults $defaults) {}
+
     /**
      * Prices are placeholders: the pricing decision is still open (spec §13).
      * Values are in haléře.
@@ -41,18 +43,16 @@ class PlanSeeder extends Seeder
             ],
         ]);
 
-        // Premium-only modules (spec §909). Attached here so a fresh install
-        // and the test suite agree with the production backfill migration.
-        $premium = Plan::where('key', 'premium')->first();
-
-        if ($premium !== null && Module::where('key', 'discounts')->exists()) {
-            $premium->modules()->syncWithoutDetaching(['discounts']);
-        }
-
-        // Feeds are base: a Heureka feed is a condition of selling in the Czech
-        // market, not an upsell, so every plan gets it.
-        if (Module::where('key', 'feeds')->exists()) {
-            Plan::all()->each(fn (Plan $plan) => $plan->modules()->syncWithoutDetaching(['feeds']));
-        }
+        // Which tarif grants which module follows the manifest `level`, in one
+        // place, for every deployed module — see PlanModuleDefaults. Before
+        // this, each module needed to remember its own attach migration and a
+        // fresh install ended up with a base plan granting almost nothing, so
+        // an onboarded shop had no catalogue and no checkout.
+        //
+        // Base = the whole selling e-shop (catalogue, checkout, orders,
+        // delivery, payments, customers, pages, invoices, Heureka feed,
+        // Zásilkovna); premium adds the marketing tools on top (today
+        // `discounts`) plus the higher limits set above.
+        $this->defaults->apply();
     }
 }

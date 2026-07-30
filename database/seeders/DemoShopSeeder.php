@@ -6,7 +6,6 @@ use App\Core\Enums\TenantStatus;
 use App\Core\Tax\TaxRates;
 use App\Core\Tenancy\TenantContext;
 use App\Core\Tenancy\TenantProvisioner;
-use App\Models\Module;
 use App\Models\Plan;
 use App\Models\PlatformAdmin;
 use App\Models\Tenant;
@@ -39,22 +38,17 @@ class DemoShopSeeder extends Seeder
             ['name' => 'Superadmin', 'password' => Hash::make('password')],
         );
 
-        $plan = Plan::where('key', 'base')->firstOrFail();
+        // Premium, so the demo shop runs every module the platform ships — the
+        // marketing tools included. It deliberately does NOT hand-attach
+        // modules to a tarif any more: PlanSeeder composes both tarifs from the
+        // manifest levels (PlanModuleDefaults), so the demo mirrors production
+        // instead of inventing a base plan that grants everything. That
+        // divergence is how a core module ended up in plan_modules.
+        $plan = Plan::where('key', 'premium')->firstOrFail();
 
         $tenant = Tenant::firstWhere('name', 'Demo obchod');
 
         if (! $tenant) {
-            // Demo plan must grant every deployed module so provisioning
-            // activates them all — except core ones, which run in every shop
-            // regardless of tarif. A core grant row grants nothing and lands in
-            // the deactivate set of PlanModuleReconciler/TenantPlanSwitcher,
-            // where ModuleRegistry::deactivate() throws.
-            foreach (Module::query()->where('core', false)->pluck('key') as $key) {
-                if (! $plan->modules()->where('module_key', $key)->exists()) {
-                    $plan->modules()->attach($key);
-                }
-            }
-
             $owner = User::updateOrCreate(
                 ['email' => 'admin@demo.cz'],
                 ['name' => 'Majitel Demo', 'password' => Hash::make('password')],

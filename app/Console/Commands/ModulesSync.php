@@ -6,6 +6,7 @@ use App\Core\Modules\Exceptions\InvalidManifest;
 use App\Core\Modules\Manifest;
 use App\Core\Modules\ManifestValidator;
 use App\Core\Modules\ModuleRegistry;
+use App\Core\Modules\PlanModuleDefaults;
 use App\Core\Settings\SettingsSchema;
 use App\Models\Module;
 use Illuminate\Console\Command;
@@ -23,7 +24,7 @@ class ModulesSync extends Command
 
     protected $description = 'Read module manifests from disk and update the module registry';
 
-    public function handle(ManifestValidator $validator, ModuleRegistry $registry): int
+    public function handle(ManifestValidator $validator, ModuleRegistry $registry, PlanModuleDefaults $defaults): int
     {
         $manifests = [];
 
@@ -54,11 +55,12 @@ class ModulesSync extends Command
         }
 
         $added = $updated = 0;
+        $granted = [];
 
         foreach ($manifests as $manifest) {
             $existing = Module::find($manifest->name);
 
-            Module::updateOrCreate(['key' => $manifest->name], [
+            $module = Module::updateOrCreate(['key' => $manifest->name], [
                 'version' => $manifest->version,
                 'core' => $manifest->core,
                 'level' => $manifest->level,
@@ -66,6 +68,17 @@ class ModulesSync extends Command
             ]);
 
             $existing ? $updated++ : $added++;
+
+            // A module no plan grants cannot be switched on at all
+            // (PlanDoesNotIncludeModule), so a newly deployed one adopts the
+            // tarif its manifest level belongs to. Only for modules this run
+            // CREATED: re-applying defaults to a module that was merely
+            // re-read would undo a deliberate removal on the wave 2.10
+            // superadmin screen.
+            if ($existing === null && ! $module->core) {
+                $defaults->applyTo($module);
+                $granted[] = $module->key;
+            }
         }
 
         $removed = $this->prune(array_keys($manifests));
@@ -78,6 +91,10 @@ class ModulesSync extends Command
             $updated,
             $removed !== null ? ", {$removed} removed" : ''
         ));
+
+        if ($granted !== []) {
+            $this->info('Granted to plans by manifest level: '.implode(', ', $granted).'.');
+        }
 
         return self::SUCCESS;
     }
