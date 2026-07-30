@@ -100,4 +100,52 @@ class DocumentLedgerTest extends DocsTestCase
         $this->assertCount(1, $ledger);
         $this->assertSame($oursNumber, $ledger->first()->documentNumber());
     }
+
+    public function test_it_finds_an_invoice_by_number_and_type(): void
+    {
+        $uuid = $this->placePaidOrder();
+        $invoice = app(DocumentIssuer::class)->issue($uuid, Document::TYPE_INVOICE);
+
+        $found = app(DocumentLedger::class)
+            ->findTaxDocument($invoice->documentNumber(), Document::TYPE_INVOICE);
+
+        $this->assertNotNull($found);
+        $this->assertSame($invoice->documentNumber(), $found->documentNumber());
+    }
+
+    public function test_it_refuses_a_proforma_even_when_the_number_matches(): void
+    {
+        // A proforma is not a tax document, and since wave 1.6 the unique key is
+        // (tenant_id, type, number) — so it may legitimately carry the same
+        // number as an invoice. Answering with it would let a caller present a
+        // non-tax document as one.
+        $uuid = $this->placePaidOrder();
+        $proforma = app(DocumentIssuer::class)->issue($uuid, Document::TYPE_PROFORMA);
+
+        $this->assertNull(
+            app(DocumentLedger::class)
+                ->findTaxDocument($proforma->documentNumber(), Document::TYPE_PROFORMA)
+        );
+    }
+
+    public function test_it_finds_a_credit_note(): void
+    {
+        $uuid = $this->placePaidOrder();
+        app(DocumentIssuer::class)->issue($uuid, Document::TYPE_INVOICE);
+        Order::query()->where('uuid', $uuid)->update(['fulfillment_status' => Order::FULFILLMENT_CANCELLED]);
+        $note = app(DocumentIssuer::class)->issue($uuid, Document::TYPE_CREDIT_NOTE);
+
+        $found = app(DocumentLedger::class)
+            ->findTaxDocument($note->documentNumber(), Document::TYPE_CREDIT_NOTE);
+
+        $this->assertNotNull($found);
+        $this->assertSame(Document::TYPE_CREDIT_NOTE, $found->documentType());
+    }
+
+    public function test_an_unknown_number_is_null(): void
+    {
+        $this->assertNull(
+            app(DocumentLedger::class)->findTaxDocument('NEEXISTUJE', Document::TYPE_INVOICE)
+        );
+    }
 }

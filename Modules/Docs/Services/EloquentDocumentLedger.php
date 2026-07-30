@@ -3,6 +3,7 @@
 namespace Modules\Docs\Services;
 
 use App\Core\Documents\Contracts\DocumentLedger;
+use App\Core\Documents\Contracts\DocumentView;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Collection;
 use Modules\Docs\Models\Document;
@@ -26,5 +27,22 @@ class EloquentDocumentLedger implements DocumentLedger
             ->orderBy('taxable_at')
             ->orderBy('number')
             ->get();
+    }
+
+    public function findTaxDocument(string $number, string $type): ?DocumentView
+    {
+        // Only the two tax types resolve. A proforma carries no DUZP and is not
+        // a tax document; answering with one would let a caller hand it over as
+        // if it were.
+        if (! in_array($type, [Document::TYPE_INVOICE, Document::TYPE_CREDIT_NOTE], true)) {
+            return null;
+        }
+
+        // Document's BelongsToTenant global scope keeps this tenant-isolated,
+        // exactly like taxableBetween() above.
+        return Document::query()
+            ->where('type', $type)
+            ->where('number', $number)
+            ->first();
     }
 }
