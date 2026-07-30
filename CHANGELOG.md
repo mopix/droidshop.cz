@@ -11,6 +11,14 @@ Pravidla: [`.claude/skills/versioning/SKILL.md`](.claude/skills/versioning/SKILL
 
 > CHANGELOG vede milníky (minor/major). Detail patchů je v `git log`.
 
+## [0.31.0] – 2026-07-30
+
+**Fáze 2 / vlna 2.11 — modul `accounting`: export dokladů do Pohody a ISDOC (premium).** Start implementačního plánu (`docs/superpowers/plans/2026-07-30-vlna-211-accounting-export.md`), spec `docs/superpowers/specs/2026-07-30-vlna-211-accounting-export-design.md`.
+
+Zadání: nájemcova účetní dnes dostane jen CSV se souhrnem DPH — doklady musí do účetního programu opsat. Modul `accounting` vydá tytéž doklady v Pohoda XML (dávka za období) a ISDOC 6.0.1 (ZIP, jeden soubor per doklad), plus jednotlivý doklad jako `.isdoc` z detailu. Je to zároveň **první nový premium modul**; premium tarif dosud odlišoval jen `discounts` a limity.
+
+Adresátem je účetní nájemce, ne odběratel — ISDOC příloha k faktuře pro zákazníka, Money S3, filtry exportu a plná mapovací obrazovka jsou v `docs/future/accounting-dalsi-kroky.md`.
+
 ## [0.30.0] – 2026-07-30
 
 **Tarify se skládají z `level` v manifestu.** `App\Core\Modules\PlanModuleDefaults` je jediné místo, které říká, který tarif modul uděluje.

@@ -56,7 +56,7 @@ Modulová admin skupina (`module:accounting` → `tenant.member`), právo kontro
 |---|---|---|---|
 | GET | `/admin/m/accounting` | `admin.accounting.index` | formulář období + volba formátu |
 | GET | `/admin/m/accounting/export` | `admin.accounting.export` | stažení dávky |
-| GET | `/admin/m/accounting/isdoc/{number}` | `admin.accounting.isdoc` | jeden doklad jako `.isdoc` |
+| GET | `/admin/m/accounting/isdoc/{number}?type=invoice` | `admin.accounting.isdoc` | jeden doklad jako `.isdoc`; `type` je povinný (číslo je unikátní jen v rámci typu — vzor `DocumentAdminController::download()`) |
 
 Tlačítko „ISDOC" v seznamu dokladů (`/admin/m/docs`) se renderuje jen tehdy, když e-shop běží `accounting` (`ShopModules->has('accounting')`) a uživatel má právo — odkaz míří na routu modulu. Stejný vzor, jakým košík zobrazuje pole pro slevový kód jen s modulem `discounts`.
 
@@ -79,10 +79,12 @@ Nastavuje se na `/admin/nastaveni/moduly/accounting` — generická obrazovka z 
 `DocumentLedger` dostane druhou metodu vedle stávajícího `taxableBetween()`:
 
 ```php
-public function findTaxDocument(string $number): ?DocumentView;
+public function findTaxDocument(string $number, string $type): ?DocumentView;
 ```
 
-Cizí modul nesmí sahat na model `Document` (rozhodnutí 2026-07-22), takže dohledání jednoho dokladu podle čísla musí projít kontraktem. Implementace **filtruje typ na `invoice` a `credit_note`**: unique je od vlny 1.6 `(tenant_id, type, number)`, takže proforma smí nést stejné číslo jako faktura, a bez filtru by tlačítko ISDOC vydalo nedaňový doklad vystupující jako daňový. `NullDocumentLedger` vrací `null`.
+Cizí modul nesmí sahat na model `Document` (rozhodnutí 2026-07-22), takže dohledání jednoho dokladu musí projít kontraktem.
+
+**Typ je povinný argument, nejen filtr.** Unique je od vlny 1.6 `(tenant_id, type, number)`, takže vytištěné číslo samo o sobě neidentifikuje řádek — faktura a dobropis mohou nést totéž číslo, když obě řady začínají rok jedničkou s prázdným prefixem. `DocumentAdminController::download()`/`resend()` proto už dnes berou `type` jako query parametr a admin seznam ho u každého řádku zná. Metoda navíc **odmítne jiný typ než `invoice` a `credit_note`** (vrátí `null`), aby tlačítko ISDOC nikdy nevydalo proformu vystupující jako daňový doklad. `NullDocumentLedger` vrací `null`.
 
 ## Komponenty modulu
 
@@ -136,7 +138,7 @@ Zdrojem je **vždy snímek dokladu** (`documents.supplier`, `customer`, `items`,
 
 1. Nájemce s `accounting.export` zadá období, zvolí Pohoda XML a stáhne soubor, který obsahuje jeden `dataPackItem` per daňový doklad s DUZP v období.
 2. Tentýž nájemce zvolí ISDOC a stáhne ZIP s jedním `.isdoc` per doklad; jméno souboru nese typ i číslo.
-3. Tlačítko u konkrétní faktury vydá jeden `.isdoc`; cizí číslo vrátí 404 a proforma se stejným číslem se nikdy nevydá.
+3. Tlačítko u konkrétní faktury vydá jeden `.isdoc` (číslo + povinný `type`); cizí číslo vrátí 404 a `type=proforma` také, i když doklad toho čísla existuje.
 4. Bez práva `accounting.export` je obrazovka 403; s vypnutým modulem 404.
 5. Dobropis je v Pohoda XML `issuedCreditNotice` a v ISDOC opravný doklad; proforma není v žádném exportu.
 6. Vyplněná předkontace a členění DPH se objeví v XML; nevyplněná znamená, že element chybí a export přesto projde.
