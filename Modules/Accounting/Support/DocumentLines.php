@@ -31,6 +31,12 @@ use Modules\Docs\Models\Document;
  * gross minus the items charged at that rate — so it is emitted as one extra
  * line per rate. Nothing is invented: no total moves, and a document whose
  * lines already add up gets no extra line at all.
+ *
+ * Non-VAT payer. An empty `vat_summary` means the document charges no VAT —
+ * there is no per-rate row to reconcile against, so the loop above never
+ * runs, and the items' own tax_rate is not consulted either (see
+ * untaxedLines()). Net is forced equal to gross, so the document still sums
+ * to `documents.total` with a zero tax amount, never a guessed one.
  */
 final class DocumentLines
 {
@@ -55,9 +61,18 @@ final class DocumentLines
         /** @var Document $document */
         $currency = $document->documentCurrency();
         $number = $document->documentNumber();
-
-        $lines = self::itemLines($document->items ?? [], $currency, $number);
         $summary = self::summaryRows($document->vat_summary ?? [], $number);
+
+        // An empty vat_summary means the document charges no VAT at all (a
+        // non-VAT-payer supplier). There is then no per-rate recap to trust a
+        // rate from, and the items' own tax_rate must not be consulted either
+        // — that would invent a tax the document's own recap denies. Every
+        // line is booked at its own gross figure with zero tax instead, so
+        // TaxExclusiveAmount still equals the sum of the (now-net-equals-
+        // gross) lines and TaxAmount stays zero.
+        $lines = $summary === []
+            ? self::untaxedLines($document->items ?? [])
+            : self::itemLines($document->items ?? [], $currency, $number);
 
         foreach ($summary as $row) {
             $lines = self::reconcileRate($lines, $row, $currency);
@@ -97,6 +112,38 @@ final class DocumentLines
                 'unit_net' => self::net($unitGross, $rate, $currency),
                 'line_gross' => $lineGross,
                 'line_net' => self::net($lineGross, $rate, $currency),
+            ];
+        }
+
+        return $lines;
+    }
+
+    /**
+     * The same shape as itemLines(), but for a document whose vat_summary is
+     * empty: net is forced equal to gross rather than derived from the
+     * item's own tax_rate, and the rate is always 0 ("none" for both
+     * formats). See the comment in for() for why the item-level rate is
+     * ignored here.
+     *
+     * @param  array<int, array<string, mixed>>  $items
+     * @return list<array{name:string,quantity:int,rate:float,unit_gross:int,unit_net:int,line_gross:int,line_net:int}>
+     */
+    private static function untaxedLines(array $items): array
+    {
+        $lines = [];
+
+        foreach (array_values($items) as $item) {
+            $unitGross = (int) ($item['unit_price'] ?? 0);
+            $lineGross = (int) ($item['line_total'] ?? 0);
+
+            $lines[] = [
+                'name' => (string) ($item['name'] ?? ''),
+                'quantity' => (int) ($item['quantity'] ?? 1),
+                'rate' => 0.0,
+                'unit_gross' => $unitGross,
+                'unit_net' => $unitGross,
+                'line_gross' => $lineGross,
+                'line_net' => $lineGross,
             ];
         }
 

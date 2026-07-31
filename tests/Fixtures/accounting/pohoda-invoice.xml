@@ -7,9 +7,9 @@
     <inv:number>
      <typ:numberRequested>20260001</typ:numberRequested>
     </inv:number>
-    <inv:date>2026-07-30</inv:date>
-    <inv:dateTax>2026-07-30</inv:dateTax>
-    <inv:dateDue>2026-08-13</inv:dateDue>
+    <inv:date>2026-07-31</inv:date>
+    <inv:dateTax>2026-07-31</inv:dateTax>
+    <inv:dateDue>2026-08-14</inv:dateDue>
     <inv:symVar>20260001</inv:symVar>
     <inv:partnerIdentity>
      <typ:address>
@@ -36,12 +36,21 @@
      </inv:homeCurrency>
     </inv:invoiceItem>
     <inv:invoiceItem>
-     <inv:text>Doprava a poplatky</inv:text>
+     <inv:text>Doprava — Kurýr</inv:text>
      <inv:quantity>1</inv:quantity>
      <inv:payVAT>true</inv:payVAT>
      <inv:rateVAT>high</inv:rateVAT>
      <inv:homeCurrency>
       <typ:unitPrice>99.00</typ:unitPrice>
+     </inv:homeCurrency>
+    </inv:invoiceItem>
+    <inv:invoiceItem>
+     <inv:text>Platba — Dobírka</inv:text>
+     <inv:quantity>1</inv:quantity>
+     <inv:payVAT>true</inv:payVAT>
+     <inv:rateVAT>high</inv:rateVAT>
+     <inv:homeCurrency>
+      <typ:unitPrice>0.00</typ:unitPrice>
      </inv:homeCurrency>
     </inv:invoiceItem>
    </inv:invoiceDetail>

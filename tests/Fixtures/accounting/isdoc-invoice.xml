@@ -3,8 +3,8 @@
  <DocumentType>1</DocumentType>
  <ID>20260001</ID>
  <UUID>014f0ec5-77f1-5193-ae7c-a6f712014eeb</UUID>
- <IssueDate>2026-07-30</IssueDate>
- <TaxPointDate>2026-07-30</TaxPointDate>
+ <IssueDate>2026-07-31</IssueDate>
+ <TaxPointDate>2026-07-31</TaxPointDate>
  <VATApplicable>true</VATApplicable>
  <LocalCurrencyCode>CZK</LocalCurrencyCode>
  <CurrRate>1</CurrRate>
@@ -70,7 +70,22 @@
     <Percent>21</Percent>
    </ClassifiedTaxCategory>
    <Item>
-    <Description>Doprava a poplatky</Description>
+    <Description>Doprava — Kurýr</Description>
+   </Item>
+  </InvoiceLine>
+  <InvoiceLine>
+   <ID>3</ID>
+   <InvoicedQuantity>1</InvoicedQuantity>
+   <LineExtensionAmount>0.00</LineExtensionAmount>
+   <LineExtensionAmountTaxInclusive>0.00</LineExtensionAmountTaxInclusive>
+   <LineExtensionTaxAmount>0.00</LineExtensionTaxAmount>
+   <UnitPrice>0.00</UnitPrice>
+   <UnitPriceTaxInclusive>0.00</UnitPriceTaxInclusive>
+   <ClassifiedTaxCategory>
+    <Percent>21</Percent>
+   </ClassifiedTaxCategory>
+   <Item>
+    <Description>Platba — Dobírka</Description>
    </Item>
   </InvoiceLine>
  </InvoiceLines>

@@ -211,6 +211,28 @@ class IsdocFormatTest extends DocsTestCase
         return $sign.intdiv($absolute, 100).'.'.str_pad((string) ($absolute % 100), 2, '0', STR_PAD_LEFT);
     }
 
+    public function test_a_non_vat_payer_document_is_internally_consistent(): void
+    {
+        // A non-VAT payer has an empty vat_summary, so there is no per-rate
+        // residual to derive. TaxExclusiveAmount + TaxAmount must still equal
+        // PayableAmount, or the ISDOC block contradicts itself.
+        $invoice = $this->invoice();
+        DB::table('documents')->where('id', $invoice->id)->update(['vat_summary' => json_encode([])]);
+
+        $xml = (new IsdocFormat)->writeOne($invoice->fresh(), []);
+        $dom = new \DOMDocument;
+        $dom->loadXML($xml);
+
+        $value = fn (string $tag): float => (float) $dom->getElementsByTagName($tag)->item(0)?->nodeValue;
+
+        $this->assertEqualsWithDelta(
+            $value('PayableAmount'),
+            $value('TaxExclusiveAmount') + $value('TaxAmount'),
+            0.001,
+            'ISDOC si nesmí odporovat: základ + daň se musí rovnat částce k úhradě.'
+        );
+    }
+
     public function test_the_structure_matches_the_golden_file(): void
     {
         $xml = (new IsdocFormat)->writeOne($this->invoice(), []);
