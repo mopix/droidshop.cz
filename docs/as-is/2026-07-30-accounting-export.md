@@ -109,7 +109,9 @@ Golden files (`tests/Fixtures/accounting/`) hlídají **drift struktury**, ne sp
 
 ## Technický dluh
 
-1. **Snímek dokladu nenese dopravu ani poplatek za platbu** (`InvoiceSnapshot`). Modul si to dopočítá, ale **zákaznické PDF faktury má tutéž díru** — řádky se nesečtou na „Celkem k úhradě". Patří do `Modules/Docs`, ne sem, a mělo by se opravit dřív než pozdě, protože jde o doklad, který zákazník dostává dnes.
+> **Body 1 a 2 vyřešeny vlnou 2.12** — viz [`2026-07-31-doprava-na-dokladu.md`](2026-07-31-doprava-na-dokladu.md).
+
+1. ~~**Snímek dokladu nenese dopravu ani poplatek za platbu**~~ (vyřešeno 2.12) (`InvoiceSnapshot`). Modul si to dopočítá, ale **zákaznické PDF faktury má tutéž díru** — řádky se nesečtou na „Celkem k úhradě". Patří do `Modules/Docs`, ne sem, a mělo by se opravit dřív než pozdě, protože jde o doklad, který zákazník dostává dnes.
 2. **Sazba chybějící ve `vat_summary`** (neplátce DPH, nebo doprava/platba bez `tax_rate_id`) nedostane dopočtený řádek, ale `PayableAmount` se pořád bere z `documents.total` — ISDOC si pak může sám odporovat. Netestováno.
 3. **Korekce zaokrouhlení upravuje `line_net`, ne `unit_net`** — u řádku s množstvím 1 může být `UnitPrice` o haléř jinde než `LineExtensionAmount`.
 4. **Chybí testy** na „když řádky sedí, žádný dopočtený řádek nevznikne" a na doklad s víc sazbami.
