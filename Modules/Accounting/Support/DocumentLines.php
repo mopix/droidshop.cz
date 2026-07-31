@@ -35,8 +35,12 @@ use Modules\Docs\Models\Document;
  * Non-VAT payer. An empty `vat_summary` means the document charges no VAT —
  * there is no per-rate row to reconcile against, so the loop above never
  * runs, and the items' own tax_rate is not consulted either (see
- * untaxedLines()). Net is forced equal to gross, so the document still sums
- * to `documents.total` with a zero tax amount, never a guessed one.
+ * untaxedLines()). Net is forced equal to gross, so a line never carries a
+ * guessed tax. The same shipping/payment gap the taxed path closes per rate
+ * can exist here too — a non-VAT-payer document issued before wave 2.12 has
+ * an empty vat_summary AND items missing shipping — so untaxedLines()
+ * reconciles once against `documents.total` directly, at rate 0, the same
+ * "nothing invented, zero gap emits nothing" rule as reconcileRate().
  */
 final class DocumentLines
 {
@@ -71,7 +75,7 @@ final class DocumentLines
         // TaxExclusiveAmount still equals the sum of the (now-net-equals-
         // gross) lines and TaxAmount stays zero.
         $lines = $summary === []
-            ? self::untaxedLines($document->items ?? [])
+            ? self::untaxedLines($document->items ?? [], $document->documentTotal()->amount)
             : self::itemLines($document->items ?? [], $currency, $number);
 
         foreach ($summary as $row) {
@@ -125,10 +129,17 @@ final class DocumentLines
      * formats). See the comment in for() for why the item-level rate is
      * ignored here.
      *
+     * Reconciles against `$documentTotal` directly (there is no per-rate
+     * recap row to check against instead): a legacy non-VAT-payer document
+     * whose items never carried shipping/the payment fee gets exactly one
+     * "Doprava a poplatky" line, at rate 0, for the gap — same "nothing
+     * invented, zero gap emits nothing" rule as reconcileRate(), just against
+     * the whole total instead of one rate's slice of it.
+     *
      * @param  array<int, array<string, mixed>>  $items
      * @return list<array{name:string,quantity:int,rate:float,unit_gross:int,unit_net:int,line_gross:int,line_net:int}>
      */
-    private static function untaxedLines(array $items): array
+    private static function untaxedLines(array $items, int $documentTotal): array
     {
         $lines = [];
 
@@ -144,6 +155,20 @@ final class DocumentLines
                 'unit_net' => $unitGross,
                 'line_gross' => $lineGross,
                 'line_net' => $lineGross,
+            ];
+        }
+
+        $residual = $documentTotal - self::sum($lines, 'line_gross');
+
+        if ($residual !== 0) {
+            $lines[] = [
+                'name' => self::RESIDUAL_LABEL,
+                'quantity' => 1,
+                'rate' => 0.0,
+                'unit_gross' => $residual,
+                'unit_net' => $residual,
+                'line_gross' => $residual,
+                'line_net' => $residual,
             ];
         }
 

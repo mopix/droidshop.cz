@@ -233,6 +233,62 @@ class IsdocFormatTest extends DocsTestCase
         );
     }
 
+    public function test_a_legacy_non_vat_payer_document_still_reconciles(): void
+    {
+        // A pre-2.12 document (items never carried shipping/the payment fee)
+        // that is ALSO a non-VAT payer (empty vat_summary): the untaxed path
+        // had no per-rate recap to reconcile against, so the shipping charge
+        // silently vanished from the export instead of surfacing as a
+        // residual — a shorter document than the one that was actually paid,
+        // with nothing signalling it.
+        $invoice = $this->invoice();
+
+        $items = array_values(array_filter(
+            $invoice->items,
+            static fn (array $i) => ! str_contains($i['name'], 'Doprava') && ! str_contains($i['name'], 'Platba'),
+        ));
+        DB::table('documents')->where('id', $invoice->id)->update([
+            'items' => json_encode($items),
+            'vat_summary' => json_encode([]),
+        ]);
+
+        $invoice = $invoice->fresh();
+        $xml = (new IsdocFormat)->writeOne($invoice, []);
+
+        $this->assertStringContainsString('Doprava a poplatky', $xml);
+        $this->assertLinesSumToDocumentTotal($xml, $invoice);
+    }
+
+    public function test_a_current_non_vat_payer_document_has_no_residual(): void
+    {
+        // Same non-VAT-payer scenario, but the document already carries
+        // shipping/the payment fee as ordinary items (post-2.12 shape): the
+        // gap against documents.total is already zero, so no residual line
+        // should appear.
+        $invoice = $this->invoice();
+        DB::table('documents')->where('id', $invoice->id)->update(['vat_summary' => json_encode([])]);
+
+        $invoice = $invoice->fresh();
+        $xml = (new IsdocFormat)->writeOne($invoice, []);
+
+        $this->assertStringNotContainsString('Doprava a poplatky', $xml);
+        $this->assertLinesSumToDocumentTotal($xml, $invoice);
+    }
+
+    /** Sums every line's own gross figure and checks it against documents.total, in whole haléře. */
+    private function assertLinesSumToDocumentTotal(string $xml, Document $document): void
+    {
+        $dom = new \DOMDocument;
+        $dom->loadXML($xml);
+
+        $sum = 0;
+        foreach ($dom->getElementsByTagName('LineExtensionAmountTaxInclusive') as $node) {
+            $sum += (int) round(((float) $node->nodeValue) * 100);
+        }
+
+        $this->assertSame($document->documentTotal()->amount, $sum, 'Exported lines must sum to documents.total.');
+    }
+
     public function test_the_structure_matches_the_golden_file(): void
     {
         $xml = (new IsdocFormat)->writeOne($this->invoice(), []);
