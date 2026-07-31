@@ -29,7 +29,15 @@ class BillingProfileController extends Controller
                 'billing_ico' => $tenant->billing_ico,
                 'billing_dic' => $tenant->billing_dic,
                 'vat_payer' => (bool) $tenant->vat_payer,
-                'billing_address' => $tenant->billing_address ?? ['street' => '', 'city' => '', 'zip' => ''],
+                // country defaults to Czechia (owner's decision 2026-07-31):
+                // array_merge lets a tenant's own value win, but still fills
+                // the gap for both a brand-new profile (no billing_address at
+                // all) and an existing one saved before this field existed
+                // (billing_address present, 'country' key missing).
+                'billing_address' => array_merge(
+                    ['street' => '', 'city' => '', 'zip' => '', 'country' => 'CZ'],
+                    $tenant->billing_address ?? [],
+                ),
             ],
         ]);
     }

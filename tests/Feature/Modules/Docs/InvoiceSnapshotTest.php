@@ -94,6 +94,31 @@ class InvoiceSnapshotTest extends DocsTestCase
         $this->assertNotSame('', (string) $shipping['tax_rate'], 'Sazba DPH dopravy musí být na řádku.');
     }
 
+    public function test_a_tenant_with_no_country_falls_back_to_cz(): void
+    {
+        // DocsTestCase's own tenant always sets 'country' => 'CZ' — reproduce
+        // the pre-2.12b shape (or a profile the owner never opened) by
+        // stripping the key rather than adding a second tenant.
+        $this->tenant->update([
+            'billing_address' => ['street' => 'Hlavní 1', 'city' => 'Praha', 'zip' => '110 00'],
+        ]);
+
+        $invoice = $this->freshInvoice();
+
+        $this->assertSame('CZ', $invoice->supplier['address']['country'] ?? null);
+    }
+
+    public function test_a_tenant_with_an_explicit_country_keeps_it(): void
+    {
+        $this->tenant->update([
+            'billing_address' => ['street' => 'Hlavná 1', 'city' => 'Bratislava', 'zip' => '811 01', 'country' => 'SK'],
+        ]);
+
+        $invoice = $this->freshInvoice();
+
+        $this->assertSame('SK', $invoice->supplier['address']['country'] ?? null);
+    }
+
     public function test_a_credit_note_negates_the_new_lines_too(): void
     {
         $uuid = $this->placePaidOrder();

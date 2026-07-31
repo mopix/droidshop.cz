@@ -35,7 +35,7 @@ class InvoiceSnapshot
                 'ico' => $tenant->billing_ico,
                 'dic' => $tenant->vat_payer ? $tenant->billing_dic : null,
                 'vat_payer' => (bool) $tenant->vat_payer,
-                'address' => $tenant->billing_address,
+                'address' => $this->supplierAddress($tenant),
             ],
             'customer' => [
                 'order_uuid' => $order->orderUuid(),
@@ -184,5 +184,33 @@ class InvoiceSnapshot
             'tax_rate' => $percent,
             'line_total' => $amount,
         ];
+    }
+
+    /**
+     * The tenant's billing address, with a country name always present.
+     *
+     * Country was only added to the billing profile screen in wave 2.12b, so
+     * a tenant who saved theirs before that (or simply never opened the
+     * screen) has a billing_address with no 'country' key at all. CZ is not
+     * a guess in that gap: this platform bills in CZK, requires a Czech IČO
+     * and runs Czech VAT rules end to end, so a tenant with no country on
+     * record is, in every material sense, a Czech one (owner's decision
+     * 2026-07-31).
+     *
+     * Lives here rather than in Modules\Accounting\Support\IsdocFormat (the
+     * only consumer that currently reads ['address']['country']) because the
+     * snapshot is what every consumer reads — including the customer's own
+     * PDF, should a country line ever be added there. One fallback, applied
+     * once, at the point the document is born.
+     *
+     * @return array<string, mixed>
+     */
+    private function supplierAddress(Tenant $tenant): array
+    {
+        $address = $tenant->billing_address ?? [];
+        $country = $address['country'] ?? null;
+        $address['country'] = ($country !== null && $country !== '') ? $country : 'CZ';
+
+        return $address;
     }
 }

@@ -35,7 +35,7 @@ class ProformaSnapshot
                 'ico' => $tenant->billing_ico,
                 'dic' => $tenant->vat_payer ? $tenant->billing_dic : null,
                 'vat_payer' => (bool) $tenant->vat_payer,
-                'address' => $tenant->billing_address,
+                'address' => $this->supplierAddress($tenant),
             ],
             'customer' => [
                 'order_uuid' => $order->orderUuid(),
@@ -114,5 +114,22 @@ class ProformaSnapshot
             'tax_rate' => $percent,
             'line_total' => $amount,
         ];
+    }
+
+    /**
+     * The tenant's billing address, with a country always present. Same CZ
+     * fallback and the same reasoning as InvoiceSnapshot::supplierAddress()
+     * (see its docblock) — duplicated here for the same approved YAGNI
+     * reason as the rest of this class (see class docblock).
+     *
+     * @return array<string, mixed>
+     */
+    private function supplierAddress(Tenant $tenant): array
+    {
+        $address = $tenant->billing_address ?? [];
+        $country = $address['country'] ?? null;
+        $address['country'] = ($country !== null && $country !== '') ? $country : 'CZ';
+
+        return $address;
     }
 }
