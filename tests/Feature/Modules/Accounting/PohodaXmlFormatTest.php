@@ -171,6 +171,33 @@ class PohodaXmlFormatTest extends DocsTestCase
         return intdiv($minorUnits, 100).'.'.str_pad((string) ($minorUnits % 100), 2, '0', STR_PAD_LEFT);
     }
 
+    public function test_a_document_that_already_carries_shipping_gets_no_synthesised_line(): void
+    {
+        // Since wave 2.12 the snapshot carries shipping itself, so the residual
+        // is zero and the "Doprava a poplatky" line must not appear. It stays
+        // only for documents issued before that change.
+        $invoice = $this->invoice();
+        $xml = (new PohodaXmlFormat)->writeOne($invoice, []);
+
+        $this->assertStringNotContainsString('Doprava a poplatky', $xml);
+    }
+
+    public function test_a_legacy_document_without_shipping_still_reconciles(): void
+    {
+        $invoice = $this->invoice();
+
+        // A document in the pre-2.12 shape: shipping only in the recap.
+        $items = array_values(array_filter(
+            $invoice->items,
+            static fn (array $i) => ! str_contains($i['name'], 'Doprava') && ! str_contains($i['name'], 'Platba'),
+        ));
+        \DB::table('documents')->where('id', $invoice->id)->update(['items' => json_encode($items)]);
+
+        $xml = (new PohodaXmlFormat)->writeOne($invoice->fresh(), []);
+
+        $this->assertStringContainsString('Doprava a poplatky', $xml);
+    }
+
     public function test_the_batch_matches_the_golden_file(): void
     {
         // Catches an accidental element rename or reordering. It does NOT prove

@@ -6,6 +6,7 @@ interface Address {
   street: string
   city: string
   zip: string
+  country: string
 }
 
 const props = defineProps<{
@@ -151,6 +152,28 @@ function submit() {
                 />
                 <p v-if="form.errors['billing_address.zip']" class="mt-1 text-sm text-red-700">
                   {{ form.errors['billing_address.zip'] }}
+                </p>
+              </div>
+
+              <div>
+                <label for="billing-country" class="block text-sm font-medium text-gray-700">Země</label>
+                <input
+                  id="billing-country"
+                  v-model="form.billing_address.country"
+                  type="text"
+                  required
+                  maxlength="2"
+                  placeholder="CZ"
+                  class="mt-1 w-full rounded-md border-gray-300 shadow-sm uppercase focus:border-gray-900 focus:ring-gray-900"
+                  :aria-invalid="form.errors['billing_address.country'] ? 'true' : undefined"
+                  :aria-describedby="form.errors['billing_address.country'] ? 'billing-country-error' : undefined"
+                />
+                <p
+                  v-if="form.errors['billing_address.country']"
+                  id="billing-country-error"
+                  class="mt-1 text-sm text-red-700"
+                >
+                  {{ form.errors['billing_address.country'] }}
                 </p>
               </div>
             </div>

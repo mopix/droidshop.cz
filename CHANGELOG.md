@@ -11,6 +11,38 @@ Pravidla: [`.claude/skills/versioning/SKILL.md`](.claude/skills/versioning/SKILL
 
 > CHANGELOG vede milníky (minor/major). Detail patchů je v `git log`.
 
+## [0.34.0] – 2026-07-31
+
+**Fáze 2 / vlna 2.12 — doprava a poplatek na dokladu + dotažení účetního exportu.** Uzavření vlny (`docs/as-is/2026-07-31-doprava-na-dokladu.md`). 1755 testů (6206 assertions).
+
+### Faktura konečně sečte
+Doklad tiskl položky za 1 998 Kč a pod nimi „Celkem k úhradě: 2 097 Kč“, aniž kdekoli uvedl, odkud rozdíl je — doprava a poplatek za platbu žily jen v součtu a v DPH rekapitulaci, která je členěná po sazbách, ne podle toho, co se prodalo. `InvoiceSnapshot` i `ProformaSnapshot` je nově nesou jako řádky ve **stejném tvaru** jako položky, takže se nemění tabulka, PDF šablona ani modul `accounting`.
+
+Účtuje se `charged`, ne `price` (liší se, když sleva udělala dopravu zdarma); u neplátce DPH je sazba **nula, ne dohadovaný default**; nulový řádek se zobrazuje, aby zákazník viděl, co si zvolil. Historické doklady se nemění (immutable snímek, PDF už odešla) — export si u nich dopočte řádek „Doprava a poplatky“, který u nových vyjde na nulu a sám zmizí.
+
+### ISDOC se validuje proti oficiálnímu XSD
+Formát byl psaný z dokumentace a nikdy ověřený; golden files porovnávají výstup se sebou samým, takže vlastní chybu odhalit nemohou. Vendorované schéma 6.0.1 (`tests/Fixtures/isdoc/`, vestavěný `libxml`, žádná nová závislost) našlo **osm skutečných porušení** — mimo jiné `TaxSubTotal` pod jménem elementu `ClassifiedTaxCategory`, `TaxPointDate` psaný jako prázdný řetězec místo vynechání a dvě sady povinných polí pro zúčtování záloh. Každý dřívější ISDOC byl odmítnutelný.
+
+### Uzavřené dluhy z vlny 2.11
+- Tiché vynechání dopravy u **neplátce DPH** se starým tvarem dokladu (prázdná `vat_summary` i chybějící řádky) — export by zaúčtoval nižší částku, než se zaplatilo. Nově se reconciluje proti `documents.total`.
+- Fakturační profil sbírá **zemi** (ISO 3166-1 alpha-2, výchozí `CZ`, regex s `/D`); bez ní by ISDOC vyšel s prázdnou zemí dodavatele. Fallback sedí ve snímku, takže z něj těží i zákaznické PDF.
+
+### Mimo rozsah, opraveno cestou
+Dva testy používaly `subMonth()`, což z 31. 7. dělá 1. 7. (červen má 30 dní, datum se normalizuje dopředu) — sada byla červená jen 31. v měsíci.
+
+### Zbývá
+Reálný import Pohoda XML do Pohody (potřebuje licenci) — poslední položka pre-deploy checklistu účetního exportu.
+
+## [0.33.0] – 2026-07-31
+
+**Fáze 2 / vlna 2.12 — doprava a poplatek na dokladu.** Start implementačního plánu (`docs/superpowers/plans/2026-07-31-vlna-212-doprava-na-dokladu.md`).
+
+Zadání: faktura, kterou zákazník dostává, tiskne položky za 1 998 Kč a pod nimi „Celkem k úhradě: 2 097 Kč“, aniž kdekoli uvede, odkud rozdíl je — `InvoiceSnapshot` nesnímkuje dopravu ani poplatek za platbu, ty žijí jen v součtu a v DPH rekapitulaci. Odhalila to až vlna 2.11, protože účetní export si musel rozdíl dopočítávat. Doklad, jehož řádky se nesečtou na částku k úhradě, si nemůže zkontrolovat ten, kdo ho platí.
+
+Součástí je dotažení dvou otevřených bodů z 2.11: konzistence ISDOC u neplátce DPH a validace ISDOC proti oficiálnímu XSD 6.0.1 (vestavěný `libxml`, žádná nová závislost) — formát byl dosud psaný z dokumentace, ne ze schématu.
+
+Historické doklady se nemění (immutable snímek, PDF už odešla); modul `accounting` si u nich dál dopočítá řádek „Doprava a poplatky“.
+
 ## [0.32.0] – 2026-07-30
 
 **Fáze 2 / vlna 2.11 — modul `accounting`: export dokladů do Pohody a ISDOC (premium).** Uzavření vlny (`docs/as-is/2026-07-30-accounting-export.md`). 1734 testů (6126 assertions).

@@ -3,11 +3,13 @@
  <DocumentType>1</DocumentType>
  <ID>20260001</ID>
  <UUID>014f0ec5-77f1-5193-ae7c-a6f712014eeb</UUID>
- <IssueDate>2026-07-30</IssueDate>
- <TaxPointDate>2026-07-30</TaxPointDate>
+ <IssueDate>2026-07-31</IssueDate>
+ <TaxPointDate>2026-07-31</TaxPointDate>
  <VATApplicable>true</VATApplicable>
+ <ElectronicPossibilityAgreementReference></ElectronicPossibilityAgreementReference>
  <LocalCurrencyCode>CZK</LocalCurrencyCode>
  <CurrRate>1</CurrRate>
+ <RefCurrRate>1</RefCurrRate>
  <AccountingSupplierParty>
   <Party>
    <PartyIdentification>
@@ -18,8 +20,13 @@
    </PartyName>
    <PostalAddress>
     <StreetName>Hlavní 1</StreetName>
+    <BuildingNumber></BuildingNumber>
     <CityName>Praha</CityName>
     <PostalZone>110 00</PostalZone>
+    <Country>
+     <IdentificationCode>CZ</IdentificationCode>
+     <Name></Name>
+    </Country>
    </PostalAddress>
    <PartyTaxScheme>
     <CompanyID>CZ12345678</CompanyID>
@@ -37,8 +44,13 @@
    </PartyName>
    <PostalAddress>
     <StreetName>Hlavní 1</StreetName>
+    <BuildingNumber></BuildingNumber>
     <CityName>Praha</CityName>
     <PostalZone>110 00</PostalZone>
+    <Country>
+     <IdentificationCode>CZ</IdentificationCode>
+     <Name></Name>
+    </Country>
    </PostalAddress>
   </Party>
  </AccountingCustomerParty>
@@ -53,6 +65,7 @@
    <UnitPriceTaxInclusive>999.00</UnitPriceTaxInclusive>
    <ClassifiedTaxCategory>
     <Percent>21</Percent>
+    <VATCalculationMethod>1</VATCalculationMethod>
    </ClassifiedTaxCategory>
    <Item>
     <Description>Klávesnice Acme</Description>
@@ -68,9 +81,26 @@
    <UnitPriceTaxInclusive>99.00</UnitPriceTaxInclusive>
    <ClassifiedTaxCategory>
     <Percent>21</Percent>
+    <VATCalculationMethod>1</VATCalculationMethod>
    </ClassifiedTaxCategory>
    <Item>
-    <Description>Doprava a poplatky</Description>
+    <Description>Doprava — Kurýr</Description>
+   </Item>
+  </InvoiceLine>
+  <InvoiceLine>
+   <ID>3</ID>
+   <InvoicedQuantity>1</InvoicedQuantity>
+   <LineExtensionAmount>0.00</LineExtensionAmount>
+   <LineExtensionAmountTaxInclusive>0.00</LineExtensionAmountTaxInclusive>
+   <LineExtensionTaxAmount>0.00</LineExtensionTaxAmount>
+   <UnitPrice>0.00</UnitPrice>
+   <UnitPriceTaxInclusive>0.00</UnitPriceTaxInclusive>
+   <ClassifiedTaxCategory>
+    <Percent>21</Percent>
+    <VATCalculationMethod>1</VATCalculationMethod>
+   </ClassifiedTaxCategory>
+   <Item>
+    <Description>Platba — Dobírka</Description>
    </Item>
   </InvoiceLine>
  </InvoiceLines>
@@ -79,15 +109,26 @@
    <TaxableAmount>1733.06</TaxableAmount>
    <TaxAmount>363.94</TaxAmount>
    <TaxInclusiveAmount>2097.00</TaxInclusiveAmount>
-   <ClassifiedTaxCategory>
+   <AlreadyClaimedTaxableAmount>0.00</AlreadyClaimedTaxableAmount>
+   <AlreadyClaimedTaxAmount>0.00</AlreadyClaimedTaxAmount>
+   <AlreadyClaimedTaxInclusiveAmount>0.00</AlreadyClaimedTaxInclusiveAmount>
+   <DifferenceTaxableAmount>1733.06</DifferenceTaxableAmount>
+   <DifferenceTaxAmount>363.94</DifferenceTaxAmount>
+   <DifferenceTaxInclusiveAmount>2097.00</DifferenceTaxInclusiveAmount>
+   <TaxCategory>
     <Percent>21</Percent>
-   </ClassifiedTaxCategory>
+   </TaxCategory>
   </TaxSubTotal>
   <TaxAmount>363.94</TaxAmount>
  </TaxTotal>
  <LegalMonetaryTotal>
   <TaxExclusiveAmount>1733.06</TaxExclusiveAmount>
   <TaxInclusiveAmount>2097.00</TaxInclusiveAmount>
+  <AlreadyClaimedTaxExclusiveAmount>0.00</AlreadyClaimedTaxExclusiveAmount>
+  <AlreadyClaimedTaxInclusiveAmount>0.00</AlreadyClaimedTaxInclusiveAmount>
+  <DifferenceTaxExclusiveAmount>1733.06</DifferenceTaxExclusiveAmount>
+  <DifferenceTaxInclusiveAmount>2097.00</DifferenceTaxInclusiveAmount>
+  <PaidDepositsAmount>0.00</PaidDepositsAmount>
   <PayableAmount>2097.00</PayableAmount>
  </LegalMonetaryTotal>
 </Invoice>

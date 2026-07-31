@@ -76,7 +76,9 @@ class VatExportTest extends DocsTestCase
     public function test_a_document_outside_the_requested_period_is_excluded(): void
     {
         $this->issuedInvoiceOrder();
-        Document::query()->where('type', 'invoice')->update(['taxable_at' => now()->subMonth()->startOfDay()]);
+        // Note: now()->subMonth()->startOfDay() overflows on the 31st (July 31 - 1 month normalizes to July 1).
+        // Use now()->startOfMonth()->subDay() to reliably get the last day of the previous month.
+        Document::query()->where('type', 'invoice')->update(['taxable_at' => now()->startOfMonth()->subDay()]);
         $number = Document::query()->where('type', 'invoice')->value('number');
 
         $body = $this->actingAsDocsManager()
