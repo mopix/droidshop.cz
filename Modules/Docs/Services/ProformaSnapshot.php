@@ -3,6 +3,7 @@
 namespace Modules\Docs\Services;
 
 use App\Core\Orders\Contracts\OrderView;
+use App\Core\Tax\TaxRates;
 use App\Models\Tenant;
 use Illuminate\Support\Carbon;
 
@@ -19,6 +20,8 @@ use Illuminate\Support\Carbon;
  */
 class ProformaSnapshot
 {
+    public function __construct(private readonly TaxRates $taxRates) {}
+
     /**
      * @return array<string, mixed>
      */
@@ -41,19 +44,75 @@ class ProformaSnapshot
                 'phone' => $order->orderPhone(),
                 'billing' => $order->orderBilling(),
             ],
-            'items' => $order->orderItems()->map(fn ($item): array => [
-                'name' => (string) $item->name,
-                'quantity' => (int) $item->quantity,
-                'unit_price' => $item->unit_price->amount,
-                'tax_rate' => (string) $item->tax_rate,
-                'line_total' => $item->line_total->amount,
-            ])->all(),
+            'items' => [
+                ...$order->orderItems()->map(fn ($item): array => [
+                    'name' => (string) $item->name,
+                    'quantity' => (int) $item->quantity,
+                    'unit_price' => $item->unit_price->amount,
+                    'tax_rate' => (string) $item->tax_rate,
+                    'line_total' => $item->line_total->amount,
+                ])->all(),
+                ...$this->serviceLines($order),
+            ],
             'vat_summary' => $order->orderVatSummary(),
             'total' => $order->orderTotal(),
             'currency' => $order->orderCurrency(),
             'issued_at' => $issuedAt,
             'taxable_at' => null,
             'due_at' => $issuedAt->copy()->addDays($dueDays)->startOfDay(),
+        ];
+    }
+
+    /**
+     * Shipping and the payment fee as ordinary document lines. Duplicated
+     * from InvoiceSnapshot for the same YAGNI reason as the rest of this
+     * class (see class docblock) — a request for a payment must add up to
+     * the amount it asks for exactly like an invoice does.
+     *
+     * @return list<array{name: string, quantity: int, unit_price: int, tax_rate: string, line_total: int}>
+     */
+    private function serviceLines(OrderView $order): array
+    {
+        $lines = [];
+
+        $shipping = $order->orderShippingSnapshot();
+
+        if ($shipping !== null) {
+            $lines[] = $this->serviceLine(
+                'Doprava — '.($shipping['name'] ?? ''),
+                (int) ($shipping['charged'] ?? 0),
+                $shipping['tax_rate_id'] ?? null,
+            );
+        }
+
+        $payment = $order->orderPaymentSnapshot();
+
+        if ($payment !== null) {
+            $lines[] = $this->serviceLine(
+                'Platba — '.($payment['name'] ?? ''),
+                (int) ($payment['fee'] ?? 0),
+                $payment['tax_rate_id'] ?? null,
+            );
+        }
+
+        return $lines;
+    }
+
+    /**
+     * @return array{name: string, quantity: int, unit_price: int, tax_rate: string, line_total: int}
+     */
+    private function serviceLine(string $name, int $amount, ?int $taxRateId): array
+    {
+        $percent = $taxRateId !== null
+            ? (string) $this->taxRates->findById($taxRateId)->percent()
+            : '0';
+
+        return [
+            'name' => trim($name, ' —'),
+            'quantity' => 1,
+            'unit_price' => $amount,
+            'tax_rate' => $percent,
+            'line_total' => $amount,
         ];
     }
 }

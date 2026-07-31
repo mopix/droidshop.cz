@@ -185,12 +185,20 @@ class InvoiceIssuerTest extends TestCase
         $this->assertSame($order->uuid, $doc->documentOrderUuid());
         $this->assertSame('jana@example.cz', $doc->customer['email']);
 
-        // One line, snapshotted in haléře.
-        $this->assertCount(1, $doc->items);
+        // The product line, snapshotted in haléře, plus shipping and the
+        // payment fee as their own lines (wave 2.12) so the document's lines
+        // add up to its total.
+        $this->assertCount(3, $doc->items);
         $this->assertSame('Klávesnice Acme', $doc->items[0]['name']);
         $this->assertSame(2, $doc->items[0]['quantity']);
         $this->assertSame(99900, $doc->items[0]['unit_price']);
         $this->assertSame(199800, $doc->items[0]['line_total']);
+
+        $this->assertSame('Doprava — Kurýr', $doc->items[1]['name']);
+        $this->assertSame(9900, $doc->items[1]['line_total']);
+
+        $this->assertSame('Platba — Dobírka', $doc->items[2]['name']);
+        $this->assertSame(0, $doc->items[2]['line_total']);
 
         // Total and VAT recap come straight from the order (not recomputed).
         $this->assertSame($order->total->amount, $doc->documentTotal()->amount);
