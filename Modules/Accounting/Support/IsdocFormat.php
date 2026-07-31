@@ -19,14 +19,29 @@ use ZipArchive;
  * also why the ZIP cannot be streamed the way Pohoda's dataPack can — it is
  * assembled in a temp file and deleted after sending.
  *
- * Element set follows the public ISDOC 6.0.1 documentation; it is NOT validated
- * against the official XSD here (pre-deploy step, see the spec's risks).
+ * Validated against the official 6.0.1 XSD (see
+ * tests/Feature/Modules/Accounting/IsdocSchemaTest.php and
+ * tests/Fixtures/isdoc/). Several elements the public documentation does not
+ * make obvious are mandatory per the schema — CountryType, the
+ * VATCalculationMethod / TaxCategory pair, and the advance-invoice
+ * reconciliation fields (the AlreadyClaimed, Difference and PaidDepositsAmount
+ * elements) that this writer always fills with honest zeros or derived totals
+ * since it never produces an advance-invoice document. See the inline
+ * comments at each field for the reasoning.
  */
 class IsdocFormat implements AccountingFormat
 {
     private const NAMESPACE = 'http://isdoc.cz/namespace/2013';
 
     private const VERSION = '6.0.1';
+
+    /**
+     * ISDOC's VATCalculationMethodType: 1 = "shora" (tax extracted from a
+     * gross figure), matching how TaxRate::net() actually computes every
+     * figure this writer prints. 0 ("zdola" — tax added on top of a net
+     * base) would describe a computation this platform never performs.
+     */
+    private const VAT_FROM_GROSS = '1';
 
     /** Type prefixes for filenames inside the archive. */
     private const FILENAME_PREFIX = [
@@ -97,13 +112,30 @@ class IsdocFormat implements AccountingFormat
             $document->documentNumber(),
         ));
         $writer->writeElement('IssueDate', $document->issued_at->format('Y-m-d'));
-        $writer->writeElement('TaxPointDate', optional($document->taxable_at)->format('Y-m-d') ?? '');
+        // TaxPointDate is minOccurs="0" and its type is xs:date — writing an
+        // empty string when there is no DUZP (a proforma) would fail the
+        // pattern, where simply omitting the element is what "not present"
+        // means (schema validation finding: the official XSD, not the docs,
+        // is what defines this).
+        if ($document->taxable_at !== null) {
+            $writer->writeElement('TaxPointDate', $document->taxable_at->format('Y-m-d'));
+        }
         // Required by 6.0.1 and read by importers to decide whether to book the
         // tax at all. Taken from the supplier snapshot, so a shop that was not
         // a VAT payer when it invoiced still exports as one that was not.
         $writer->writeElement('VATApplicable', ($document->supplier['vat_payer'] ?? true) ? 'true' : 'false');
+        // Required by the schema (schema validation finding: absent from the
+        // public documentation this class was originally written against).
+        // NoteType is a plain xs:string with no minimum length, so an empty
+        // element satisfies the schema without inventing a consent reference
+        // the platform never records.
+        $writer->writeElement('ElectronicPossibilityAgreementReference', '');
         $writer->writeElement('LocalCurrencyCode', $document->documentCurrency());
         $writer->writeElement('CurrRate', '1');
+        // Required by the schema right after CurrRate (schema validation
+        // finding). No foreign currency is ever used, so it carries the same
+        // fixed value as CurrRate.
+        $writer->writeElement('RefCurrRate', '1');
 
         $this->writeParty($writer, 'AccountingSupplierParty', [
             'name' => (string) ($document->supplier['name'] ?? ''),
@@ -132,6 +164,21 @@ class IsdocFormat implements AccountingFormat
         $writer->startElement('LegalMonetaryTotal');
         $writer->writeElement('TaxExclusiveAmount', DocumentAmounts::decimal($this->signed($amounts->taxExclusive)));
         $writer->writeElement('TaxInclusiveAmount', DocumentAmounts::decimal($this->signed($amounts->taxInclusive)));
+        // The four fields below are required by the schema (schema
+        // validation finding) but exist for advance-invoice ("záloha")
+        // reconciliation, a document type this writer never produces.
+        // AlreadyClaimed* is honestly 0 (no deposit was ever claimed against
+        // this document) and Difference* is then, by the field's own
+        // definition ("difference between the amount and what was already
+        // claimed"), exactly the tax-exclusive/inclusive total again — a
+        // derived figure, not an invented one.
+        $writer->writeElement('AlreadyClaimedTaxExclusiveAmount', DocumentAmounts::decimal(0));
+        $writer->writeElement('AlreadyClaimedTaxInclusiveAmount', DocumentAmounts::decimal(0));
+        $writer->writeElement('DifferenceTaxExclusiveAmount', DocumentAmounts::decimal($this->signed($amounts->taxExclusive)));
+        $writer->writeElement('DifferenceTaxInclusiveAmount', DocumentAmounts::decimal($this->signed($amounts->taxInclusive)));
+        // Required by the schema; this platform has no non-taxable deposit
+        // ("nedaňová záloha") feature, so nothing was ever paid against one.
+        $writer->writeElement('PaidDepositsAmount', DocumentAmounts::decimal(0));
         $writer->writeElement('PayableAmount', DocumentAmounts::decimal($this->signed($amounts->taxInclusive)));
         $writer->endElement();
 
@@ -214,9 +261,31 @@ class IsdocFormat implements AccountingFormat
 
         $writer->startElement('PostalAddress');
         $writer->writeElement('StreetName', (string) ($party['address']['street'] ?? ''));
+        // BuildingNumber is required by the schema (schema validation
+        // finding), but nowhere on the platform is a house number captured
+        // as its own field — every address form (tenant billing profile,
+        // customer/order billing) stores one free-text "street" string
+        // (e.g. "Hlavní 1"). BuildingNumberType has no minimum length, so an
+        // empty element is the honest value: there is no second field to
+        // read it from, and splitting the free-text street here would be
+        // guessing which token is the number.
+        $writer->writeElement('BuildingNumber', '');
         $writer->writeElement('CityName', (string) ($party['address']['city'] ?? ''));
         $writer->writeElement('PostalZone', (string) ($party['address']['zip'] ?? ''));
-        $writer->endElement();
+        // Country is required by the schema (schema validation finding).
+        // IdentificationCode is the real ISO-3166 code already captured on
+        // the order's billing address / the tenant's billing profile when
+        // present. CountryType also requires a human-readable Name, but the
+        // platform holds no code-to-name table anywhere (checked: none of
+        // the address forms or PDF templates translate the code) — writing
+        // one here would be inventing a mapping this codebase does not
+        // otherwise assert, so Name is left empty (NameType has no minimum
+        // length either).
+        $writer->startElement('Country');
+        $writer->writeElement('IdentificationCode', (string) ($party['address']['country'] ?? ''));
+        $writer->writeElement('Name', '');
+        $writer->endElement(); // Country
+        $writer->endElement(); // PostalAddress
 
         if ($party['dic'] !== '') {
             $writer->startElement('PartyTaxScheme');
@@ -258,6 +327,13 @@ class IsdocFormat implements AccountingFormat
 
             $writer->startElement('ClassifiedTaxCategory');
             $writer->writeElement('Percent', VatRateMap::percent($line['rate'], $amounts->number));
+            // Required by the schema (schema validation finding). Not a
+            // choice made for this export: it names how the platform itself
+            // always computes tax — every price is stored gross and TaxRate
+            // ("shora") derives the net base FROM the gross, never the other
+            // way round (see DocumentLines::net()). "0" (from the net base
+            // upward) would misdescribe that computation.
+            $writer->writeElement('VATCalculationMethod', self::VAT_FROM_GROSS);
             $writer->endElement();
 
             $writer->startElement('Item');
@@ -281,7 +357,24 @@ class IsdocFormat implements AccountingFormat
             $writer->writeElement('TaxInclusiveAmount', DocumentAmounts::decimal(
                 $this->signed($row['base'] + $row['vat'])
             ));
-            $writer->startElement('ClassifiedTaxCategory');
+            // Same advance-invoice reconciliation fields as
+            // LegalMonetaryTotal below, required here per rate (schema
+            // validation finding): nothing was ever claimed against a
+            // deposit for this rate, so the difference is the rate's own
+            // base/tax/gross again.
+            $writer->writeElement('AlreadyClaimedTaxableAmount', DocumentAmounts::decimal(0));
+            $writer->writeElement('AlreadyClaimedTaxAmount', DocumentAmounts::decimal(0));
+            $writer->writeElement('AlreadyClaimedTaxInclusiveAmount', DocumentAmounts::decimal(0));
+            $writer->writeElement('DifferenceTaxableAmount', DocumentAmounts::decimal($this->signed($row['base'])));
+            $writer->writeElement('DifferenceTaxAmount', DocumentAmounts::decimal($this->signed($row['vat'])));
+            $writer->writeElement('DifferenceTaxInclusiveAmount', DocumentAmounts::decimal(
+                $this->signed($row['base'] + $row['vat'])
+            ));
+            // The schema names this compound field TaxCategory here (schema
+            // validation finding) — ClassifiedTaxCategory, used identically
+            // inside InvoiceLine above, is a different element the schema
+            // does not accept at this position.
+            $writer->startElement('TaxCategory');
             $writer->writeElement('Percent', VatRateMap::percent($row['rate'], $amounts->number));
             $writer->endElement();
             $writer->endElement(); // TaxSubTotal
