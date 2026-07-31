@@ -48,7 +48,12 @@ class UpdateBillingProfileRequest extends FormRequest
             // ISO 3166-1 alpha-2, uppercase — not a plain size:2 (which would
             // also accept "12" or "x1"): a document's Country element is
             // supposed to name a real country, not just any two characters.
-            'billing_address.country' => ['required', 'string', 'regex:/^[A-Z]{2}$/'],
+            // /D anchors $ to the true end of the string: without it PCRE
+            // lets $ match before a trailing "\n", so "CZ\n" would pass and
+            // get stored with the newline intact — same bug class already
+            // fixed in App\Core\Theme\ThemeResolver::sanitizeHex() (CLAUDE.md,
+            // rozhodnutí 2026-07-25).
+            'billing_address.country' => ['required', 'string', 'regex:/^[A-Z]{2}$/D'],
         ];
     }
 

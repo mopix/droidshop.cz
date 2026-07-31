@@ -2,10 +2,13 @@
 
 namespace Tests\Feature\Tenant;
 
+use App\Http\Requests\Tenant\UpdateBillingProfileRequest;
 use App\Models\Domain;
 use App\Models\Tenant;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Validator;
 use Inertia\Testing\AssertableInertia as Assert;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
@@ -54,11 +57,37 @@ class BillingProfileTest extends TestCase
      * that the CZ prefill (not just visible in the UI) is what actually
      * reaches the request, so 'required' never blocks an owner who never
      * touched the new field.
+     *
+     * Genuinely round-trips: GETs the edit page, captures the exact
+     * billing_address the controller returned (rather than hand-writing
+     * 'country' => 'CZ' in the payload), then PATCHes that value back
+     * unchanged — so this fails if BillingProfileController::edit()'s CZ
+     * merge is ever removed, which two other tests do not exercise.
      */
     public function test_a_legacy_profile_can_be_resaved_without_the_owner_typing_a_country(): void
     {
         [$tenant, $owner] = $this->ownerOnHost();
         $tenant->update(['billing_address' => ['street' => 'Ulice 1', 'city' => 'Praha', 'zip' => '11000']]);
+
+        $capturedAddress = null;
+
+        $this->actingAs($owner)
+            ->get('http://shop.'.config('tenancy.platform_domain').'/admin/nastaveni/fakturace')
+            ->assertInertia(function (Assert $page) use (&$capturedAddress) {
+                $page->where('profile.billing_address', function ($address) use (&$capturedAddress) {
+                    // AssertableJson::where() hands the closure a Collection,
+                    // not the raw array, whenever the prop is an array — kept
+                    // as a plain array here so Arr::get() can dot into it
+                    // once it is fed back as the PATCH payload below.
+                    $capturedAddress = $address instanceof Collection
+                        ? $address->all()
+                        : $address;
+
+                    return true;
+                });
+            });
+
+        $this->assertSame('CZ', $capturedAddress['country'] ?? null, 'Precondition: the edit page must have prefilled CZ.');
 
         $this->actingAs($owner)
             ->patch('http://shop.'.config('tenancy.platform_domain').'/admin/nastaveni/fakturace', [
@@ -66,10 +95,7 @@ class BillingProfileTest extends TestCase
                 'billing_ico' => '12345678',
                 'billing_dic' => 'CZ12345678',
                 'vat_payer' => true,
-                // Exactly what the Vue form resubmits for a legacy profile:
-                // BillingProfileController::edit() merges the CZ default in
-                // before the page ever reaches the browser.
-                'billing_address' => ['street' => 'Ulice 1', 'city' => 'Praha', 'zip' => '11000', 'country' => 'CZ'],
+                'billing_address' => $capturedAddress,
             ])
             ->assertSessionHasNoErrors()
             ->assertRedirect();
@@ -137,6 +163,34 @@ class BillingProfileTest extends TestCase
             ])->assertSessionHasErrors('billing_address.country');
 
         $this->assertNull($tenant->fresh()->billing_address);
+    }
+
+    /**
+     * The regex must anchor to the true end of the string, not "before a
+     * trailing newline" (PCRE's default $ behaviour without /D) — the same
+     * bug class already fixed in App\Core\Theme\ThemeResolver::sanitizeHex()
+     * (CLAUDE.md, rozhodnutí 2026-07-25).
+     *
+     * Exercised directly against the FormRequest's own rules() rather than
+     * through the HTTP layer: the "web" middleware group's TrimStrings
+     * (Laravel's default) trims a trailing "\n" off every string input
+     * before a FormRequest ever sees it, so an HTTP round-trip could not
+     * distinguish a working /D from a missing one — it would pass either
+     * way, for the wrong reason.
+     */
+    public function test_the_country_regex_rejects_a_value_with_a_trailing_newline(): void
+    {
+        $validator = Validator::make(
+            [
+                'billing_name' => 'Nájemce s.r.o.',
+                'vat_payer' => true,
+                'billing_address' => ['street' => 'Ulice 1', 'city' => 'Praha', 'zip' => '11000', 'country' => "CZ\n"],
+            ],
+            (new UpdateBillingProfileRequest)->rules(),
+        );
+
+        $this->assertTrue($validator->fails());
+        $this->assertArrayHasKey('billing_address.country', $validator->errors()->toArray());
     }
 
     public function test_guest_cannot_access(): void
