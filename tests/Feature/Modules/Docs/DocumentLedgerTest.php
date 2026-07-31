@@ -39,7 +39,9 @@ class DocumentLedgerTest extends DocsTestCase
     {
         $this->issuedInvoiceOrder();
         // Force the invoice's DUZP into last month.
-        Document::query()->where('type', 'invoice')->update(['taxable_at' => Carbon::now()->subMonth()->startOfDay()]);
+        // Note: now()->subMonth()->startOfDay() overflows on the 31st (July 31 - 1 month normalizes to July 1).
+        // Use now()->startOfMonth()->subDay() to reliably get the last day of the previous month.
+        Document::query()->where('type', 'invoice')->update(['taxable_at' => Carbon::now()->startOfMonth()->subDay()]);
 
         $thisMonth = $this->app->make(DocumentLedger::class)
             ->taxableBetween(Carbon::now()->startOfMonth(), Carbon::now()->endOfMonth());
