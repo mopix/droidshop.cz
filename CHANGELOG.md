@@ -11,6 +11,16 @@ Pravidla: [`.claude/skills/versioning/SKILL.md`](.claude/skills/versioning/SKILL
 
 > CHANGELOG vede milníky (minor/major). Detail patchů je v `git log`.
 
+## [0.33.0] – 2026-07-31
+
+**Fáze 2 / vlna 2.12 — doprava a poplatek na dokladu.** Start implementačního plánu (`docs/superpowers/plans/2026-07-31-vlna-212-doprava-na-dokladu.md`).
+
+Zadání: faktura, kterou zákazník dostává, tiskne položky za 1 998 Kč a pod nimi „Celkem k úhradě: 2 097 Kč“, aniž kdekoli uvede, odkud rozdíl je — `InvoiceSnapshot` nesnímkuje dopravu ani poplatek za platbu, ty žijí jen v součtu a v DPH rekapitulaci. Odhalila to až vlna 2.11, protože účetní export si musel rozdíl dopočítávat. Doklad, jehož řádky se nesečtou na částku k úhradě, si nemůže zkontrolovat ten, kdo ho platí.
+
+Součástí je dotažení dvou otevřených bodů z 2.11: konzistence ISDOC u neplátce DPH a validace ISDOC proti oficiálnímu XSD 6.0.1 (vestavěný `libxml`, žádná nová závislost) — formát byl dosud psaný z dokumentace, ne ze schématu.
+
+Historické doklady se nemění (immutable snímek, PDF už odešla); modul `accounting` si u nich dál dopočítá řádek „Doprava a poplatky“.
+
 ## [0.32.0] – 2026-07-30
 
 **Fáze 2 / vlna 2.11 — modul `accounting`: export dokladů do Pohody a ISDOC (premium).** Uzavření vlny (`docs/as-is/2026-07-30-accounting-export.md`). 1734 testů (6126 assertions).
