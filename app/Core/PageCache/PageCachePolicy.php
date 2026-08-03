@@ -55,7 +55,11 @@ class PageCachePolicy
 
         $control = (string) $response->headers->get('Cache-Control', '');
 
-        return ! str_contains($control, 'private') && ! str_contains($control, 'no-store');
+        // `private` is the framework default on responses that ride a session cookie.
+        // Our server-side store is not an HTTP proxy — its correctness is enforced
+        // by tenantFor(), which rejects any request with session state. We check
+        // only `no-store`, which routes explicitly set to opt out (e.g., cart, checkout).
+        return ! str_contains($control, 'no-store');
     }
 
     /**
