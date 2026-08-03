@@ -80,11 +80,17 @@ class PageCacheInvalidationTest extends TestCase
     {
         $tenant = $this->shop();
 
+        // shop() activates modules, which now bumps Theme itself (page cache,
+        // wave 3.0: a switched-on module can change what the layout renders)
+        // — so the baseline to compare against is whatever shop() left
+        // behind, not a fixed '1'.
+        $themeBefore = $this->generations->stamp($tenant->fresh(), [Dimension::Theme]);
+
         $this->makeProduct();
 
         $fresh = $tenant->fresh();
         $this->assertSame('1', $this->generations->stamp($fresh, [Dimension::Content]));
-        $this->assertSame('1', $this->generations->stamp($fresh, [Dimension::Theme]));
+        $this->assertSame($themeBefore, $this->generations->stamp($fresh, [Dimension::Theme]));
     }
 
     public function test_deleting_a_product_bumps_the_catalogue(): void
@@ -116,9 +122,14 @@ class PageCacheInvalidationTest extends TestCase
     {
         $tenant = $this->shop();
 
+        // Same reasoning as test_saving_a_product_leaves_content_and_theme_alone:
+        // shop()'s module activations already bumped Theme, so the assertion
+        // is "one more than that", not a fixed '2'.
+        $before = (int) $this->generations->stamp($tenant->fresh(), [Dimension::Theme]);
+
         TenantTheme::updateOrCreate(['tenant_id' => $tenant->id], ['primary_color' => '#112233']);
 
-        $this->assertSame('2', $this->generations->stamp($tenant->fresh(), [Dimension::Theme]));
+        $this->assertSame((string) ($before + 1), $this->generations->stamp($tenant->fresh(), [Dimension::Theme]));
     }
 
     public function test_a_write_for_one_shop_does_not_bump_another(): void

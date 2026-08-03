@@ -4,6 +4,8 @@ namespace App\Core\Modules;
 
 use App\Core\Modules\Exceptions\PlanDoesNotIncludeModule;
 use App\Core\Modules\Exceptions\UnresolvableDependencies;
+use App\Core\PageCache\Dimension;
+use App\Core\PageCache\Generations;
 use App\Core\Services\AuditLog;
 use App\Core\Tenancy\TenantContext;
 use App\Models\Module;
@@ -27,6 +29,7 @@ class ModuleRegistry
         private readonly TenantContext $context,
         private readonly DependencyResolver $resolver,
         private readonly AuditLog $audit,
+        private readonly Generations $generations,
     ) {}
 
     /**
@@ -158,6 +161,31 @@ class ModuleRegistry
     public function forgetTenant(Tenant $tenant): void
     {
         Cache::forget("modules:enabled:{$tenant->id}");
+
+        // A cached page renders whatever ShopModules said at render time
+        // (page cache, wave 3.0). activate() and deactivate() both funnel
+        // through here, so bumping in this one place covers both. Bumps the
+        // $tenant this call is acting on — activate()/deactivate() are also
+        // reached from the superadmin plan reconciler and from the Stripe
+        // subscription webhook, both of which pass a tenant that is not
+        // necessarily the ambient TenantContext::current().
+        //
+        // Not deferred with DB::afterCommit: unlike EloquentProductCatalog's
+        // stock write-off, nothing here would gain from it. Where activate()/
+        // deactivate() do run inside a caller-owned transaction (PlanSwitcher,
+        // TenantPlanSwitcher via the Stripe webhook), that transaction has
+        // already written to this same tenants row (plan_id/billing_interval)
+        // before reaching here, so the row is already held for the rest of
+        // that transaction regardless of this call — bumping inline adds no
+        // additional lock, and deferring would only add risk: it would leave
+        // this callback attached to whatever transaction happens to be
+        // enclosing the call, silently never firing if that transaction is
+        // rolled back instead of committed (confirmed against this exact
+        // shape: RefreshDatabase's own test-wrapping transaction never
+        // truly commits, so a deferred bump registered by a bare call, the
+        // one every activate()/deactivate() caller in this codebase and its
+        // tests makes, would never run).
+        $this->generations->bump($tenant, Dimension::Theme);
     }
 
     /**
