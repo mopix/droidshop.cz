@@ -264,6 +264,56 @@ class PageCacheKeyTest extends TestCase
         );
     }
 
+    public function test_search_term_folds_case_the_way_the_search_does(): void
+    {
+        $tenant = Tenant::factory()->create();
+
+        // Modules\Products\Support\SearchText::normalise() lower-cases before
+        // matching, so `bunda`, `Bunda` and `BUNDA` all find the same
+        // products. The key must fold the same way, or each casing mints its
+        // own cache entry off one public URL with no authentication.
+        $lower = $this->key($tenant, '/hledani?q=bunda');
+
+        $this->assertSame($lower, $this->key($tenant, '/hledani?q=Bunda'));
+        $this->assertSame($lower, $this->key($tenant, '/hledani?q=BUNDA'));
+    }
+
+    public function test_search_term_folds_diacritics_the_way_the_search_does(): void
+    {
+        $tenant = Tenant::factory()->create();
+
+        // SearchText::normalise() transliterates through Str::ascii(), so
+        // "bundá" and "bunda" find the same products.
+        $this->assertSame(
+            $this->key($tenant, '/hledani?q=bunda'),
+            $this->key($tenant, '/hledani?q=bund%C3%A1'),
+        );
+    }
+
+    public function test_search_term_case_folding_does_not_regress_trimming(): void
+    {
+        $tenant = Tenant::factory()->create();
+
+        // The existing trim behaviour (test_search_term_is_trimmed) must
+        // survive alongside the new case/diacritic fold.
+        $this->assertSame(
+            $this->key($tenant, '/hledani?q=bunda'),
+            $this->key($tenant, '/hledani?q=%20bunda%20'),
+        );
+    }
+
+    public function test_genuinely_different_search_terms_still_change_the_key(): void
+    {
+        $tenant = Tenant::factory()->create();
+
+        // Folding must never collapse two terms the search treats as
+        // different products.
+        $this->assertNotSame(
+            $this->key($tenant, '/hledani?q=bunda'),
+            $this->key($tenant, '/hledani?q=kalhoty'),
+        );
+    }
+
     public function test_array_shaped_q_parameter_uses_key_suffix(): void
     {
         $tenant = Tenant::factory()->create();

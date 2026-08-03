@@ -5,6 +5,7 @@ namespace App\Core\PageCache;
 use App\Core\Catalog\ProductQuery;
 use App\Models\Tenant;
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 
 class PageCacheKey
 {
@@ -99,10 +100,22 @@ class PageCacheKey
         }
 
         if ($name === 'q') {
-            // Trim; only include if not empty (empty is the default).
+            // Folded exactly the way Modules\Products\Support\SearchText::
+            // normalise() folds a term before matching it against
+            // `products.search_text` (case + diacritics) — that is the thing
+            // this must stay in lockstep with. `?q=bunda`, `?q=Bunda` and
+            // `?q=bundá` all match the same products, so without this fold
+            // each casing/diacritic variant of one word would mint its own
+            // cache entry off a single public URL with no authentication.
+            // Folding here more aggressively than the search would collide
+            // two terms the search treats as different — a correctness bug,
+            // not just waste — so this must never fold more than
+            // SearchText::normalise() does, only ever the same or less.
+            // `Str` is framework, not a module import, so app/Core may use it.
             $trimmed = trim($value);
+            $folded = Str::lower(Str::ascii($trimmed));
 
-            return $trimmed === '' ? null : $trimmed;
+            return $folded === '' ? null : $folded;
         }
 
         if ($name === 'page') {
