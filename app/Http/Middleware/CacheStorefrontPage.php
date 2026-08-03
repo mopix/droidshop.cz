@@ -45,7 +45,7 @@ class CacheStorefrontPage
         $stored = $store->get($key);
 
         if ($stored !== null) {
-            return $this->rebuild($stored, $request);
+            return $this->rebuild($stored);
         }
 
         $response = $next($request);
@@ -64,7 +64,7 @@ class CacheStorefrontPage
     /**
      * @param  array{body: string, status: int, type: string}  $stored
      */
-    private function rebuild(array $stored, Request $request): Response
+    private function rebuild(array $stored): Response
     {
         // Only the body, the status and the content type come back. Set-Cookie
         // is never stored and never replayed — Laravel attaches this visitor's

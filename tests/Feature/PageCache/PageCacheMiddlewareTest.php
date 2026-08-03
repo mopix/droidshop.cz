@@ -3,6 +3,7 @@
 namespace Tests\Feature\PageCache;
 
 use App\Core\PageCache\Dimension;
+use App\Core\PageCache\DynamicTokens;
 use App\Core\PageCache\Generations;
 use App\Models\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -78,7 +79,20 @@ class PageCacheMiddlewareTest extends TestCase
         $this->assertNotSame('', $firstToken);
         $this->assertNotSame('', $secondToken);
         $this->assertNotSame($firstToken, $secondToken);
-        $this->assertStringNotContainsString('@@PAGECACHE_CSRF@@', $second);
+
+        // Positive proof that unmask() substituted the real token, not just a
+        // string that happens to differ from the first one — a broken
+        // unmask() that left the raw marker in place would still satisfy
+        // assertNotSame above (a marker is "not equal to" the first
+        // visitor's token too). The expected value comes from the session
+        // the second request actually used, never from the regex capture
+        // above, so this cannot be satisfied by whatever happens to sit in
+        // the captured attribute.
+        $this->assertStringContainsString(
+            '<input value="'.session('_token').'">',
+            $second,
+        );
+        $this->assertStringNotContainsString(DynamicTokens::MARKER, $second);
     }
 
     public function test_one_shop_never_receives_another_shops_page(): void
