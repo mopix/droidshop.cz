@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\PageCache;
 
+use App\Core\Catalog\ProductQuery;
 use App\Core\PageCache\Dimension;
 use App\Core\PageCache\Generations;
 use App\Core\PageCache\PageCacheKey;
@@ -76,14 +77,16 @@ class PageCacheKeyTest extends TestCase
     {
         $tenant = Tenant::factory()->create();
 
+        // Valid sort values produce different keys
         $this->assertNotSame(
             $this->key($tenant, '/kategorie/boty'),
-            $this->key($tenant, '/kategorie/boty?razeni=cena-vzestupne'),
+            $this->key($tenant, '/kategorie/boty?razeni=cena-asc'),
         );
 
+        // Page parameter: page > 1 produces different key
         $this->assertNotSame(
-            $this->key($tenant, '/kategorie/boty?strana=2'),
-            $this->key($tenant, '/kategorie/boty?strana=3'),
+            $this->key($tenant, '/kategorie/boty'),
+            $this->key($tenant, '/kategorie/boty?page=2'),
         );
     }
 
@@ -106,6 +109,125 @@ class PageCacheKeyTest extends TestCase
         $this->assertSame(
             $this->key($tenant, '/kategorie/boty'),
             $this->key($tenant, '/kategorie/boty?razeni[]=a&razeni[]=b'),
+        );
+    }
+
+    public function test_unrecognised_razeni_value_lands_on_same_key_as_default(): void
+    {
+        $tenant = Tenant::factory()->create();
+
+        // Invalid sort values fall back to SORT_NEWEST in ProductQuery::fromInput(),
+        // so they must land on the same cache key as no sort parameter.
+        $this->assertSame(
+            $this->key($tenant, '/kategorie/boty'),
+            $this->key($tenant, '/kategorie/boty?razeni=invalid-sort'),
+        );
+    }
+
+    public function test_different_recognised_razeni_values_change_the_key(): void
+    {
+        $tenant = Tenant::factory()->create();
+
+        $this->assertNotSame(
+            $this->key($tenant, '/kategorie/boty?razeni=cena-asc'),
+            $this->key($tenant, '/kategorie/boty?razeni=cena-desc'),
+        );
+    }
+
+    public function test_skladem_bool_variants_land_on_same_key(): void
+    {
+        $tenant = Tenant::factory()->create();
+
+        // filter_var normalizes all truthy values to bool true.
+        $this->assertSame(
+            $this->key($tenant, '/kategorie/boty?skladem=1'),
+            $this->key($tenant, '/kategorie/boty?skladem=true'),
+        );
+
+        $this->assertSame(
+            $this->key($tenant, '/kategorie/boty?skladem=1'),
+            $this->key($tenant, '/kategorie/boty?skladem=yes'),
+        );
+    }
+
+    public function test_skladem_false_lands_on_same_key_as_absent(): void
+    {
+        $tenant = Tenant::factory()->create();
+
+        // False is the default; only true values are included in the key.
+        $this->assertSame(
+            $this->key($tenant, '/kategorie/boty'),
+            $this->key($tenant, '/kategorie/boty?skladem=0'),
+        );
+
+        $this->assertSame(
+            $this->key($tenant, '/kategorie/boty'),
+            $this->key($tenant, '/kategorie/boty?skladem=false'),
+        );
+    }
+
+    public function test_search_term_is_trimmed(): void
+    {
+        $tenant = Tenant::factory()->create();
+
+        // Leading/trailing whitespace is trimmed in ProductQuery::fromInput().
+        $this->assertSame(
+            $this->key($tenant, '/hledani?q=boty'),
+            $this->key($tenant, '/hledani?q=%20boty%20'),
+        );
+    }
+
+    public function test_empty_search_term_lands_on_same_key_as_absent(): void
+    {
+        $tenant = Tenant::factory()->create();
+
+        // Empty search terms (after trim) are treated as no search.
+        $this->assertSame(
+            $this->key($tenant, '/hledani'),
+            $this->key($tenant, '/hledani?q='),
+        );
+
+        $this->assertSame(
+            $this->key($tenant, '/hledani'),
+            $this->key($tenant, '/hledani?q=%20'),
+        );
+    }
+
+    public function test_page_one_lands_on_same_key_as_absent(): void
+    {
+        $tenant = Tenant::factory()->create();
+
+        // Page 1 is the default; only page > 1 is included in the key.
+        $this->assertSame(
+            $this->key($tenant, '/kategorie/boty'),
+            $this->key($tenant, '/kategorie/boty?page=1'),
+        );
+    }
+
+    public function test_different_page_values_change_the_key(): void
+    {
+        $tenant = Tenant::factory()->create();
+
+        $this->assertNotSame(
+            $this->key($tenant, '/kategorie/boty?page=2'),
+            $this->key($tenant, '/kategorie/boty?page=3'),
+        );
+    }
+
+    public function test_strana_parameter_is_ignored(): void
+    {
+        $tenant = Tenant::factory()->create();
+
+        // `strana` is not in the whitelist anymore; it should be treated like
+        // marketing parameters and dropped from the key entirely.
+        $this->assertSame(
+            $this->key($tenant, '/kategorie/boty'),
+            $this->key($tenant, '/kategorie/boty?strana=2'),
+        );
+
+        $this->assertSame(
+            $this->key($tenant, '/kategorie/boty?strana=2'),
+            $this->key($tenant, '/kategorie/boty?strana=999'),
         );
     }
 }

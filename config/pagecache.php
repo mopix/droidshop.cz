@@ -26,7 +26,7 @@ return [
      * dropped from the key, so marketing parameters land on the same entry
      * as the bare URL and nobody can mint unbounded keys.
      */
-    'query_whitelist' => ['razeni', 'skladem', 'strana', 'page', 'q'],
+    'query_whitelist' => ['razeni', 'skladem', 'page', 'q'],
 
     /*
      * Search terms longer than this are never cached — `?q=` has unbounded
