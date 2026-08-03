@@ -29,6 +29,12 @@ class PageCacheKey
      * application actually reads. This prevents unbounded cardinality: invalid
      * values fall back to defaults in ProductQuery::fromInput(), so they
      * must land on the same cache key as the defaults.
+     *
+     * Non-scalar whitelisted parameters (arrays): only q renders differently
+     * (as the literal term "Array"), and gets a `#nonscalar` suffix in the key
+     * name. This moves the marker out of the value space (unreachable by query
+     * strings) to avoid collision with scalar inputs like q=__invalid__.
+     * Other parameters fall back to defaults, same as missing parameters.
      */
     private function normaliseQuery(Request $request): string
     {
@@ -38,13 +44,34 @@ class PageCacheKey
         $params = [];
 
         foreach ($allowed as $name) {
-            $value = $this->normaliseParameter($name, $request->query($name));
+            $value = $request->query($name);
 
+            // Parameter not present at all.
             if ($value === null) {
                 continue;
             }
 
-            $params[$name] = $value;
+            // Non-scalar whitelisted parameters (arrays): only q renders
+            // differently (as the literal term "Array"). Other parameters
+            // (razeni, skladem, page) fall back to their defaults, same as
+            // missing parameters, so we skip them entirely.
+            if (! is_scalar($value)) {
+                if ($name === 'q') {
+                    // Use a key name unreachable by user input to avoid collision
+                    // with scalar q values. All array-shaped q values share one key.
+                    $params[$name.'#nonscalar'] = '1';
+                }
+
+                continue;
+            }
+
+            $normalised = $this->normaliseParameter($name, (string) $value);
+
+            if ($normalised === null) {
+                continue;
+            }
+
+            $params[$name] = $normalised;
         }
 
         ksort($params);
@@ -52,27 +79,12 @@ class PageCacheKey
         return http_build_query($params);
     }
 
-    private function normaliseParameter(string $name, mixed $value): ?string
+    /**
+     * Normalise a scalar query parameter value to match application logic.
+     * Called only for scalar values (guaranteed by normaliseQuery).
+     */
+    private function normaliseParameter(string $name, string $value): ?string
     {
-        // Parameter not present at all.
-        if ($value === null) {
-            return null;
-        }
-
-        // Non-scalar whitelisted parameters (arrays) are keyed under a fixed
-        // sentinel: all array-shaped values render the same page (the literal
-        // term "Array"), so they must share one key but not collide with bare URL.
-        if (! is_scalar($value)) {
-            // Only sentinel-key parameters that can actually appear in requests.
-            if ($name === 'q') {
-                return '__invalid__';
-            }
-
-            return null;
-        }
-
-        $value = (string) $value;
-
         if ($name === 'razeni') {
             // Only keep if it's in the valid sorts list; otherwise drop it
             // (invalid sorts fall back to SORT_NEWEST, the default).

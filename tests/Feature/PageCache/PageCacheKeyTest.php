@@ -264,18 +264,38 @@ class PageCacheKeyTest extends TestCase
         );
     }
 
-    public function test_array_shaped_q_parameter_uses_sentinel(): void
+    public function test_array_shaped_q_parameter_uses_key_suffix(): void
     {
         $tenant = Tenant::factory()->create();
 
-        // ?q[]=a is not a scalar value, so it produces a key with sentinel.
+        // ?q[]=a is not a scalar value, so it produces a key with a name suffix.
         // All array-shaped q values share the same key (they all render "Array"),
-        // but the key differs from a bare URL.
+        // but the key differs from a bare URL and from q=__invalid__.
         $qArrayKey1 = $this->key($tenant, '/hledani?q[]=a');
         $qArrayKey2 = $this->key($tenant, '/hledani?q[]=b');
         $bareKey = $this->key($tenant, '/hledani');
+        $invalidKey = $this->key($tenant, '/hledani?q=__invalid__');
 
         $this->assertSame($qArrayKey1, $qArrayKey2);
         $this->assertNotSame($qArrayKey1, $bareKey);
+        $this->assertNotSame($qArrayKey1, $invalidKey);
+    }
+
+    public function test_array_shaped_razeni_lands_on_bare_key(): void
+    {
+        $tenant = Tenant::factory()->create();
+
+        // ?razeni[]=a is not a scalar value. ProductQuery::fromInput() doesn't
+        // see it as is_string(), so it falls back to SORT_NEWEST (the default).
+        // Therefore array-shaped razeni must land on the same key as the bare URL.
+        $this->assertSame(
+            $this->key($tenant, '/kategorie/boty'),
+            $this->key($tenant, '/kategorie/boty?razeni[]=a'),
+        );
+
+        $this->assertSame(
+            $this->key($tenant, '/kategorie/boty'),
+            $this->key($tenant, '/kategorie/boty?razeni[]=b'),
+        );
     }
 }
