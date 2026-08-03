@@ -32,6 +32,38 @@ class TenantContext
 
     public function set(Tenant $tenant): void
     {
+        // spatie/laravel-multitenancy's makeCurrent() short-circuits
+        // (Tenant::isCurrent(), keyed on the primary key alone) when a tenant
+        // with the same id is already bound — an optimisation aimed at
+        // repeated makeCurrent() calls for the same object within one
+        // request. SetTenantContext calls this once per request with a
+        // freshly-fetched model, so on any worker that outlives a single
+        // request (the test suite reusing one process across `$this->get()`
+        // calls today; Octane if adopted later) the second request for the
+        // same tenant would silently keep serving the FIRST request's
+        // attributes from the container — stale data for the rest of that
+        // worker's life. Found via page_gen_* going stale across a
+        // generation bump (wave 3.0): the DB row was correctly updated, the
+        // freshly-fetched model carried it, and it never reached
+        // TenantContext::current() because of this short-circuit.
+        //
+        // Re-running makeCurrent()'s full switch-task pipeline unconditionally
+        // is not the fix: PrefixCacheTask forgets the cache driver on every
+        // switch (see its forgetCurrent()/makeCurrent()), which for the array
+        // driver discards its in-memory storage — turning every request into
+        // a page-cache miss. Same tenant id means the switch tasks (a cache
+        // prefix derived from that id, here) have nothing new to do, so the
+        // fix only replaces the bound instance, the same way
+        // BindAsCurrentTenant does it internally, without re-running them.
+        if ($tenant->isCurrent()) {
+            app()->instance(
+                config('multitenancy.current_tenant_container_key'),
+                $tenant,
+            );
+
+            return;
+        }
+
         $tenant->makeCurrent();
     }
 
