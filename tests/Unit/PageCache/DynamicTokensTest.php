@@ -58,4 +58,28 @@ class DynamicTokensTest extends TestCase
 
         $this->assertSame($html, $this->tokens->mask($html, 'abc123'));
     }
+
+    public function test_unmasking_with_an_empty_token_leaves_the_html_untouched(): void
+    {
+        // str_replace with an empty replacement would silently delete the marker.
+        $html = '<input value="'.DynamicTokens::MARKER.'">';
+
+        $this->assertSame($html, $this->tokens->unmask($html, ''));
+    }
+
+    public function test_escaped_marker_in_tenant_content_does_not_interfere_with_unmask(): void
+    {
+        // If a tenant types <!--PAGECACHE_CSRF--> into product content, Blade's
+        // escaping turns it into &lt;!--PAGECACHE_CSRF--&gt; before it ever reaches
+        // the cache. The escaped version doesn't match the literal marker in the form,
+        // so unmask only affects the real form token.
+        $html = '<p>Product: &lt;!--PAGECACHE_CSRF--&gt;</p><input value="<!--PAGECACHE_CSRF-->">';
+
+        $served = $this->tokens->unmask($html, 'visitor-token-abc123');
+
+        // The escaped marker in tenant text survives unchanged
+        $this->assertStringContainsString('&lt;!--PAGECACHE_CSRF--&gt;', $served);
+        // The literal marker in the form gets replaced
+        $this->assertStringContainsString('<input value="visitor-token-abc123">', $served);
+    }
 }

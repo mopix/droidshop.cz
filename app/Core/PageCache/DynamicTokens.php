@@ -10,10 +10,15 @@ namespace App\Core\PageCache;
  * Substitution works on the rendered value rather than on a Blade directive,
  * so a form added to a cached page later is covered without anyone
  * remembering this class exists.
+ *
+ * The marker is HTML-comment-shaped so that if a tenant ever types it literally
+ * into product content, Blade's escaping will turn it into &lt;!--PAGECACHE_CSRF--&gt;
+ * and it can never match byte-for-byte the marker in the form field, which always
+ * sits in an attribute value (unescaped).
  */
 class DynamicTokens
 {
-    public const MARKER = '@@PAGECACHE_CSRF@@';
+    public const MARKER = '<!--PAGECACHE_CSRF-->';
 
     public function mask(string $html, string $token): string
     {
@@ -26,6 +31,10 @@ class DynamicTokens
 
     public function unmask(string $html, string $token): string
     {
+        if ($token === '') {
+            return $html;
+        }
+
         return str_replace(self::MARKER, $token, $html);
     }
 }
