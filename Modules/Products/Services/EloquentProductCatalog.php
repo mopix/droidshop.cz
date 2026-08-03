@@ -8,6 +8,9 @@ use App\Core\Catalog\Contracts\ProductCatalog;
 use App\Core\Catalog\Exceptions\InsufficientStock;
 use App\Core\Catalog\ProductQuery;
 use App\Core\Money\Money;
+use App\Core\PageCache\Dimension;
+use App\Core\PageCache\Generations;
+use App\Core\Tenancy\TenantContext;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
@@ -25,6 +28,11 @@ use Modules\Products\Support\SearchText;
  */
 class EloquentProductCatalog implements ProductCatalog
 {
+    public function __construct(
+        private readonly TenantContext $context,
+        private readonly Generations $generations,
+    ) {}
+
     public function findBySlug(string $slug): ?CatalogProduct
     {
         return Product::query()->published()->where('slug', $slug)->first();
@@ -192,6 +200,12 @@ class EloquentProductCatalog implements ProductCatalog
         if ($affected === 0) {
             throw InsufficientStock::for($productId, $quantity);
         }
+
+        // Page cache (wave 3.0): the write went through the query builder, so
+        // no Eloquent event fired and the observer never saw it. Only the
+        // in-stock/out-of-stock boundary is visible to a visitor — bumping on
+        // every unit sold would drop the catalogue on every order.
+        $this->bumpIfSoldOut($productId, null);
     }
 
     /**
@@ -271,6 +285,41 @@ class EloquentProductCatalog implements ProductCatalog
         if ($affected === 0) {
             throw InsufficientStock::for($productId, $quantity);
         }
+
+        // Page cache (wave 3.0): same reasoning as the product path above —
+        // only the boundary is visible to a visitor.
+        $this->bumpIfSoldOut($productId, $variantId);
+    }
+
+    /**
+     * Bumps the catalogue generation when a stock write just crossed the
+     * in-stock/out-of-stock boundary (spec §15.6, wave 3.0).
+     *
+     * Called only after a write that actually affected a row — an untracked
+     * product returns before ever reaching here, and a conditional UPDATE
+     * that affected zero rows (insufficient stock, not backorder) throws
+     * before this runs. Re-reads the row rather than trusting the caller's
+     * $quantity: the "sold out" question is "what remains now", not "how
+     * much moved", and re-reading is what keeps this correct if the update
+     * clause above ever changes.
+     */
+    private function bumpIfSoldOut(int $productId, ?int $variantId): void
+    {
+        $tenant = $this->context->current();
+
+        if ($tenant === null) {
+            return;
+        }
+
+        $remaining = $variantId === null
+            ? (int) Product::query()->whereKey($productId)->value('stock_qty')
+            : (int) ProductVariant::query()->whereKey($variantId)->value('stock_qty');
+
+        if ($remaining > 0) {
+            return;
+        }
+
+        $this->generations->bump($tenant, Dimension::Catalog);
     }
 
     /**
