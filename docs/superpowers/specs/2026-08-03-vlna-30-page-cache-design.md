@@ -33,6 +33,8 @@ Vlna staví **page cache celého HTML pro anonymní GET** podle §15.6, invalido
 1. **Cache je jádrová infrastruktura (`app/Core/PageCache/`), ne modul.** Slouží všem storefront modulům (`storefront`, `products`, `categories`, `pages`, `feeds`); modul, který jde vypnout, by ji držet nemohl.
 2. **Aplikační vrstva první, statický soubor až na VPS.** Middleware za `StartSession` je testovatelný lokálně a zbaví request DB dotazů i renderu. Bootování Laravelu (~30–60 ms) zůstává — to sundá až etapa 2.
 3. **Invalidace generačními čítači, ne tagy.** Spec §15.6 psala tagy, ale ty umí jen Redis a projekt je dosud nikde nepoužívá (`Cache::remember` + ruční `forget`: sitemap, feedy, `SettingsService`, `ModuleRegistry`, `DomainTenantFinder`, `TaxRates`). Tag by z Redisu udělal tvrdou závislost, jejíž absence by se projevila **tiše** — cache by přestala invalidovat, ne spadnout. Generační čítač funguje na file, database i Redis driveru, nevyžaduje enumeraci klíčů a nemá závod.
+9. **Čítače leží ve sloupcích `tenants`, ne v cache** (korekce při plánování). Čítač uložený v cache může být vystěhován; vrátí se na 1 a stránky uložené pod starou generací 1 tím **obživnou** — cache by servírovala obsah, který nájemce dávno změnil. `DomainTenantFinder` beztak načítá řádek nájemce každým requestem (`Tenant::find`), takže tři celočíselné sloupce nestojí ani jeden dotaz navíc a inkrement je atomický `UPDATE`.
+10. **Invalidaci spouští observery modelů, ne volání ve writerech** (korekce při plánování). `ProductWriter` a `VariantWriter` mají dohromady přes patnáct zapisujících metod a přibývají; instrumentovat každou znamená, že šestnáctá se zapomene. Observer na `Product`, `ProductVariant`, `Category`, `HomepageBlock`, `Page` a `TenantTheme` chytí i cesty, které teprve vzniknou — včetně CSV importu. Výjimka je odpis skladu: `EloquentProductCatalog::decrementStock` píše přes query builder, takže žádnou událost Eloquentu nevyvolá a hranici skladem/vyprodáno musí zvednout sám.
 4. **Zapíná se opt-in na routě**, ne globálně. Nová routa se necachuje, dokud to někdo vědomě nenapíše; opačné pořadí by při příštím modulu tiše zacachovalo něco osobního.
 5. **Přihlášený zákazník cache obchází.** Hlavička renderuje „Můj účet" vs „Přihlásit se" podle `$signedInCustomer` (`shop.blade.php:65`) — per-návštěvníkový obsah. Alternativy (zástupný znak i pro účet, ostrůvek) byly zamítnuty: první přenáší povinnost pamatovat na značku na každý budoucí osobní prvek v šabloně, druhý by bez JS odkaz na přihlášení úplně skryl. Přihlášených zákazníků je menšina; drtivá většina prokliků z Heureky a Googlu je anonymní.
 6. **CSRF token se v cache nahrazuje značkou a při odeslání se vrací čerstvý.** Detail produktu má `@csrf` ve formuláři do košíku (`show.blade.php:126`); token je per-session. Bez záměny by cache servírovala token návštěvníka A návštěvníkovi B a vložení do košíku by skončilo 419.
@@ -47,10 +49,10 @@ Vlna staví **page cache celého HTML pro anonymní GET** podle §15.6, invalido
 |---|---|
 | `PageCachePolicy` | Rozhodne, zda request a odpověď smí do cache |
 | `PageCacheKey` | Složí klíč `page:{tenant}:{gen}:{path}:{qsHash}` |
-| `Generations` | Čítače per nájemce a dimenze; `current()`, `bump()`, `bumpAll()` |
+| `Generations` | Čítače per nájemce a dimenze nad sloupci `tenants`; `stamp()`, `bump()`, `bumpAll()` |
+| `PageCacheObserver` | Jeden observer registrovaný na katalogové, obsahové a vzhledové modely; mapuje model na dimenzi |
 | `DynamicTokens` | Záměna CSRF tokenu za značku a zpět |
-| `PageCache` | Fasáda nad cache storem: `get()`, `put()` |
-| `CacheStorefrontPage` (middleware) | Čte na vstupu, zapisuje na výstupu; alias `page-cache` |
+| `CacheStorefrontPage` (middleware) | Čte na vstupu, zapisuje na výstupu; alias `page-cache`. Sahá na `Cache::store()` přímo — vlastní fasáda by měla jediného volajícího |
 
 Middleware **musí běžet za `StartSession`** — jinak neexistuje token, kterým se značka nahrazuje, ani session, podle které se rozhoduje o obcházení.
 
@@ -75,11 +77,13 @@ Bump = `Cache::increment`. Staré záznamy osiří a vyprší TTL; nic se nemaž
 | Skupina | TTL | Poznámka |
 |---|---|---|
 | homepage, kategorie, produkt, statické stránky | 10 min | spec §15.6 |
-| 404 / 410 | 60 min | tlumí nápor na neexistující URL, kterými crawleři a skenery buší nejčastěji |
+| 404 / 410 | 60 min | jen 404 vzniklé **uvnitř** routy (neznámý slug produktu nebo kategorie) |
 | hledání | 5 min | **jen dotazy s aspoň jedním výsledkem**; termín trimnutý a omezený délkou — `?q=` má neomezenou kardinalitu |
 | sitemap, feedy | 60 min | beze změny, nově navíc invalidované čítačem `catalog` |
 
 Poslední řádek uzavírá dnešní chování, kdy feed drží starou cenu až hodinu po přecenění.
+
+**404 na neexistující cestě middleware nikdy neuvidí** (korekce při plánování). Když nesedne žádná routa, vyhodí to routing ještě před middlewarem routy a odpověď skládá handler výjimky v `bootstrap/app.php:134` (`RedirectResponder`, který navíc hledá v tabulce `redirects`). Právě těmito URL buší skenery. Middleware na routách je nepokryje, takže se místo toho cachuje **výsledek hledání v `redirects`** per nájemce a cesta — jedna hodnota, invalidovaná dimenzí `catalog`, protože redirect vzniká přejmenováním slugu.
 
 ## Bezpečnost sdílené cache
 
