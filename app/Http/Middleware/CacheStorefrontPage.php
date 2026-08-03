@@ -55,7 +55,7 @@ class CacheStorefrontPage
                 'body' => $this->tokens->mask((string) $response->getContent(), (string) csrf_token()),
                 'status' => $response->getStatusCode(),
                 'type' => (string) $response->headers->get('Content-Type', 'text/html; charset=UTF-8'),
-            ], $this->ttl($response));
+            ], $this->ttl($response, $request));
         }
 
         return $response;
@@ -77,10 +77,14 @@ class CacheStorefrontPage
         );
     }
 
-    private function ttl(Response $response): int
+    private function ttl(Response $response, Request $request): int
     {
         if (in_array($response->getStatusCode(), [404, 410], true)) {
             return (int) config('pagecache.ttl.not_found', 3600);
+        }
+
+        if ($request->query('q') !== null) {
+            return (int) config('pagecache.ttl.search', 300);
         }
 
         return (int) config('pagecache.ttl.default', 600);
