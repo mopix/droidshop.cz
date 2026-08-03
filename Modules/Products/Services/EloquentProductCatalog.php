@@ -11,6 +11,7 @@ use App\Core\Money\Money;
 use App\Core\PageCache\Dimension;
 use App\Core\PageCache\Generations;
 use App\Core\Tenancy\TenantContext;
+use App\Models\Tenant;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
@@ -235,6 +236,13 @@ class EloquentProductCatalog implements ProductCatalog
                 'stock_qty' => DB::raw('stock_qty + '.(int) $quantity),
             ]);
 
+            // Page cache (wave 3.0): the mirror of bumpIfSoldOut() below — a
+            // restock is exactly as visible to a visitor as a sell-out when
+            // it crosses the same boundary the other way. $variant is
+            // already loaded above, so this before-value costs no extra
+            // query.
+            $this->bumpIfRestocked((int) $variant->stock_qty, $quantity);
+
             return;
         }
 
@@ -247,6 +255,9 @@ class EloquentProductCatalog implements ProductCatalog
         Product::query()->whereKey($productId)->update([
             'stock_qty' => DB::raw('stock_qty + '.(int) $quantity),
         ]);
+
+        // Page cache (wave 3.0): same reasoning as the variant path above.
+        $this->bumpIfRestocked((int) $product->stock_qty, $quantity);
     }
 
     /**
@@ -301,7 +312,10 @@ class EloquentProductCatalog implements ProductCatalog
      * before this runs. Re-reads the row rather than trusting the caller's
      * $quantity: the "sold out" question is "what remains now", not "how
      * much moved", and re-reading is what keeps this correct if the update
-     * clause above ever changes.
+     * clause above ever changes. The re-read itself stays synchronous
+     * (inside the caller's transaction, a plain SELECT under REPEATABLE READ
+     * that sees this same transaction's own uncommitted write) — only the
+     * bump is deferred, by deferBump() below.
      */
     private function bumpIfSoldOut(int $productId, ?int $variantId): void
     {
@@ -319,7 +333,72 @@ class EloquentProductCatalog implements ProductCatalog
             return;
         }
 
-        $this->generations->bump($tenant, Dimension::Catalog);
+        $this->deferBump($tenant);
+    }
+
+    /**
+     * Bumps the catalogue generation when a restock just crossed the
+     * out-of-stock/in-stock boundary the other way — the mirror of
+     * bumpIfSoldOut() (spec §15.6, wave 3.0, review finding: a cancelled
+     * order or a lowered admin quantity returns stock through the same
+     * query-builder path decrementStock takes, so nothing else bumps for it
+     * either). A restock from 3 to 8 changes nothing a visitor can see, so
+     * only crossing from zero (or below) to positive may bump.
+     *
+     * $before is the value read by the caller BEFORE its own UPDATE, not a
+     * re-read after: unlike the sold-out path, there is no conditional
+     * WHERE clause here that could make the write a no-op, so the caller
+     * already has the exact pre-write value on hand (the model it loaded to
+     * check stock_tracked) and a second query would buy nothing.
+     */
+    private function bumpIfRestocked(int $before, int $quantity): void
+    {
+        if ($before > 0 || $before + $quantity <= 0) {
+            return;
+        }
+
+        $tenant = $this->context->current();
+
+        if ($tenant === null) {
+            return;
+        }
+
+        $this->deferBump($tenant);
+    }
+
+    /**
+     * Defers the actual generation bump past the enclosing transaction,
+     * rather than writing it inline (review finding, wave 3.0).
+     *
+     * bump() writes to the tenant's single row in `tenants`. decrementStock()
+     * and incrementStock() both run inside the caller's own DB::transaction()
+     * (OrderPlacer::place(), OrderEditor::cancel()/edit(),
+     * EloquentOrderSettlement::settleFailed()) — an inline bump would hold an
+     * InnoDB row lock on that one row for the rest of that transaction, which
+     * every OTHER concurrent order for this tenant that also crosses a stock
+     * boundary would contend on. Worse than ordinary contention: a multi-line
+     * order takes its product-row locks one line at a time in the same
+     * transaction, so two concurrent orders that each drive a different
+     * product to zero while carrying the other product as a second line can
+     * lock-cycle — one holds the tenants row and waits on the other's product
+     * row, and vice versa. MySQL's deadlock detector aborts one of them, which
+     * OrderPlacer does not catch, so it would have surfaced as an uncaught
+     * QueryException instead of a clean order.
+     *
+     * DB::afterCommit takes the tenants row out of the transaction's lock set
+     * entirely — the same pattern OrderWorkflow::transitionFulfillment() and
+     * transitionPayment() already use to defer OrderShipped/
+     * OrderPaymentSettled past their own transaction. $tenant is captured by
+     * value in the closure rather than re-read from TenantContext::current()
+     * inside it: nothing guarantees the ambient tenant context is still
+     * populated by the time a deferred callback runs (a queued job, a console
+     * command). Accepted cost: a process dying between commit and this
+     * callback leaves the cache stale until the TTL — the same trade the
+     * project already takes for auto-issuing an invoice on OrderShipped.
+     */
+    private function deferBump(Tenant $tenant): void
+    {
+        DB::afterCommit(fn () => $this->generations->bump($tenant, Dimension::Catalog));
     }
 
     /**

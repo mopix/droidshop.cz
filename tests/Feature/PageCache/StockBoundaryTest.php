@@ -9,8 +9,11 @@ use App\Core\Tax\TaxRates;
 use App\Core\Tenancy\TenantContext;
 use App\Models\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Modules\Products\Models\Product;
+use Modules\Products\Models\ProductVariant;
 use Modules\Products\Services\ProductWriter;
+use Modules\Products\Services\VariantWriter;
 use Tests\Concerns\ActivatesModules;
 use Tests\TestCase;
 
@@ -61,12 +64,48 @@ class StockBoundaryTest extends TestCase
         ], $overrides));
     }
 
+    /**
+     * @param  array<string, mixed>  $overrides
+     */
+    private function makeVariant(Product $product, array $overrides = []): ProductVariant
+    {
+        return app(VariantWriter::class)->upsertVariant(
+            $product,
+            ['Velikost' => 'M'],
+            array_merge(['stock_tracked' => true, 'stock_qty' => 5], $overrides),
+        );
+    }
+
+    /**
+     * decrementStock()/incrementStock() defer their bump with DB::afterCommit
+     * (review finding, wave 3.0 — see deferBump()'s docblock): production
+     * only ever calls them from inside OrderPlacer's/OrderEditor's/
+     * EloquentOrderSettlement's own DB::transaction(), never bare. Calling
+     * either directly here, with no wrapping transaction, would leave the
+     * deferred callback attached to RefreshDatabase's own outer test
+     * transaction — which the test harness rolls back, not commits — so the
+     * callback would never fire and every assertion below would read a stale
+     * generation regardless of which branch actually ran. Wrapping every call
+     * the same way production does is what makes this test exercise the real
+     * path (precedent: tests/Feature/Modules/Docs/AutoIssueTest.php, which
+     * documents the identical requirement for OrderPaymentSettled).
+     */
+    private function decrement(int $productId, int $quantity, ?int $variantId = null): void
+    {
+        DB::transaction(fn () => app(ProductCatalog::class)->decrementStock($productId, $quantity, $variantId));
+    }
+
+    private function increment(int $productId, int $quantity, ?int $variantId = null): void
+    {
+        DB::transaction(fn () => app(ProductCatalog::class)->incrementStock($productId, $quantity, $variantId));
+    }
+
     public function test_selling_a_unit_without_running_out_does_not_bump(): void
     {
         $product = $this->makeProduct(['stock_tracked' => true, 'stock_qty' => 5]);
         $before = $this->catalogGeneration();
 
-        app(ProductCatalog::class)->decrementStock($product->id, 1);
+        $this->decrement($product->id, 1);
 
         // 5 → 4 changes nothing a visitor can see: the detail page prints
         // availability, not the count. Bumping here would drop the whole
@@ -79,7 +118,7 @@ class StockBoundaryTest extends TestCase
         $product = $this->makeProduct(['stock_tracked' => true, 'stock_qty' => 1]);
         $before = $this->catalogGeneration();
 
-        app(ProductCatalog::class)->decrementStock($product->id, 1);
+        $this->decrement($product->id, 1);
 
         $this->assertGreaterThan($before, $this->catalogGeneration());
     }
@@ -89,7 +128,7 @@ class StockBoundaryTest extends TestCase
         $product = $this->makeProduct(['stock_tracked' => false, 'stock_qty' => 0]);
         $before = $this->catalogGeneration();
 
-        app(ProductCatalog::class)->decrementStock($product->id, 3);
+        $this->decrement($product->id, 3);
 
         $this->assertSame($before, $this->catalogGeneration());
     }
@@ -106,11 +145,83 @@ class StockBoundaryTest extends TestCase
         $before = $this->catalogGeneration();
 
         try {
-            app(ProductCatalog::class)->decrementStock($product->id, 5);
+            $this->decrement($product->id, 5);
             $this->fail('Expected InsufficientStock.');
         } catch (InsufficientStock) {
             // expected
         }
+
+        $this->assertSame($before, $this->catalogGeneration());
+    }
+
+    // --- variant path (review finding 2: previously untested) --------------
+
+    public function test_selling_a_variant_unit_without_running_out_does_not_bump(): void
+    {
+        $product = $this->makeProduct();
+        $variant = $this->makeVariant($product, ['stock_qty' => 5]);
+        $before = $this->catalogGeneration();
+
+        $this->decrement($product->id, 1, $variant->id);
+
+        $this->assertSame($before, $this->catalogGeneration());
+    }
+
+    public function test_selling_a_variants_last_unit_bumps(): void
+    {
+        $product = $this->makeProduct();
+        $variant = $this->makeVariant($product, ['stock_qty' => 1]);
+        $before = $this->catalogGeneration();
+
+        $this->decrement($product->id, 1, $variant->id);
+
+        $this->assertGreaterThan($before, $this->catalogGeneration());
+    }
+
+    // --- restock path, the mirror boundary (review finding 3) ---------------
+
+    public function test_restocking_a_sold_out_product_bumps(): void
+    {
+        $product = $this->makeProduct(['stock_tracked' => true, 'stock_qty' => 0]);
+        $before = $this->catalogGeneration();
+
+        $this->increment($product->id, 3);
+
+        // 0 → 3 is exactly as visible to a visitor as 1 → 0 is: a sold-out
+        // product becomes buyable again.
+        $this->assertGreaterThan($before, $this->catalogGeneration());
+    }
+
+    public function test_restocking_from_a_positive_quantity_does_not_bump(): void
+    {
+        $product = $this->makeProduct(['stock_tracked' => true, 'stock_qty' => 3]);
+        $before = $this->catalogGeneration();
+
+        // 3 → 8 changes nothing a visitor can see: the product was never
+        // shown as sold out, so nothing crosses the boundary.
+        $this->increment($product->id, 5);
+
+        $this->assertSame($before, $this->catalogGeneration());
+    }
+
+    public function test_restocking_a_sold_out_variant_bumps(): void
+    {
+        $product = $this->makeProduct();
+        $variant = $this->makeVariant($product, ['stock_qty' => 0]);
+        $before = $this->catalogGeneration();
+
+        $this->increment($product->id, 2, $variant->id);
+
+        $this->assertGreaterThan($before, $this->catalogGeneration());
+    }
+
+    public function test_restocking_a_variant_from_a_positive_quantity_does_not_bump(): void
+    {
+        $product = $this->makeProduct();
+        $variant = $this->makeVariant($product, ['stock_qty' => 3]);
+        $before = $this->catalogGeneration();
+
+        $this->increment($product->id, 5, $variant->id);
 
         $this->assertSame($before, $this->catalogGeneration());
     }
