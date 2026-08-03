@@ -95,17 +95,17 @@ class PageCacheKeyTest extends TestCase
         $tenant = Tenant::factory()->create();
 
         $this->assertSame(
-            $this->key($tenant, '/kategorie/boty?razeni=cena-vzestupne&skladem=1'),
-            $this->key($tenant, '/kategorie/boty?skladem=1&razeni=cena-vzestupne'),
+            $this->key($tenant, '/kategorie/boty?razeni=cena-asc&skladem=1'),
+            $this->key($tenant, '/kategorie/boty?skladem=1&razeni=cena-asc'),
         );
     }
 
-    public function test_array_shaped_parameters_are_ignored(): void
+    public function test_array_shaped_razeni_parameters_are_ignored(): void
     {
         $tenant = Tenant::factory()->create();
 
-        // ?razeni[]=a&razeni[]=b must not blow up key building or let an
-        // attacker mint unbounded distinct keys from one whitelisted name.
+        // ?razeni[]=a is not a valid scalar value, so it's ignored (razeni only
+        // accepts whitelisted scalar sorts). It must land on the bare URL key.
         $this->assertSame(
             $this->key($tenant, '/kategorie/boty'),
             $this->key($tenant, '/kategorie/boty?razeni[]=a&razeni[]=b'),
@@ -229,5 +229,53 @@ class PageCacheKeyTest extends TestCase
             $this->key($tenant, '/kategorie/boty?strana=2'),
             $this->key($tenant, '/kategorie/boty?strana=999'),
         );
+    }
+
+    public function test_invalid_page_values_land_on_same_key_as_absent(): void
+    {
+        $tenant = Tenant::factory()->create();
+
+        // filter_var($value, FILTER_VALIDATE_INT) rejects non-integer formats.
+        // Laravel's paginator falls back to page 1 for invalid values.
+        $this->assertSame(
+            $this->key($tenant, '/kategorie/boty'),
+            $this->key($tenant, '/kategorie/boty?page=2.0'),
+        );
+
+        $this->assertSame(
+            $this->key($tenant, '/kategorie/boty'),
+            $this->key($tenant, '/kategorie/boty?page=2abc'),
+        );
+
+        $this->assertSame(
+            $this->key($tenant, '/kategorie/boty'),
+            $this->key($tenant, '/kategorie/boty?page=2e0'),
+        );
+    }
+
+    public function test_invalid_page_differs_from_valid_page(): void
+    {
+        $tenant = Tenant::factory()->create();
+
+        // Valid page 2 produces a different key than invalid page values.
+        $this->assertNotSame(
+            $this->key($tenant, '/kategorie/boty?page=2'),
+            $this->key($tenant, '/kategorie/boty?page=2.0'),
+        );
+    }
+
+    public function test_array_shaped_q_parameter_uses_sentinel(): void
+    {
+        $tenant = Tenant::factory()->create();
+
+        // ?q[]=a is not a scalar value, so it produces a key with sentinel.
+        // All array-shaped q values share the same key (they all render "Array"),
+        // but the key differs from a bare URL.
+        $qArrayKey1 = $this->key($tenant, '/hledani?q[]=a');
+        $qArrayKey2 = $this->key($tenant, '/hledani?q[]=b');
+        $bareKey = $this->key($tenant, '/hledani');
+
+        $this->assertSame($qArrayKey1, $qArrayKey2);
+        $this->assertNotSame($qArrayKey1, $bareKey);
     }
 }

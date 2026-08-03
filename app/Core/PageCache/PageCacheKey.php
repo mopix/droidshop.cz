@@ -54,8 +54,20 @@ class PageCacheKey
 
     private function normaliseParameter(string $name, mixed $value): ?string
     {
-        // Ignore array-shaped parameters and non-strings for simplicity.
+        // Parameter not present at all.
+        if ($value === null) {
+            return null;
+        }
+
+        // Non-scalar whitelisted parameters (arrays) are keyed under a fixed
+        // sentinel: all array-shaped values render the same page (the literal
+        // term "Array"), so they must share one key but not collide with bare URL.
         if (! is_scalar($value)) {
+            // Only sentinel-key parameters that can actually appear in requests.
+            if ($name === 'q') {
+                return '__invalid__';
+            }
+
             return null;
         }
 
@@ -82,9 +94,11 @@ class PageCacheKey
         }
 
         if ($name === 'page') {
-            // Cast to int; only include if > 1 (page 1 is the default).
-            $asInt = (int) $value;
+            // Validate as int using the same logic as Laravel's paginator.
+            $asInt = filter_var($value, FILTER_VALIDATE_INT);
 
+            // Only include if > 1 (page 1 is the default, and invalid values
+            // fall back to page 1 in Illuminate\Pagination\Paginator).
             return $asInt > 1 ? (string) $asInt : null;
         }
 
