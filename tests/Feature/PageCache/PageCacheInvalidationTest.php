@@ -9,8 +9,11 @@ use App\Core\Tenancy\TenantContext;
 use App\Models\Tenant;
 use App\Models\TenantTheme;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Modules\Categories\Services\CategoryTree;
+use Modules\Pages\Models\Page;
 use Modules\Products\Models\Product;
 use Modules\Products\Services\ProductWriter;
+use Modules\Products\Services\VariantWriter;
 use Modules\Storefront\Enums\BlockType;
 use Modules\Storefront\Models\HomepageBlock;
 use Tests\Concerns\ActivatesModules;
@@ -129,5 +132,121 @@ class PageCacheInvalidationTest extends TestCase
 
         $this->assertSame('1', $this->generations->stamp($second->fresh(), [Dimension::Catalog]));
         $this->assertSame('2', $this->generations->stamp($first->fresh(), [Dimension::Catalog]));
+    }
+
+    /**
+     * Review round 2: three DIMENSION_BY_MODEL entries (Page, Category,
+     * ProductVariant) had no test at all, so a typo in the Page key would
+     * silently misroute it to Dimension::Catalog with nothing catching it.
+     * This asserts both sides: content moves, catalog does not.
+     */
+    public function test_saving_a_page_bumps_content_and_not_the_catalogue(): void
+    {
+        $tenant = $this->shop();
+
+        Page::create([
+            'slug' => 'o-nas',
+            'title' => 'O nás',
+            'body' => 'Text stránky.',
+            'is_published' => true,
+        ]);
+
+        $fresh = $tenant->fresh();
+        $this->assertSame('2', $this->generations->stamp($fresh, [Dimension::Content]));
+        $this->assertSame('1', $this->generations->stamp($fresh, [Dimension::Catalog]));
+    }
+
+    public function test_saving_a_category_bumps_the_catalogue(): void
+    {
+        $tenant = $this->shop();
+        $this->activateModule($tenant, 'categories');
+
+        app(CategoryTree::class)->create(['name' => 'Notebooky']);
+
+        $this->assertSame('2', $this->generations->stamp($tenant->fresh(), [Dimension::Catalog]));
+    }
+
+    public function test_saving_a_product_variant_bumps_the_catalogue(): void
+    {
+        $tenant = $this->shop();
+        $product = $this->makeProduct();
+        $option = app(VariantWriter::class)->addOption($product, 'Velikost');
+        app(VariantWriter::class)->addValue($option, 'M');
+
+        $before = (int) $tenant->fresh()->page_gen_catalog;
+
+        app(VariantWriter::class)->generate($product);
+
+        $this->assertGreaterThan($before, (int) $tenant->fresh()->page_gen_catalog);
+    }
+
+    /**
+     * Review round 2, finding 1: ProductOption/ProductOptionValue render
+     * straight into the cached product page (variant-picker.blade.php prints
+     * axis and value labels) but were missing from DIMENSION_BY_MODEL and the
+     * observer registration list.
+     */
+    public function test_renaming_a_product_option_bumps_the_catalogue(): void
+    {
+        $tenant = $this->shop();
+        $product = $this->makeProduct();
+        $option = app(VariantWriter::class)->addOption($product, 'Barva');
+
+        $before = (int) $tenant->fresh()->page_gen_catalog;
+
+        app(VariantWriter::class)->renameOption($option, 'Barva tricka');
+
+        $this->assertGreaterThan($before, (int) $tenant->fresh()->page_gen_catalog);
+    }
+
+    public function test_adding_an_option_value_bumps_the_catalogue(): void
+    {
+        $tenant = $this->shop();
+        $product = $this->makeProduct();
+        $option = app(VariantWriter::class)->addOption($product, 'Velikost');
+
+        $before = (int) $tenant->fresh()->page_gen_catalog;
+
+        app(VariantWriter::class)->addValue($option, 'M');
+
+        $this->assertGreaterThan($before, (int) $tenant->fresh()->page_gen_catalog);
+    }
+
+    public function test_deleting_an_option_value_bumps_the_catalogue(): void
+    {
+        $tenant = $this->shop();
+        $product = $this->makeProduct();
+        $option = app(VariantWriter::class)->addOption($product, 'Velikost');
+        $value = app(VariantWriter::class)->addValue($option, 'M');
+
+        $before = (int) $tenant->fresh()->page_gen_catalog;
+
+        app(VariantWriter::class)->deleteValue($value);
+
+        $this->assertGreaterThan($before, (int) $tenant->fresh()->page_gen_catalog);
+    }
+
+    /**
+     * Review round 2, finding 2: CategoryTree::reorder() writes through the
+     * query builder in a loop (Category::query()->whereKey($id)->update(...)),
+     * so no Eloquent event fires and the observer never sees it — the same
+     * shape as the stock write-off exception. reorder() bumps for itself,
+     * once for the whole call, not once per row.
+     */
+    public function test_reordering_categories_bumps_the_catalogue_exactly_once(): void
+    {
+        $tenant = $this->shop();
+        $this->activateModule($tenant, 'categories');
+
+        $tree = app(CategoryTree::class);
+        $a = $tree->create(['name' => 'A']);
+        $b = $tree->create(['name' => 'B']);
+        $c = $tree->create(['name' => 'C']);
+
+        $before = (int) $tenant->fresh()->page_gen_catalog;
+
+        $tree->reorder(null, [$c->id, $b->id, $a->id]);
+
+        $this->assertSame($before + 1, (int) $tenant->fresh()->page_gen_catalog);
     }
 }

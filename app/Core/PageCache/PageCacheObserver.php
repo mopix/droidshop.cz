@@ -15,9 +15,20 @@ use Illuminate\Database\Eloquent\Model;
  * also covers write paths that do not exist yet — the CSV importer already
  * goes through the writers, and the next importer might not.
  *
- * The stock write-off is the deliberate exception: it updates through the
- * query builder (EloquentProductCatalog::decrementStock) and fires no
- * Eloquent event, so it bumps for itself. See wave 3.0 spec, decision 8.
+ * ProductOption/ProductOptionValue are here because they render straight
+ * into the cached product page (variant-picker.blade.php prints axis and
+ * value labels), even though the variant matrix's rows (ProductVariant) were
+ * already covered.
+ *
+ * Two query-builder writes are the deliberate exceptions: they update
+ * through the query builder and fire no Eloquent event, so each bumps for
+ * itself instead of relying on this observer.
+ * - EloquentProductCatalog::decrementStock (stock write-off). See wave 3.0
+ *   spec, decision 8.
+ * - CategoryTree::reorder (bulk positional update of category siblings).
+ *
+ * Both are documented at their own call site so the fix stays next to the
+ * write it fixes; this class does not call Generations for either.
  *
  * The model → dimension map is keyed by class name string, not by
  * `instanceof` against a fully-qualified module class name: app/Core/ never
@@ -38,6 +49,8 @@ class PageCacheObserver
         'Modules\\Pages\\Models\\Page' => Dimension::Content,
         'Modules\\Products\\Models\\Product' => Dimension::Catalog,
         'Modules\\Products\\Models\\ProductVariant' => Dimension::Catalog,
+        'Modules\\Products\\Models\\ProductOption' => Dimension::Catalog,
+        'Modules\\Products\\Models\\ProductOptionValue' => Dimension::Catalog,
         'Modules\\Categories\\Models\\Category' => Dimension::Catalog,
     ];
 

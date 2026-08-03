@@ -182,6 +182,8 @@ class AppServiceProvider extends ServiceProvider
             TenantTheme::class,
             'Modules\\Products\\Models\\Product',
             'Modules\\Products\\Models\\ProductVariant',
+            'Modules\\Products\\Models\\ProductOption',
+            'Modules\\Products\\Models\\ProductOptionValue',
             'Modules\\Categories\\Models\\Category',
             'Modules\\Storefront\\Models\\HomepageBlock',
             'Modules\\Pages\\Models\\Page',
