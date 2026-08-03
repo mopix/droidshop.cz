@@ -2,6 +2,7 @@
 
 use App\Core\Routing\RedirectResponder;
 use App\Http\Middleware\AllowLocalOnly;
+use App\Http\Middleware\CacheStorefrontPage;
 use App\Http\Middleware\CheckTenantStatus;
 use App\Http\Middleware\EnsurePlatformTwoFactor;
 use App\Http\Middleware\EnsureTenantMember;
@@ -70,6 +71,9 @@ $app = Application::configure(basePath: dirname(__DIR__))
             'platform.2fa' => EnsurePlatformTwoFactor::class,
             'tenant.member' => EnsureTenantMember::class,
             'internal.local' => AllowLocalOnly::class,
+            // Opt-in per route (wave 3.0). Appended to the web group by the
+            // routes that want it, so it lands behind StartSession.
+            'page-cache' => CacheStorefrontPage::class,
         ]);
 
         // This one closure backs every guest redirect in the app — Laravel's

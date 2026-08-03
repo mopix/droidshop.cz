@@ -9,4 +9,6 @@ use Modules\Pages\Http\Controllers\PageController;
  * across modules is not solved until the theme module lands. Until then this
  * sits under /stranka/{slug}. Recorded as a deviation in the wave as-is.
  */
-Route::get('/stranka/{slug}', [PageController::class, 'show'])->name('show');
+Route::get('/stranka/{slug}', [PageController::class, 'show'])
+    ->middleware('page-cache:content,theme')
+    ->name('show');

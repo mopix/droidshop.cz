@@ -20,7 +20,9 @@ Route::get('/soubory/{tenant}/{path}', PrivateFileController::class)
     ->name(FileStorage::SIGNED_ROUTE);
 
 // Platform marketing page or the shop homepage, depending on the host.
-Route::get('/', StorefrontEntryController::class)->name('home');
+Route::get('/', StorefrontEntryController::class)
+    ->middleware('page-cache:catalog,content,theme')
+    ->name('home');
 
 Route::get('/dashboard', DashboardController::class)
     ->middleware(['auth', 'verified'])->name('dashboard');
