@@ -171,20 +171,21 @@ class ModuleRegistry
         // necessarily the ambient TenantContext::current().
         //
         // Not deferred with DB::afterCommit: unlike EloquentProductCatalog's
-        // stock write-off, nothing here would gain from it. Where activate()/
-        // deactivate() do run inside a caller-owned transaction (PlanSwitcher,
-        // TenantPlanSwitcher via the Stripe webhook), that transaction has
-        // already written to this same tenants row (plan_id/billing_interval)
-        // before reaching here, so the row is already held for the rest of
-        // that transaction regardless of this call — bumping inline adds no
-        // additional lock, and deferring would only add risk: it would leave
-        // this callback attached to whatever transaction happens to be
-        // enclosing the call, silently never firing if that transaction is
-        // rolled back instead of committed (confirmed against this exact
-        // shape: RefreshDatabase's own test-wrapping transaction never
-        // truly commits, so a deferred bump registered by a bare call, the
-        // one every activate()/deactivate() caller in this codebase and its
-        // tests makes, would never run).
+        // stock write-off, nothing here would gain from it. The only two
+        // callers that reach this from inside their own transaction —
+        // PlanSwitcher::switch() and TenantPlanSwitcher::switchTo() (always
+        // called from inside StripeWebhookHandler's single transaction) —
+        // both write this same tenants row (plan_id/billing_interval) with
+        // forceFill()->save() BEFORE calling activate()/deactivate(), so by
+        // the time this runs, that transaction already holds the row for
+        // its own reasons. Bumping inline here adds no new lock and no new
+        // ordering versus what that transaction already does; it is not the
+        // stock write-off's situation, where the bump would have been the
+        // transaction's first and only touch of tenants, opening the door to
+        // two concurrent orders taking the tenants and a product lock in
+        // opposite order. PlanModuleReconciler::apply(), the third caller,
+        // wraps nothing at all around its activate()/deactivate() calls, so
+        // each one autocommits on its own regardless.
         $this->generations->bump($tenant, Dimension::Theme);
     }
 

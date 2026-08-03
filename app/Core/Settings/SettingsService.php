@@ -103,7 +103,9 @@ class SettingsService
 
     public function forget(string $module): void
     {
-        Cache::forget("settings:{$this->requireTenant()}:{$module}");
+        $tenantId = $this->requireTenant();
+
+        Cache::forget("settings:{$tenantId}:{$module}");
 
         // Page cache (wave 3.0): settings reach the rendered storefront (the
         // variant picker, the order number prefix, the checkout minimum), so
@@ -112,6 +114,9 @@ class SettingsService
         // covers both without duplicating the call at each write path — and
         // covers any future direct caller of forget() too.
         //
+        // requireTenant() above already throws when there is no ambient
+        // tenant, so context->current() here is guaranteed non-null.
+        //
         // Not deferred with DB::afterCommit: setMany()'s own DB::transaction()
         // has already closed by the time this runs (forget() is called after
         // it, not from inside it), so the write is already durable. Nothing
@@ -119,9 +124,7 @@ class SettingsService
         // externally-owned transaction — unlike an order placement, an admin
         // saving a settings form is a single low-frequency write with nothing
         // else contending for the tenant row around it.
-        if (($tenant = $this->context->current()) !== null) {
-            $this->generations->bump($tenant, Dimension::Theme);
-        }
+        $this->generations->bump($this->context->current(), Dimension::Theme);
     }
 
     /**
