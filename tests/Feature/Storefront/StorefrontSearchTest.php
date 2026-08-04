@@ -126,6 +126,88 @@ class StorefrontSearchTest extends TestCase
             ->assertDontSee('Rozpracovana bunda');
     }
 
+    public function test_the_heading_shows_the_folded_term_not_the_raw_one(): void
+    {
+        $this->makeProduct($this->tenantA);
+
+        $response = $this->get('http://shop1.droidshop/hledani?q=BUNDA')->assertOk();
+
+        $response->assertSee('Vyhledávání: bunda', false);
+        $response->assertDontSee('Vyhledávání: BUNDA', false);
+    }
+
+    public function test_the_canonical_link_carries_the_folded_term(): void
+    {
+        $this->makeProduct($this->tenantA);
+
+        $this->get('http://shop1.droidshop/hledani?q=BUNDA')
+            ->assertOk()
+            ->assertSee('<link rel="canonical" href="http://shop1.droidshop/hledani?q=bunda">', false);
+    }
+
+    public function test_differently_cased_terms_render_byte_identical_pages(): void
+    {
+        // This is the property that actually matters: a shared page cache
+        // means the HTML is a pure function of the (folded) cache key, so
+        // any two requests that fold to the same key must render identical
+        // bytes — otherwise whichever visitor's request populated the cache
+        // silently dictates what the other one sees.
+        //
+        // The page cache must be off for this assertion to mean anything.
+        // ?q=Bunda and ?q=BUNDA already fold to the same cache key (fixed
+        // separately in PageCacheKey), so with the cache on the second
+        // request would just replay whatever the first one rendered —
+        // "identical bytes" for the wrong reason, true even if this
+        // controller/view fix were reverted. Disabling the cache forces both
+        // requests to render independently, so the only way they can match
+        // is if the controller and view themselves are folding correctly.
+        config()->set('pagecache.enabled', false);
+
+        $this->makeProduct($this->tenantA);
+
+        $mixed = $this->get('http://shop1.droidshop/hledani?q=Bunda')->assertOk()->getContent();
+        $upper = $this->get('http://shop1.droidshop/hledani?q=BUNDA')->assertOk()->getContent();
+
+        $this->assertSame($mixed, $upper);
+    }
+
+    public function test_a_diacritic_term_folds_and_matches_the_plain_term_byte_for_byte(): void
+    {
+        // See the comment on the case-folding test above: the page cache
+        // must be off here for the same reason, or a cache hit on the
+        // second request would prove nothing about the controller/view.
+        config()->set('pagecache.enabled', false);
+
+        $this->makeProduct($this->tenantA);
+
+        $plain = $this->get('http://shop1.droidshop/hledani?q=bunda')->assertOk()->getContent();
+        $accented = $this->get('http://shop1.droidshop/hledani?q=bund%C3%A1')->assertOk()->getContent();
+
+        $this->assertStringContainsString('Vyhledávání: bunda', $accented);
+        $this->assertSame($plain, $accented);
+    }
+
+    public function test_pagination_links_carry_the_folded_term_not_the_raw_one(): void
+    {
+        // EloquentProductCatalog::paginate() calls withQueryString(), which
+        // captures the raw request query string for its page-2 link. That is
+        // a second, easy-to-miss place the raw `q` can leak onto an
+        // otherwise-folded page — this is not one of the four cases the
+        // review asked for, but the same "pure function of the cache key"
+        // principle applies to it, so it is covered here too.
+        for ($i = 0; $i < 25; $i++) {
+            $this->makeProduct($this->tenantA);
+        }
+
+        $content = $this->get('http://shop1.droidshop/hledani?q=BUNDA')->assertOk()->getContent();
+
+        preg_match('/href="([^"]*page=2[^"]*)"/', $content, $matches);
+
+        $this->assertNotEmpty($matches, 'Expected a page-2 pagination link in the response.');
+        $this->assertStringContainsString('q=bunda', $matches[1]);
+        $this->assertStringNotContainsString('q=BUNDA', $matches[1]);
+    }
+
     public function test_reindex_command_rebuilds_the_column(): void
     {
         $this->makeProduct($this->tenantA);

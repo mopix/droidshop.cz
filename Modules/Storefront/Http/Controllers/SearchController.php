@@ -6,6 +6,7 @@ use App\Core\Catalog\Contracts\ProductCatalog;
 use App\Core\Catalog\ProductQuery;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\Support\Str;
 use Modules\Storefront\Support\Seo;
 
 /**
@@ -21,13 +22,32 @@ class SearchController
 
     public function __invoke(Request $request): Response
     {
-        $term = trim((string) $request->query('q', ''));
+        // Folded once, here, through the same transform the cache key
+        // (App\Core\PageCache\PageCacheKey) and the search itself
+        // (Modules\Products\Support\SearchText::normalise) apply to a term.
+        // A cached page is a pure function of its cache key, so every place
+        // the term is rendered or embedded — heading, title, canonical, the
+        // header search box in the shared layout — must read this folded
+        // value and never the raw query string. Folding in one place and
+        // leaving the raw value in another would mean two visitors who share
+        // a cache entry (e.g. ?q=Bunda and ?q=BUNDA) see different HTML,
+        // which is exactly the bug this fold prevents.
+        $term = Str::lower(Str::ascii(trim((string) $request->query('q', ''))));
 
         $tooShort = mb_strlen($term) < self::MIN_TERM_LENGTH;
 
         $results = $tooShort
             ? null
             : $this->catalog->paginate(ProductQuery::fromInput($request->query()));
+
+        // The catalogue's paginate() calls withQueryString(), which captures
+        // the raw request query string for its page-2, page-3… links. Left
+        // alone, those links would carry the raw, unfolded `q` — the same
+        // half-fold this whole fix exists to avoid, just inside
+        // $products->links() instead of a Blade variable. Overriding only
+        // `q` keeps razeni/skladem/page exactly as the paginator already had
+        // them.
+        $results?->appends(['q' => $term]);
 
         $view = view('storefront::search', [
             'term' => $term,
