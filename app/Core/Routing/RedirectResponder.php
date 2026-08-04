@@ -70,9 +70,15 @@ class RedirectResponder
         // with a real target: RedirectRegistry::normalise() never produces
         // one (every stored to_path starts with a leading slash), and casting
         // a null lookup result to string is what produces it here.
-        $target = Cache::remember(
+        //
+        // Store and TTL come from the same config CacheStorefrontPage reads
+        // for its own "not found" entries — this is the same concept (a
+        // cached 404) and must live in the same store, or a store bump would
+        // not flush it and PAGE_CACHE_STORE pointed elsewhere would split it
+        // from the rest of the page cache.
+        $target = Cache::store(config('pagecache.store'))->remember(
             'redirect:'.$tenant->getKey().':'.$stamp.':'.$path,
-            3600,
+            (int) config('pagecache.ttl.not_found', 3600),
             fn (): string => (string) $this->registry->resolve($path),
         );
 
