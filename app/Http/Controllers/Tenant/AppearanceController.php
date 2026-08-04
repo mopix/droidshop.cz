@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Tenant;
 
+use App\Core\PageCache\Generations;
 use App\Core\Storage\FileStorage;
 use App\Core\Tenancy\TenantContext;
 use App\Core\Theme\Contrast;
@@ -26,6 +27,7 @@ class AppearanceController extends Controller
     public function __construct(
         private readonly TenantContext $context,
         private readonly FileStorage $files,
+        private readonly Generations $generations,
     ) {}
 
     public function edit(): Response
@@ -72,6 +74,20 @@ class AppearanceController extends Controller
         TenantTheme::updateOrCreate(['tenant_id' => $tenant->id], $data);
 
         return back()->with('success', 'Vzhled uložen.');
+    }
+
+    /**
+     * Escape hatch for a tenant who changed something the automatic
+     * invalidation did not catch and does not want to wait out the TTL.
+     * Bumps all three generations (catalog/content/theme) at once.
+     */
+    public function flushCache(): RedirectResponse
+    {
+        $tenant = $this->context->current();
+
+        $this->generations->bumpAll($tenant);
+
+        return back()->with('success', 'Cache e-shopu byla vymazána.');
     }
 
     public function destroyLogo(): RedirectResponse

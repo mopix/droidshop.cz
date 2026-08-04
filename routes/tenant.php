@@ -22,6 +22,7 @@ Route::get('/admin/nastaveni/vzhled', [AppearanceController::class, 'edit'])->na
 Route::post('/admin/nastaveni/vzhled', [AppearanceController::class, 'update'])->name('admin.appearance.update');
 Route::delete('/admin/nastaveni/vzhled/logo', [AppearanceController::class, 'destroyLogo'])->name('admin.appearance.logo.destroy');
 Route::delete('/admin/nastaveni/vzhled/favicon', [AppearanceController::class, 'destroyFavicon'])->name('admin.appearance.favicon.destroy');
+Route::post('/admin/nastaveni/vzhled/cache', [AppearanceController::class, 'flushCache'])->name('admin.appearance.cache.flush');
 
 Route::get('/admin/nastaveni/moduly', [ModuleSettingsController::class, 'index'])->name('admin.settings.modules.index');
 Route::get('/admin/nastaveni/moduly/{module}', [ModuleSettingsController::class, 'edit'])->name('admin.settings.modules.edit');
