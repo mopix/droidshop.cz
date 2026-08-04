@@ -2,6 +2,8 @@
 
 namespace Modules\Feeds\Http\Controllers;
 
+use App\Core\PageCache\Dimension;
+use App\Core\PageCache\Generations;
 use App\Core\Shipping\Contracts\ShippingOptions;
 use App\Core\Tenancy\TenantContext;
 use Illuminate\Http\Response;
@@ -27,6 +29,7 @@ class FeedController
         private readonly TenantContext $context,
         private readonly FeedItemBuilder $builder,
         private readonly ShippingOptions $shipping,
+        private readonly Generations $generations,
     ) {}
 
     public function __invoke(string $type): Response
@@ -41,8 +44,10 @@ class FeedController
 
         abort_if($feed === null || ! $feed->enabled, 404);
 
+        $stamp = $this->generations->stamp($tenant, [Dimension::Catalog]);
+
         $xml = Cache::remember(
-            'feed:'.$tenant->id.':'.$type,
+            'feed:'.$tenant->id.':'.$type.':'.$stamp,
             self::CACHE_TTL,
             fn () => $this->render($feed),
         );
