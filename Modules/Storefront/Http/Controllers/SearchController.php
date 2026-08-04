@@ -4,9 +4,9 @@ namespace Modules\Storefront\Http\Controllers;
 
 use App\Core\Catalog\Contracts\ProductCatalog;
 use App\Core\Catalog\ProductQuery;
+use App\Core\PageCache\PageCacheKey;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
-use Illuminate\Support\Str;
 use Modules\Storefront\Support\Seo;
 
 /**
@@ -22,17 +22,16 @@ class SearchController
 
     public function __invoke(Request $request): Response
     {
-        // Folded once, here, through the same transform the cache key
-        // (App\Core\PageCache\PageCacheKey) and the search itself
-        // (Modules\Products\Support\SearchText::normalise) apply to a term.
-        // A cached page is a pure function of its cache key, so every place
-        // the term is rendered or embedded — heading, title, canonical, the
-        // header search box in the shared layout — must read this folded
-        // value and never the raw query string. Folding in one place and
-        // leaving the raw value in another would mean two visitors who share
-        // a cache entry (e.g. ?q=Bunda and ?q=BUNDA) see different HTML,
-        // which is exactly the bug this fold prevents.
-        $term = Str::lower(Str::ascii(trim((string) $request->query('q', ''))));
+        // Folded once, here, through PageCacheKey::foldSearchTerm() — the
+        // same transform the cache key and the search itself apply to a
+        // term. A cached page is a pure function of its cache key, so every
+        // place the term is rendered or embedded — heading, title,
+        // canonical, the header search box in the shared layout — must read
+        // this folded value and never the raw query string. Folding in one
+        // place and leaving the raw value in another would mean two
+        // visitors who share a cache entry (e.g. ?q=Bunda and ?q=BUNDA) see
+        // different HTML, which is exactly the bug this fold prevents.
+        $term = PageCacheKey::foldSearchTerm((string) $request->query('q', ''));
 
         $tooShort = mb_strlen($term) < self::MIN_TERM_LENGTH;
 

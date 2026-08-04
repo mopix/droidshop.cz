@@ -12,6 +12,33 @@ class PageCacheKey
     public function __construct(private readonly Generations $generations) {}
 
     /**
+     * The one definition of how a search term is folded before it is used
+     * for anything cache-related: hashed into this key, measured against
+     * `pagecache.search_term_max` in `CacheStorefrontPage::exceedsSearchTermLimit()`,
+     * and rendered on the page in `Modules\Storefront\Http\Controllers\SearchController`.
+     * All three call this method rather than keeping their own copy, because
+     * a copy that drifts is a live bug, not just untidiness.
+     *
+     * This must never fold more aggressively than
+     * `Modules\Products\Support\SearchText::normalise()`, the transform the
+     * storefront search itself applies before matching a term against
+     * `products.search_text`. Folding *less* than that only fragments the
+     * cache (wasteful, never wrong). Folding *more* — treating two terms as
+     * equal here that the search treats as different — collapses them onto
+     * one cache entry and serves one visitor's results to the other, which
+     * is a correctness bug, not waste. That relationship crosses a module
+     * boundary the type system cannot check (this class lives in `app/Core`
+     * and may not import `Modules\Products`), so it is enforced by this
+     * comment and by the tests in `PageCacheKeyTest`/`StorefrontSearchTest`
+     * — keep both in step with `SearchText::normalise()` by hand if either
+     * one ever changes.
+     */
+    public static function foldSearchTerm(string $value): string
+    {
+        return Str::lower(Str::ascii(trim($value)));
+    }
+
+    /**
      * @param  list<Dimension>  $dimensions
      */
     public function for(Request $request, Tenant $tenant, array $dimensions): string
@@ -100,20 +127,7 @@ class PageCacheKey
         }
 
         if ($name === 'q') {
-            // Folded exactly the way Modules\Products\Support\SearchText::
-            // normalise() folds a term before matching it against
-            // `products.search_text` (case + diacritics) — that is the thing
-            // this must stay in lockstep with. `?q=bunda`, `?q=Bunda` and
-            // `?q=bundá` all match the same products, so without this fold
-            // each casing/diacritic variant of one word would mint its own
-            // cache entry off a single public URL with no authentication.
-            // Folding here more aggressively than the search would collide
-            // two terms the search treats as different — a correctness bug,
-            // not just waste — so this must never fold more than
-            // SearchText::normalise() does, only ever the same or less.
-            // `Str` is framework, not a module import, so app/Core may use it.
-            $trimmed = trim($value);
-            $folded = Str::lower(Str::ascii($trimmed));
+            $folded = self::foldSearchTerm($value);
 
             return $folded === '' ? null : $folded;
         }
