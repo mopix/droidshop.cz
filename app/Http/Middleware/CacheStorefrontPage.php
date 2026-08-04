@@ -9,6 +9,7 @@ use App\Core\PageCache\PageCachePolicy;
 use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Str;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
@@ -50,7 +51,7 @@ class CacheStorefrontPage
 
         $response = $next($request);
 
-        if ($this->policy->mayStore($response)) {
+        if ($this->policy->mayStore($response) && ! $this->exceedsSearchTermLimit($request)) {
             $store->put($key, [
                 'body' => $this->tokens->mask((string) $response->getContent(), (string) csrf_token()),
                 'status' => $response->getStatusCode(),
@@ -75,6 +76,40 @@ class CacheStorefrontPage
             $stored['status'],
             ['Content-Type' => $stored['type']],
         );
+    }
+
+    /**
+     * `q` is in `pagecache.query_whitelist` for every cached route, not just
+     * `/hledani` — the shared layout's header search box echoes it on every
+     * storefront page, so it genuinely fragments the cache everywhere
+     * (settled after Finding 2 of this wave). That means an oversized `q` on
+     * any cached route — `/kategorie/{slug}?q=<60000 chars>`, not just the
+     * search results page — mints a storable, uniquely-keyed 200 the same
+     * way an oversized search term would. The key itself is a fixed-length
+     * hash, so it is not what is at risk; the risk is the unbounded number
+     * of distinct keys one visitor can mint from a single public URL with no
+     * authentication. This is the guard that covers every route other than
+     * `/hledani`. `SearchController` keeps its own copy of this same check
+     * (folded, same threshold) — that is not a leftover duplicate to clean
+     * up, it is belt-and-braces on the one route this guard also reaches, so
+     * do not delete either side of it.
+     */
+    private function exceedsSearchTermLimit(Request $request): bool
+    {
+        $value = $request->query('q');
+
+        if (! is_scalar($value)) {
+            // A non-scalar q already collapses onto one fixed cache key
+            // (PageCacheKey's `#nonscalar` marker) regardless of its size,
+            // so it cannot fragment the store — nothing to guard here.
+            return false;
+        }
+
+        // Folded the same way PageCacheKey folds it before hashing, so the
+        // guard and the key agree on what "the term" is.
+        $folded = Str::lower(Str::ascii(trim((string) $value)));
+
+        return mb_strlen($folded) > (int) config('pagecache.search_term_max', 60);
     }
 
     private function ttl(Response $response, Request $request): int

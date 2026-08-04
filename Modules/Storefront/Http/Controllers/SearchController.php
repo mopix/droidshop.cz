@@ -70,6 +70,16 @@ class SearchController
         // something, and only short ones, are worth keeping. A too-short
         // term never even queries the catalogue ($results stays null), which
         // counts as "found nothing" the same way an empty page does.
+        //
+        // The too-long half of this check is also enforced, route-agnostically,
+        // by CacheStorefrontPage::exceedsSearchTermLimit() — `q` is whitelisted
+        // for every cached route, not just this one, so that guard is the one
+        // actually closing the hole. Keeping this copy here is deliberate
+        // belt-and-braces on this specific route, not a stale duplicate to
+        // delete: this response's own found-nothing rule has to live here
+        // regardless (it is search-specific and the middleware has no way to
+        // know it), so the two guards sit side by side rather than one
+        // replacing the other.
         $foundNothing = $results === null || $results->isEmpty();
         $tooLong = mb_strlen($term) > (int) config('pagecache.search_term_max', 60);
 
