@@ -41,7 +41,11 @@ class SitemapController
 
         abort_if($tenant === null, 404);
 
-        $stamp = $this->generations->stamp($tenant, [Dimension::Catalog]);
+        // Catalog covers the product/category entries; Content covers the
+        // static Page entries pageEntries() adds below — Page is bumped
+        // under Dimension::Content by PageCacheObserver, not Catalog, so
+        // publishing or unpublishing a page must be able to change this key.
+        $stamp = $this->generations->stamp($tenant, [Dimension::Catalog, Dimension::Content]);
 
         $xml = Cache::remember(
             'sitemap:'.$tenant->id.':'.$stamp,

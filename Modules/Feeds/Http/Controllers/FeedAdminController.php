@@ -2,23 +2,23 @@
 
 namespace Modules\Feeds\Http\Controllers;
 
-use App\Core\PageCache\Dimension;
-use App\Core\PageCache\Generations;
 use App\Core\Tenancy\TenantContext;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Inertia\Inertia;
 use Inertia\Response;
 use Modules\Categories\Models\Category;
 use Modules\Feeds\Http\Requests\UpdateFeedRequest;
 use Modules\Feeds\Models\FeedCategoryMapping;
 use Modules\Feeds\Models\ProductFeed;
+use Modules\Feeds\Support\FeedCache;
 
 class FeedAdminController
 {
     public function __construct(
         private readonly TenantContext $context,
-        private readonly Generations $generations,
+        private readonly FeedCache $cache,
     ) {}
 
     public function index(Request $request): Response
@@ -113,14 +113,18 @@ class FeedAdminController
      * The feed's cache key now carries the tenant's catalogue generation
      * (wave 3.0), so the plain `Cache::forget('feed:'.$tenant.':'.$type)`
      * this used to do can no longer match anything — the key it built never
-     * had a generation stamp in it. Bumping the same Catalog generation the
-     * feed itself reads is what "invalidate the feed now" means under the
-     * new scheme: the next request misses the old, now-orphaned key and
-     * rebuilds. `ProductFeed`/`FeedCategoryMapping` are not in
-     * PageCacheObserver's model map (they never render onto a storefront
-     * page), so nothing else bumps this on their behalf — it has to happen
-     * here. The unused `$type` parameter stays: a future per-type dimension
-     * would slot in without touching the call sites.
+     * had a generation stamp in it. `FeedCache::key()` reconstructs today's
+     * exact key (tenant, type, current stamp) and this forgets precisely
+     * that entry.
+     *
+     * Bumping the tenant's Catalog generation instead — the way
+     * `CategoryTree::reorder()` bumps it inline after a write that bypasses
+     * `PageCacheObserver` — was considered and rejected here: `Catalog` is
+     * also read by the homepage, every product and category page, the
+     * sitemap, and the *other* feed type, so a bump would evict the tenant's
+     * entire catalogue-facing cache over one feed's settings. Forgetting the
+     * single computed key gets the same "must not wait an hour" outcome
+     * without the blast radius.
      */
     private function forgetCache(string $type): void
     {
@@ -130,6 +134,6 @@ class FeedAdminController
             return;
         }
 
-        $this->generations->bump($tenant, Dimension::Catalog);
+        Cache::forget($this->cache->key($tenant, $type));
     }
 }
