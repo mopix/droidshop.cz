@@ -1,6 +1,6 @@
 # As-is status — DroidShop.cz
 
-Poslední aktualizace: **2026-07-31** · Verze: **0.33.x** (vlna 2.12)
+Poslední aktualizace: **2026-08-05** · Verze: **0.35.0** (vlna 3.0)
 
 ## Oblasti
 
@@ -40,7 +40,8 @@ Poslední aktualizace: **2026-07-31** · Verze: **0.33.x** (vlna 2.12)
 | Modul `docs` — dobropis, proforma, CSV VAT export, roční číslování | **hotovo** | §16.6 | [detail](2026-07-22-docs-1-6.md); registry + `DocumentWriter`, dobropis (plný storno, gated, bez QR), proforma (nedaňová, QR), export dle DUZP (CSV formula injection ošetřena) |
 | Modul `storefront` — layout, homepage, hledání, chybové stránky | **hotovo** | §4.1.1 | [detail](2026-07-20-storefront-katalog.md) |
 | Veřejný katalog — kategorie, produkt, řazení a filtr bez JS | **hotovo** | §16.1, §16.2 | bez košíku |
-| SEO výstupy — canonical, OG, JSON-LD, sitemap, robots, 301, 410 | **hotovo** | §3.1, §15.3 | page cache §15.6 chybí |
+| SEO výstupy — canonical, OG, JSON-LD, sitemap, robots, 301, 410 | **hotovo** | §3.1, §15.3 | |
+| Page cache storefrontu (§15.6) | **hotovo** — etapa 1 (aplikační vrstva) | §15.6 | [detail](2026-08-03-page-cache.md); vlna 3.0. Jádrová infrastruktura `app/Core/PageCache/` (ne modul), opt-in middleware `page-cache:{dimenze}` za `StartSession`; klíč `page:{tenant}:{gen-stamp}:{path}:{qs-hash}` s query whitelistem; invalidace generačními čítači ve sloupcích `tenants` (`page_gen_catalog/content/theme`, ne cache store — evikce by čítač vrátila na 1 a obživla staré stránky) přes observery modelů + tři explicitní bumpy tam, kde zápis obchází Eloquent (odpis skladu na hranici skladem/vyprodáno, reorder kategorií, admin flush); CSRF token bezpečně vyměněný za značku (`DynamicTokens`) a vrácený čerstvý při servírování; přihlášený zákazník cache vždy obchází. Sjednocuje sitemap (2.9) a feedy (2.9) pod stejný mechanismus; 404 na neexistující cestě cachuje `RedirectResponder` (výsledek hledání v `redirects`), ne middleware routy. Etapa 2 (statický soubor) a etapa 3 (data/fragment cache) odloženy na nasazení. 96 nových testů (224 assertions) |
 | Modul `customers` — registrace, přihlášení, reset hesla, verifikace, účet, admin + GDPR výmaz | **hotovo** | §6.7, §15.1 | čtvrtý guard `customer` nad tenant-scoped tabulkou (unikátní `(tenant_id, email)`); vlastní tenant-scoped tokeny místo Laravelího password brokeru; verifikace e-mailu se nikde nevynucuje (čeká na rozhodnutí etapy `checkout`); historie objednávek v účtu hotová, čte přes `OrderBook::forCustomer`/`findForCustomer` s kontrolou vlastnictví |
 | Onboarding — registrace → wizard → e-shop | **hotovo** | §3.1, §6.0 | [detail](2026-07-22-onboarding-billing.md); `TenantProvisioner`, subdoména s live checkem, cross-host signed auto-login, „Moje e-shopy" |
 | Trial lifecycle — scheduler | **hotovo** | §9 | `billing:sweep-lifecycle` (`NotTenantAware`), config `trial_days`/`grace_days`, trial→past_due→suspended + e-mail |
@@ -76,7 +77,7 @@ Nejdůležitější:
 - **Platformní joby musí implementovat `NotTenantAware`** — jinak je tenant-aware fronta tiše zahodí.
 - **Routa Pages je provizorně `/stranka/{slug}`**, ne `/{page-slug}` podle pravidla storefrontu. Modul šablony to nevyřešil — catch-all v kořeni by spolkl ostatní routy, takže to čeká na explicitní pořadí registrace routů.
 - **Hledání běží přes `LIKE '%term%'` nad `products.search_text`** — index se nepoužije. U desítek tisíc produktů bude potřeba přepsat (fulltext nebo externí index).
-- **Page cache podle §15.6 zatím není.** Šablony jsou na ni připravené (žádný osobní obsah v HTML), ale TTFB nechrání nic.
+- **Page cache podle §15.6 je hotová jen v aplikační vrstvě (vlna 3.0).** Middleware ušetří render a DB dotazy, ale bootování Laravelu (~30–60 ms) zůstává — to sundá až statický soubor servírovaný web serverem (etapa 2), který čeká na VPS a na rozhodnutí o CSRF u staticky servírovaných stránek.
 - **Soft-deleted produkty dál počítají do `storage_mb`** — obrázky zůstávají, aby šel produkt obnovit a staré objednávky ho zobrazily.
 - **Kill switch přebíjí i core moduly** — vypnutí core modulu vezme e-shopům základní funkčnost. Je to záměr (nouzová brzda), ne chyba.
 - **Stav tenanta se mění bez e-mailu nájemci** — `MailService` už existuje, ale notifikace na změnu stavu na něj zatím není napojená.
