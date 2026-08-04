@@ -2,10 +2,13 @@
 
 namespace App\Core\Routing;
 
+use App\Core\PageCache\Dimension;
+use App\Core\PageCache\Generations;
 use App\Core\Tenancy\DomainTenantFinder;
 use App\Core\Tenancy\TenantContext;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 
 /**
  * Serves the redirects that RedirectRegistry records (spec §15.3).
@@ -24,6 +27,7 @@ class RedirectResponder
         private readonly RedirectRegistry $registry,
         private readonly TenantContext $context,
         private readonly DomainTenantFinder $finder,
+        private readonly Generations $generations,
     ) {}
 
     public function respond(Request $request): ?RedirectResponse
@@ -51,9 +55,28 @@ class RedirectResponder
 
         $path = '/'.ltrim($request->path(), '/');
 
-        $target = $this->registry->resolve($path);
+        // Resolved above, either by the pipeline or by the host lookup this
+        // method just ran — never null past this point.
+        $tenant = $this->context->current();
 
-        if ($target === null) {
+        $stamp = $this->generations->stamp($tenant, [Dimension::Catalog]);
+
+        // A redirect is born by renaming a slug, so it lives and dies with the
+        // catalogue generation. Scanners hammer paths that never had a route,
+        // and those are exactly the requests that would otherwise query this
+        // table forever without ever finding a row.
+        //
+        // The empty string stands for "no redirect". It cannot be confused
+        // with a real target: RedirectRegistry::normalise() never produces
+        // one (every stored to_path starts with a leading slash), and casting
+        // a null lookup result to string is what produces it here.
+        $target = Cache::remember(
+            'redirect:'.$tenant->getKey().':'.$stamp.':'.$path,
+            3600,
+            fn (): string => (string) $this->registry->resolve($path),
+        );
+
+        if ($target === '') {
             return null;
         }
 
