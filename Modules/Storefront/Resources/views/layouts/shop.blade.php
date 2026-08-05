@@ -164,6 +164,15 @@
         </div>
     </footer>
 
+    {{--
+        Measurement snippets, if the shop runs the analytics module and has
+        anything configured. After the banner's own script, so
+        window.droidshopConsent already exists when this runs.
+    --}}
+    @if (($trackingCodes ?? []) !== [])
+        @include('analytics::tracking')
+    @endif
+
     @stack('tracking')
 
     <x-consent-banner />
