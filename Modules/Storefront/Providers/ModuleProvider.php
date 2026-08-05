@@ -80,6 +80,10 @@ class ModuleProvider extends ServiceProvider
                 // the next (spec §15.6). A count belongs to the mini-cart
                 // island (CartSummaryController), not this composer.
                 'cartEnabled' => $shopModules->has('checkout'),
+                // $footerPages is NOT set here: the pages module shares it
+                // through its own composer, because it also has to reach
+                // checkout/details, which a composer on this layout never
+                // does (a Blade child renders before its layout).
                 'theme' => app(ThemeResolver::class)->forCurrentTenant(),
             ]);
         });

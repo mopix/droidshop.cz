@@ -145,7 +145,31 @@
             <label class="flex items-start gap-2 text-sm text-slate-700">
                 <input type="checkbox" name="terms" value="1" required @checked(old('terms'))
                        class="mt-1 rounded border-slate-300 text-brand focus:ring-brand">
-                <span>Souhlasím s obchodními podmínkami a zpracováním osobních údajů.</span>
+                {{--
+                    Linked only when the tenant has actually published the
+                    page: a link into a 404 in the one place a customer is
+                    asked to agree to something is worse than plain text.
+                    $footerPages comes from the shared layout composer.
+                --}}
+                @php
+                    $legalPages = ($footerPages ?? collect())->keyBy('slug');
+                    $termsPage = $legalPages->get('obchodni-podminky');
+                    $privacyPage = $legalPages->get('ochrana-osobnich-udaju');
+                @endphp
+                <span>
+                    Souhlasím
+                    @if ($termsPage)
+                        s <a href="{{ url('/'.$termsPage->slug) }}" target="_blank" rel="noopener" class="underline">obchodními podmínkami</a>
+                    @else
+                        s obchodními podmínkami
+                    @endif
+                    a
+                    @if ($privacyPage)
+                        se <a href="{{ url('/'.$privacyPage->slug) }}" target="_blank" rel="noopener" class="underline">zpracováním osobních údajů</a>.
+                    @else
+                        se zpracováním osobních údajů.
+                    @endif
+                </span>
             </label>
 
             <button type="submit" class="btn btn-primary w-full sm:w-auto">

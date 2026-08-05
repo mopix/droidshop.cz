@@ -11,6 +11,24 @@ Pravidla: [`.claude/skills/versioning/SKILL.md`](.claude/skills/versioning/SKILL
 
 > CHANGELOG vede milníky (minor/major). Detail patchů je v `git log`.
 
+## [0.37.0] – 2026-08-05
+
+**Fáze 2 / vlna 3.2 — právní minimum platformy.** Uzavření vlny (`docs/as-is/2026-08-05-pravni-minimum.md`). 41 nových testů; celkem 1954 zelených.
+
+### Čtyři právní dokumenty
+`docs/legal/` bylo prázdné. Vznikly VOP platformy, zásady zpracování osobních údajů, **zpracovatelská smlouva podle čl. 28 GDPR** a zásady cookies — jako Markdown i jako stránky pod `/pravni/*` (Blade SSR, čitelné před registrací a bez JS). Dvojí GDPR role je v nich oddělená schválně: vůči nájemci jsme správce, vůči jeho zákazníkům zpracovatel. Drafty jsou bez právní revize (rozhodnutí vlastníka), místa vyžadující právníka nesou marker `K PRÁVNÍ REVIZI`.
+
+Prefix `/pravni/` není kosmetika: jednosegmentová platformní routa by na hostu nájemce zastínila jeho vlastní stránku, protože `RequirePlatformHost` 404uje až po matchi a fallback z vlny 3.1 by se neuplatnil — a `Lifecycle` seeduje `ochrana-osobnich-udaju` každému e-shopu.
+
+### Prokazatelný souhlas nájemce
+Registrace nezaznamenávala nic. Nově `users.terms_accepted_at` + `users.terms_version`, validované server-side: důkaz, který klient může přeskočit, není důkaz. Registrační formulář byl dodnes Breeze default v angličtině — počeštěn.
+
+### Vzory právních stránek a editor
+Nový e-shop dostával tři **prázdné** nepublikované stránky. Nově nesou vzor s viditelnými `[DOPLŇTE …]` a varováním, že nejde o právní radu. Zároveň musel vzniknout **editor stránek**: modul `pages` byl read-only, takže vzory by nešlo doplnit ani publikovat a celá vlna by byla inertní. Zápis jde přes `PageWriter` (sanitizace při zápisu, unikátní slug, 301 při přejmenování).
+
+### Vyhledávání: přepis zrušen po měření
+`LIKE '%term%'` běží 3,2 ms na base tarifu a 31 ms na stropu premium — `tenant_id` scope zúží scan na katalog jednoho nájemce a výsledek se od 3.0 cachuje. FULLTEXT by přinesl regresi kvality (celá slova místo substringu, „TV" pod minimální délkou tokenu) za úsporu, kterou nikdo nepozná.
+
 ## [0.36.0] – 2026-08-05
 
 **Fáze 2 / vlna 3.1 — technické dluhy.** Uzavření vlny (`docs/as-is/2026-08-05-technicke-dluhy.md`). 35 nových testů; celkem 1913 zelených.

@@ -3,6 +3,7 @@
 use App\Core\Storage\FileStorage;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ImpersonationController;
+use App\Http\Controllers\LegalController;
 use App\Http\Controllers\Onboarding\OnboardingController;
 use App\Http\Controllers\Onboarding\ShopEntryController;
 use App\Http\Controllers\Onboarding\SubdomainCheckController;
@@ -23,6 +24,20 @@ Route::get('/soubory/{tenant}/{path}', PrivateFileController::class)
 Route::get('/', StorefrontEntryController::class)
     ->middleware('page-cache:catalog,content,theme')
     ->name('home');
+
+// The platform's own legal documents. Blade SSR: they have to be readable
+// before anyone registers, without JavaScript, and indexable.
+//
+// The /pravni prefix is load-bearing, not cosmetic. Since wave 3.1 a tenant's
+// static pages answer at /{slug} through Route::fallback(); a single-segment
+// route such as /cookies would match on a tenant host too, and
+// RequirePlatformHost's 404 lands AFTER the match, so the fallback would never
+// run and the tenant's own page would disappear. Modules\Pages\Lifecycle seeds
+// `ochrana-osobnich-udaju` for every shop, so that would have been certain.
+// A two-segment platform path cannot collide with a one-segment tenant slug.
+Route::get('/pravni/{document}', [LegalController::class, 'show'])
+    ->middleware('platform.host')
+    ->name('legal.show');
 
 Route::get('/dashboard', DashboardController::class)
     ->middleware(['auth', 'verified'])->name('dashboard');

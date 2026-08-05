@@ -35,6 +35,10 @@ return [
         'ico' => env('BILLING_COMPANY_ICO', ''),
         'dic' => env('BILLING_COMPANY_DIC', ''),
         'address' => env('BILLING_COMPANY_ADDRESS', ''),
+        // Contact address printed on the legal documents (/pravni/*) as the
+        // channel for exercising GDPR rights. Kept here rather than in a
+        // legal-only config so the identification block has one home.
+        'email' => env('BILLING_COMPANY_EMAIL', 'podpora@droidshop.cz'),
         'vat_payer' => (bool) env('BILLING_COMPANY_VAT_PAYER', false),
     ],
 

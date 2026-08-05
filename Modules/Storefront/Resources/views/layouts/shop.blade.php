@@ -107,7 +107,21 @@
 
     <footer class="mt-16 border-t border-slate-200 bg-slate-50">
         <div class="mx-auto max-w-6xl px-4 py-8 text-sm text-slate-600">
-            &copy; {{ date('Y') }} {{ $shopName }}
+            @if (($footerPages ?? collect())->isNotEmpty())
+                <nav aria-label="Informace o obchodě" class="mb-4">
+                    <ul class="flex flex-wrap gap-x-6 gap-y-2">
+                        @foreach ($footerPages as $page)
+                            <li>
+                                <a href="{{ url('/'.$page->slug) }}" class="underline hover:text-slate-900">
+                                    {{ $page->title }}
+                                </a>
+                            </li>
+                        @endforeach
+                    </ul>
+                </nav>
+            @endif
+
+            <p>&copy; {{ date('Y') }} {{ $shopName }}</p>
         </div>
     </footer>
 </body>
