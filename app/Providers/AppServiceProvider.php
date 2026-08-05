@@ -188,6 +188,7 @@ class AppServiceProvider extends ServiceProvider
             'Modules\\Categories\\Models\\Category',
             'Modules\\Storefront\\Models\\HomepageBlock',
             'Modules\\Pages\\Models\\Page',
+            'Modules\\Shipping\\Models\\ShippingMethod',
         ] as $model) {
             if (class_exists($model)) {
                 $model::observe(PageCacheObserver::class);

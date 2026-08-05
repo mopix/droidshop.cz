@@ -26,6 +26,18 @@ use Illuminate\Database\Eloquent\Model;
  * an uploaded photo appeared nowhere for ten minutes and in no feed for an
  * hour.
  *
+ * ShippingMethod is here under Catalog, not because it renders on a product
+ * page — checkout is no-store and never cached — but because both feeds
+ * print a DELIVERY block per shipping method (FeedController reads
+ * ShippingOptions) and the feed's cache key carries the Catalog stamp. Until
+ * wave 3.1 a merchant who renamed, repriced or withdrew a carrier had the
+ * old one in Heureka for up to an hour: a delivery price the shop does not
+ * charge. Catalog is a wide dimension to bump for one carrier, but a carrier
+ * changes on the order of months, unlike the feed's own settings, which get
+ * tuned in bursts and therefore get FeedAdminController's targeted
+ * Cache::forget instead. PaymentMethod is deliberately absent: no feed
+ * carries it and the only page that shows it is the checkout.
+ *
  * Three query-builder writes are the deliberate exceptions: they update
  * through the query builder and fire no Eloquent event, so each bumps for
  * itself instead of relying on this observer.
@@ -63,6 +75,7 @@ class PageCacheObserver
         'Modules\\Products\\Models\\ProductOptionValue' => Dimension::Catalog,
         'Modules\\Products\\Models\\ProductImage' => Dimension::Catalog,
         'Modules\\Categories\\Models\\Category' => Dimension::Catalog,
+        'Modules\\Shipping\\Models\\ShippingMethod' => Dimension::Catalog,
     ];
 
     public function __construct(
