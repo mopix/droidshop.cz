@@ -11,6 +11,7 @@ use Modules\Feeds\Models\ProductFeed;
 use Modules\Pages\Models\Page;
 use Modules\Products\Models\Product;
 use Modules\Products\Services\ProductWriter;
+use Modules\Shipping\Models\ShippingMethod;
 use Tests\Concerns\ActivatesModules;
 use Tests\TestCase;
 
@@ -119,7 +120,7 @@ class XmlOutputInvalidationTest extends TestCase
         // Before this fix the stamp never moved for a page-only change.
         $this->get('http://obchod.droidshop/sitemap.xml')
             ->assertOk()
-            ->assertSee('/stranka/o-nas', escape: false);
+            ->assertSee('http://obchod.droidshop/o-nas', escape: false);
     }
 
     /**
@@ -164,5 +165,49 @@ class XmlOutputInvalidationTest extends TestCase
         $this->get('http://obchod.droidshop/feed/heureka.xml')
             ->assertOk()
             ->assertSee('<DELIVERY_DATE>9</DELIVERY_DATE>', escape: false);
+    }
+
+    /**
+     * Wave 3.1: the feed prints a DELIVERY block per shipping method
+     * (FeedController reads ShippingOptions), but ShippingMethod was not in
+     * PageCacheObserver's map, so a merchant who renamed, repriced or
+     * withdrew a carrier had the old one in Heureka for up to an hour —
+     * a delivery price the shop does not charge.
+     */
+    public function test_a_changed_shipping_method_shows_up_in_the_feed_without_waiting_for_the_ttl(): void
+    {
+        $this->activateModule($this->tenant, 'feeds');
+        $this->activateModule($this->tenant, 'shipping');
+
+        $method = $this->context->runAs($this->tenant, fn () => ShippingMethod::query()->create([
+            'name' => 'Osobní odběr',
+            'provider' => ShippingMethod::PROVIDER_PICKUP,
+            'price' => 0,
+            'is_active' => true,
+            'position' => 1,
+            'tax_rate_id' => app(TaxRates::class)->default()->id,
+        ]));
+
+        $this->context->runAs($this->tenant, fn () => ProductFeed::query()->create([
+            'type' => ProductFeed::TYPE_HEUREKA,
+            'enabled' => true,
+            'settings' => ['delivery_date' => 5],
+        ]));
+
+        $this->createProduct('Klávesnice', 'klavesnice');
+
+        $this->get('http://obchod.droidshop/feed/heureka.xml')
+            ->assertOk()
+            ->assertSee('<DELIVERY_ID>Osobní odběr</DELIVERY_ID>', escape: false);
+
+        $this->context->runAs($this->tenant, function () use ($method): void {
+            $method->update(['name' => 'Výdejní místo']);
+        });
+
+        // Before this fix the feed kept the old carrier name for a full hour.
+        $this->get('http://obchod.droidshop/feed/heureka.xml')
+            ->assertOk()
+            ->assertSee('<DELIVERY_ID>Výdejní místo</DELIVERY_ID>', escape: false)
+            ->assertDontSee('<DELIVERY_ID>Osobní odběr</DELIVERY_ID>', escape: false);
     }
 }

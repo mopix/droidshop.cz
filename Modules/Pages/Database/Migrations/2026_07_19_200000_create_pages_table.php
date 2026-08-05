@@ -24,7 +24,7 @@ return new class extends Migration
             $table->timestamps();
 
             // Slugs are unique within a shop, not across the platform: two
-            // tenants may both have /stranka/kontakt.
+            // tenants may both have /kontakt.
             $table->unique(['tenant_id', 'slug']);
         });
     }

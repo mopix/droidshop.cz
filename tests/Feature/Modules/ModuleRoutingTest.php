@@ -59,7 +59,7 @@ class ModuleRoutingTest extends TestCase
         $this->activateModule($this->tenantA, 'pages');
         $this->publishPageFor($this->tenantA);
 
-        $this->get('http://shop1.droidshop/stranka/kontakt')
+        $this->get('http://shop1.droidshop/kontakt')
             ->assertOk()
             ->assertSee('Kontakt')
             ->assertSee('Telefon: 123');
@@ -70,7 +70,7 @@ class ModuleRoutingTest extends TestCase
         $this->activateModule($this->tenantA, 'pages');
         $this->publishPageFor($this->tenantA);
 
-        $this->get('http://shop2.droidshop/stranka/kontakt')->assertNotFound();
+        $this->get('http://shop2.droidshop/kontakt')->assertNotFound();
     }
 
     public function test_tenant_with_the_module_cannot_see_another_tenants_page(): void
@@ -80,14 +80,14 @@ class ModuleRoutingTest extends TestCase
         $this->activateModule($this->tenantB, 'pages');
         $this->publishPageFor($this->tenantA);
 
-        $this->get('http://shop2.droidshop/stranka/kontakt')->assertNotFound();
+        $this->get('http://shop2.droidshop/kontakt')->assertNotFound();
     }
 
     public function test_module_routes_do_not_exist_on_the_platform_host(): void
     {
         $this->activateModule($this->tenantA, 'pages');
 
-        $this->get('http://droidshop/stranka/kontakt')->assertNotFound();
+        $this->get('http://droidshop/kontakt')->assertNotFound();
     }
 
     public function test_unpublished_page_is_not_served(): void
@@ -98,19 +98,19 @@ class ModuleRoutingTest extends TestCase
             'slug' => 'draft', 'title' => 'Draft', 'is_published' => false,
         ]));
 
-        $this->get('http://shop1.droidshop/stranka/draft')->assertNotFound();
+        $this->get('http://shop1.droidshop/draft')->assertNotFound();
     }
 
     public function test_kill_switch_takes_the_module_away_without_a_redeploy(): void
     {
         $this->activateModule($this->tenantA, 'pages');
         $this->publishPageFor($this->tenantA);
-        $this->get('http://shop1.droidshop/stranka/kontakt')->assertOk();
+        $this->get('http://shop1.droidshop/kontakt')->assertOk();
 
         Module::query()->where('key', 'pages')->update(['enabled_globally' => false]);
         $this->registry->flush();
 
-        $this->get('http://shop1.droidshop/stranka/kontakt')->assertNotFound();
+        $this->get('http://shop1.droidshop/kontakt')->assertNotFound();
     }
 
     public function test_deactivation_hides_the_page_but_keeps_it(): void
@@ -119,10 +119,10 @@ class ModuleRoutingTest extends TestCase
         $this->publishPageFor($this->tenantA);
 
         $this->registry->deactivate($this->tenantA, 'pages');
-        $this->get('http://shop1.droidshop/stranka/kontakt')->assertNotFound();
+        $this->get('http://shop1.droidshop/kontakt')->assertNotFound();
 
         $this->activateModule($this->tenantA, 'pages');
-        $this->get('http://shop1.droidshop/stranka/kontakt')->assertOk()->assertSee('Telefon: 123');
+        $this->get('http://shop1.droidshop/kontakt')->assertOk()->assertSee('Telefon: 123');
     }
 
     public function test_admin_route_is_mounted_under_the_module_prefix(): void
@@ -192,7 +192,7 @@ class ModuleRoutingTest extends TestCase
             ],
         ));
 
-        $this->get('http://shop1.droidshop/stranka/o-nas')
+        $this->get('http://shop1.droidshop/o-nas')
             ->assertOk()
             ->assertSee('<title>O nás | Shop One</title>', false)
             ->assertSee('<meta name="description" content="Kdo jsme.">', false)

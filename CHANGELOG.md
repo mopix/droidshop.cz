@@ -11,6 +11,22 @@ Pravidla: [`.claude/skills/versioning/SKILL.md`](.claude/skills/versioning/SKILL
 
 > CHANGELOG vede milníky (minor/major). Detail patchů je v `git log`.
 
+## [0.36.0] – 2026-08-05
+
+**Fáze 2 / vlna 3.1 — technické dluhy.** Uzavření vlny (`docs/as-is/2026-08-05-technicke-dluhy.md`). 35 nových testů; celkem 1913 zelených.
+
+### Přepnutí nájemce má jednu cestu
+`TenantContext::set()` dostal ve vlně 3.0 obezličku kolem short-circuitu `spatie/laravel-multitenancy`, ale `runAs()` a `runWithoutTenant()` volaly `makeCurrent()` napřímo — díra tedy zůstala otevřená pro každého volajícího, který přes ně přepíná: superadmin změna stavu, oba Stripe handlery, lifecycle sweeper, `TenantProvisioner`, `AuditLog`. Předaný čerstvě načtený model téhož nájemce se nesvázal a callback četl atributy staré instance.
+
+### Změna dopravy invaliduje feed
+Oba feedy tisknou blok `DELIVERY` per způsob dopravy, ale `ShippingMethod` chyběl v mapě `PageCacheObserver` — přejmenovaný nebo zdražený dopravce zůstal v Heurece až hodinu, tedy cena dopravy, kterou e-shop neúčtuje.
+
+### Nájemce se dozví o změně stavu svého e-shopu
+Poštu posílal jen lifecycle sweeper ze svých dvou míst; superadmin pozastavení i selhaná platba přes Stripe byly němé. `Tenant::changeStatus()` teď dispatchne `TenantStatusChanged` (odloženě přes `DB::afterCommit`, protože Stripe handler mění stav uvnitř transakce s idempotenčním claimem) a jediný listener mapuje **oba konce** přechodu na zprávu: `trial→past_due` je expirace trialu, cokoli jiného`→past_due` je selhaná platba. Tři nové zprávy (selhaná platba, obnovení, čeká na smazání); sweeper svá vlastní odeslání ztratil.
+
+### Statické stránky na `/{page-slug}`
+Uzavření odchylky od závazného pravidla storefrontu. Mechanismus je `Route::fallback()`, ne catch-all ani blacklist: Laravel ho řadí za všechny ostatní routy bez ohledu na pořadí registrace, což je load-bearing — `ModuleRouteRegistrar` iteruje `glob()` abecedně, takže `pages` se registruje před `products` i `storefront`. Controller odmítá cokoli s lomítkem a padá na `RedirectResponder`, takže přejmenované slugy dál 301ují. Stará `/stranka/{slug}` odpovídá 301 bez DB dotazu.
+
 ## [0.35.0] – 2026-08-05
 
 **Fáze 2 / vlna 3.0 — page cache storefrontu (§15.6), etapa 1.** Uzavření vlny (`docs/as-is/2026-08-03-page-cache.md`). 96 nových testů v `tests/Feature/PageCache/` a `tests/Unit/PageCache/` (224 assertions).

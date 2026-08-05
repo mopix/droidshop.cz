@@ -6,6 +6,7 @@ use App\Core\Tenancy\TenantContext;
 use App\Models\Module;
 use App\Models\Plan;
 use App\Models\Tenant;
+use Database\Seeders\PlanSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Schema;
 use Modules\Feeds\Models\ProductFeed;
@@ -81,7 +82,7 @@ class FeedModuleTest extends TestCase
      */
     public function test_every_plan_includes_the_module(): void
     {
-        $this->seed(\Database\Seeders\PlanSeeder::class);
+        $this->seed(PlanSeeder::class);
 
         $plans = Plan::query()->with('modules')->get();
 

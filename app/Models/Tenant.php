@@ -4,12 +4,14 @@ namespace App\Models;
 
 use App\Core\Enums\TenantStatus;
 use App\Core\Services\AuditLog;
+use App\Core\Tenancy\Events\TenantStatusChanged;
 use Database\Factories\TenantFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Spatie\Multitenancy\Models\Tenant as SpatieTenant;
 
@@ -77,11 +79,20 @@ class Tenant extends SpatieTenant
     }
 
     /**
-     * Moves the tenant through its lifecycle and records it.
+     * Moves the tenant through its lifecycle, records it, and tells the owner.
      *
      * Spec §6.0 requires every status change to land in the audit log, so the
      * transition goes through here rather than a bare update(). The
-     * notification e-mail is still missing and waits on MailService.
+     * notification e-mail hangs off the event dispatched here rather than off
+     * the callers: there are five of them today and the set keeps growing, so
+     * a caller-side send guarantees the sixth is the one nobody remembers.
+     *
+     * The dispatch is deferred to commit because StripeWebhookHandler changes
+     * status inside the transaction that also carries its idempotency claim —
+     * an inline dispatch would mail the owner about a change that then rolled
+     * back. Outside a transaction Laravel runs the callback immediately, so
+     * the superadmin path is unaffected. Same reasoning as the deferred
+     * document issue in OrderWorkflow::settlePaid().
      */
     public function changeStatus(TenantStatus $to, string $reason = ''): void
     {
@@ -108,6 +119,8 @@ class Tenant extends SpatieTenant
             'to' => $to->value,
             'reason' => $reason,
         ]));
+
+        DB::afterCommit(fn () => event(new TenantStatusChanged($this, $from, $to, $reason)));
     }
 
     /**

@@ -2,12 +2,14 @@
 
 namespace Tests\Feature\Platform;
 
+use App\Core\Billing\Mail\ShopSuspendedMail;
 use App\Core\Enums\TenantStatus;
 use App\Models\AuditLogEntry;
 use App\Models\PlatformAdmin;
 use App\Models\Tenant;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Mail;
 use Tests\Concerns\ActsAsPlatformAdmin;
 use Tests\TestCase;
 
@@ -119,6 +121,31 @@ class TenantStatusTest extends TestCase
 
         $this->patch($this->statusUrl($tenant), ['status' => 'nonsense'])
             ->assertSessionHasErrors('status');
+    }
+
+    /**
+     * Wave 3.1: until now a superadmin suspension was silent — the nájemce
+     * found out by discovering the admin locked. The mail hangs off the
+     * TenantStatusChanged event that changeStatus() dispatches, so this
+     * controller needed no code of its own; the test is here to keep it that
+     * way.
+     */
+    public function test_suspending_a_shop_tells_its_owner(): void
+    {
+        Mail::fake();
+        $tenant = Tenant::factory()->create(['status' => TenantStatus::Active]);
+        $owner = User::factory()->create();
+        $tenant->users()->attach($owner, ['role' => 'owner', 'joined_at' => now()]);
+
+        $this->patch($this->statusUrl($tenant), [
+            'status' => 'suspended',
+            'reason' => 'porušení podmínek',
+        ])->assertRedirect();
+
+        Mail::assertSent(
+            ShopSuspendedMail::class,
+            fn (ShopSuspendedMail $mail) => $mail->hasTo($owner->email),
+        );
     }
 
     public function test_a_tenant_user_cannot_change_a_status(): void
