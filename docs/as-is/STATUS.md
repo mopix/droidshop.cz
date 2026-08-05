@@ -1,6 +1,6 @@
 # As-is status — DroidShop.cz
 
-Poslední aktualizace: **2026-08-05** · Verze: **0.35.0** (vlna 3.0)
+Poslední aktualizace: **2026-08-05** · Verze: **0.36.0** (vlna 3.1)
 
 ## Oblasti
 
@@ -53,6 +53,7 @@ Poslední aktualizace: **2026-08-05** · Verze: **0.35.0** (vlna 3.0)
 | Bloková homepage (page builder) | **hotovo** | vlna 2.3 | [detail](2026-07-26-blokova-homepage.md); 5 typů bloků (`hero`/`product_row`/`category_grid`/`text`/`banner`), `homepage_blocks` v modulu storefront, render Blade SSR bez JS, editor Inertia `admin.storefront.homepage.*`, seed `DefaultHomepage` (provisioner+backfill), URL guard + raster-only + sanitizace, WCAG 2.2 AA audit |
 | Vlastní domény nájemců + automatické TLS | **hotovo** | vlna 2.1 | [detail](2026-07-23-custom-domains.md); DNS ověření (TXT+routing) `DomainVerifier`, gating neověřených v resolveru, Caddy ask endpoint `/internal/tls-check` (token+verified-only), cert probe → issued, canonical swap + 301 subdoména→custom, `domains:sweep-pending`, admin obrazovka; infra (Caddyfile, edge DNS, `PLATFORM_TLS_CHECK_TOKEN`) = deploy runbook |
 | Tarify / trial / billing | **hotovo** | §3.1 | tabulka `plans` + přiřazení z UI, trial + lifecycle + platformní faktura + reálné inkaso přes Stripe hotové; roční interval a upgrade/downgrade tarifu odloženo |
+| Technické dluhy — stale tenant, feed cache, e-mail o stavu, routa stránek | **hotovo** | vlna 3.1 | [detail](2026-08-05-technicke-dluhy.md); `runAs()`/`runWithoutTenant()` přepínají přes `set()` (short-circuit `makeCurrent()` nechával svázanou starou instanci každému volajícímu, který přes ně přepíná — superadmin, oba Stripe handlery, sweeper, `TenantProvisioner`, `AuditLog`); `ShippingMethod` → `Dimension::Catalog`, takže přejmenovaný dopravce už nezůstane ve feedu hodinu; `Tenant::changeStatus()` dispatchne `TenantStatusChanged` přes `DB::afterCommit` a jediný listener mapuje **oba konce** přechodu na zprávu (trial→past_due je expirace, cokoli jiného→past_due je selhaná platba), sweeper své dvě odeslání ztratil; statické stránky přesunuty na `/{page-slug}` přes `Route::fallback()` (ne catch-all, ne blacklist — Laravel ho řadí za všechny routy bez ohledu na pořadí registrace, což je load-bearing, protože `pages` se registruje abecedně před `products` i `storefront`), controller odmítá víc segmentů a padá na `RedirectResponder`, stará cesta 301 bez DB dotazu |
 | Playwright E2E | není | CLAUDE.md | blokováno omezením certifikátu, viz níže |
 | Design handoff | prázdné | `docs/design-droidshop/` | |
 
@@ -75,12 +76,11 @@ Nejdůležitější:
 
 - **`curl` na subdoménách potřebuje `-k`** — OpenSSL nebere wildcard `*.droidshop` nad jedinou úrovní. Blokuje kontrolní seznam ve `storefront-rendering.md` i Playwright. Oprava = lokální doména `droidshop.test`.
 - **Platformní joby musí implementovat `NotTenantAware`** — jinak je tenant-aware fronta tiše zahodí.
-- **Routa Pages je provizorně `/stranka/{slug}`**, ne `/{page-slug}` podle pravidla storefrontu. Modul šablony to nevyřešil — catch-all v kořeni by spolkl ostatní routy, takže to čeká na explicitní pořadí registrace routů.
-- **Hledání běží přes `LIKE '%term%'` nad `products.search_text`** — index se nepoužije. U desítek tisíc produktů bude potřeba přepsat (fulltext nebo externí index).
+- **Hledání běží přes `LIKE '%term%'` nad `products.search_text`** — index se nepoužije. U desítek tisíc produktů bude potřeba přepsat (fulltext nebo externí index). Argument „fulltext nejede na SQLite v testech" z rozhodnutí 2026-07-20 **už neplatí** — testy jedou na MySQL (`phpunit.xml`). Přepis = vlna 3.2.
 - **Page cache podle §15.6 je hotová jen v aplikační vrstvě (vlna 3.0).** Middleware ušetří render a DB dotazy, ale bootování Laravelu (~30–60 ms) zůstává — to sundá až statický soubor servírovaný web serverem (etapa 2), který čeká na VPS a na rozhodnutí o CSRF u staticky servírovaných stránek.
 - **Soft-deleted produkty dál počítají do `storage_mb`** — obrázky zůstávají, aby šel produkt obnovit a staré objednávky ho zobrazily.
 - **Kill switch přebíjí i core moduly** — vypnutí core modulu vezme e-shopům základní funkčnost. Je to záměr (nouzová brzda), ne chyba.
-- **Stav tenanta se mění bez e-mailu nájemci** — `MailService` už existuje, ale notifikace na změnu stavu na něj zatím není napojená.
+- ~~**Stav tenanta se mění bez e-mailu nájemci**~~ — uzavřeno vlnou 3.1 (`TenantStatusChanged` + `SendTenantStatusMail`).
 
 ## Otevřené chyby
 
