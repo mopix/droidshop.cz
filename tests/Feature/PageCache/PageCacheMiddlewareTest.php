@@ -48,6 +48,26 @@ class PageCacheMiddlewareTest extends TestCase
         );
     }
 
+    /**
+     * Whole-branch review, finding 1. Router::runRouteWithinStack() calls
+     * prepareResponse() *inside* the route middleware pipeline, and Symfony's
+     * Response::prepare() runs setContent(null) for a HEAD request — so a
+     * HEAD allowed into the cache stores an empty body under a key that does
+     * not carry the method, and the next GET is served that blank page for
+     * the whole TTL. `curl -I` is the default check of most uptime monitors.
+     */
+    public function test_a_head_request_does_not_blank_the_cached_page(): void
+    {
+        $this->shop();
+
+        $this->head('http://obchod.droidshop/pc-probe')->assertOk();
+
+        $body = (string) $this->get('http://obchod.droidshop/pc-probe')->assertOk()->getContent();
+
+        $this->assertNotSame('', trim($body));
+        $this->assertStringContainsString('rendered', $body);
+    }
+
     public function test_a_cache_hit_runs_no_catalogue_queries(): void
     {
         $this->shop();

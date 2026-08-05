@@ -15,6 +15,13 @@ namespace App\Core\PageCache;
  * into product content, Blade's escaping will turn it into &lt;!--PAGECACHE_CSRF--&gt;
  * and it can never match byte-for-byte the marker in the form field, which always
  * sits in an attribute value (unescaped).
+ *
+ * That safety rests on two invariants elsewhere, and both must keep holding:
+ * tenant-authored HTML (descriptions, page bodies, text blocks) is stripped of
+ * every comment node on write by App\Core\Html\HtmlSanitizer::cleanNode(), and
+ * plain tenant fields reach the page through Blade's e(). If either ever stops
+ * holding, a tenant could plant a literal marker in their own content and
+ * unmask() would graft each visitor's live CSRF token into it.
  */
 class DynamicTokens
 {

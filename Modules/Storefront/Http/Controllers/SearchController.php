@@ -39,13 +39,17 @@ class SearchController
             ? null
             : $this->catalog->paginate(ProductQuery::fromInput($request->query()));
 
-        // The catalogue's paginate() calls withQueryString(), which captures
-        // the raw request query string for its page-2, page-3… links. Left
-        // alone, those links would carry the raw, unfolded `q` — the same
-        // half-fold this whole fix exists to avoid, just inside
-        // $products->links() instead of a Blade variable. Overriding only
-        // `q` keeps razeni/skladem/page exactly as the paginator already had
-        // them.
+        // The catalogue's paginate() now appends only the whitelisted,
+        // normalised query (PageCacheKey::whitelistedQuery), which already
+        // folds `q` through foldSearchTerm — so for every scalar term this
+        // line re-appends the identical value and is, on its own, redundant.
+        //
+        // It stays because it is no longer the same guarantee. What the
+        // catalogue appends is governed by `pagecache.query_whitelist`, a
+        // cache-policy knob; drop `q` from that list and pagination on this
+        // page would silently lose the term and page 2 would list the whole
+        // catalogue. This page's links *must* carry the folded term whatever
+        // the cache is configured to do, and that is what this states.
         $results?->appends(['q' => $term]);
 
         $view = view('storefront::search', [

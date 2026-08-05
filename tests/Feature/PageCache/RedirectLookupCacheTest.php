@@ -135,6 +135,62 @@ class RedirectLookupCacheTest extends TestCase
             ->assertRedirect('http://obchod.droidshop/produkt/presunuto');
     }
 
+    /**
+     * Whole-branch review, finding 3b. This lookup builds its key from the
+     * raw path on *every* unmatched URL — the one scanners hammer — and
+     * `cache.key` is varchar(255). An unbounded key is a write error: a 500
+     * where the visitor should simply have received a 404. The store is
+     * pointed at the database here on purpose; the array store this suite
+     * otherwise uses has no column width to overflow.
+     */
+    public function test_a_very_long_unmatched_path_is_a_404_not_an_error(): void
+    {
+        config()->set('pagecache.store', 'database');
+
+        $this->get('http://obchod.droidshop/'.str_repeat('a', 4000))->assertNotFound();
+    }
+
+    /**
+     * The same bound, on the other key: an unknown slug on a real route is an
+     * in-route 404, and an in-route 404 is storable by the page cache itself.
+     */
+    public function test_a_very_long_product_slug_is_a_404_not_an_error(): void
+    {
+        config()->set('pagecache.store', 'database');
+
+        $this->get('http://obchod.droidshop/produkt/'.str_repeat('a', 4000))->assertNotFound();
+    }
+
+    /**
+     * Whole-branch review, finding 6. `pagecache.enabled` is the documented
+     * emergency brake, and it has to restore pre-wave behaviour everywhere —
+     * including this lookup, which ignored it and kept answering from cache.
+     */
+    public function test_disabling_the_page_cache_takes_the_redirect_lookup_back_to_the_table(): void
+    {
+        config()->set('pagecache.enabled', false);
+
+        $product = $this->makeProduct(['slug' => 'stary-vypnuty']);
+        $this->inShop(fn () => app(ProductWriter::class)->update($product, ['slug' => 'novy-vypnuty']));
+
+        $this->get('http://obchod.droidshop/produkt/stary-vypnuty')
+            ->assertStatus(301)
+            ->assertRedirect('http://obchod.droidshop/produkt/novy-vypnuty');
+
+        $hits = 0;
+        DB::listen(function ($query) use (&$hits): void {
+            if (str_contains($query->sql, 'redirects')) {
+                $hits++;
+            }
+        });
+
+        $this->get('http://obchod.droidshop/produkt/stary-vypnuty')->assertStatus(301);
+
+        // With the brake pulled the table is queried again every time, which
+        // is exactly the behaviour the switch promises to restore.
+        $this->assertGreaterThan(0, $hits);
+    }
+
     public function test_a_repeated_hit_serves_the_same_target_from_the_cache(): void
     {
         $product = $this->makeProduct(['slug' => 'stary']);

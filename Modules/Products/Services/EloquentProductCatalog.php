@@ -10,6 +10,7 @@ use App\Core\Catalog\ProductQuery;
 use App\Core\Money\Money;
 use App\Core\PageCache\Dimension;
 use App\Core\PageCache\Generations;
+use App\Core\PageCache\PageCacheKey;
 use App\Core\Tenancy\TenantContext;
 use App\Models\Tenant;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
@@ -115,7 +116,16 @@ class EloquentProductCatalog implements ProductCatalog
 
         $this->applySort($builder, $query);
 
-        return $builder->paginate($query->perPage)->withQueryString();
+        // Not withQueryString(): that appends the *raw* request query to every
+        // page-2, page-3… link, including everything PageCacheKey drops from
+        // the key. On a cached listing that bakes one visitor's tracking
+        // parameters into the HTML handed to all the others — the visitor who
+        // arrived at /kategorie/boty?mc_eid=8f3a… warms an entry whose
+        // pagination links carry that mailing-list identifier, and gclid,
+        // fbclid and utm_* behave the same. A cached page may only link with
+        // parameters that are part of its own cache key, so the links are fed
+        // from the very set the key is built from.
+        return $builder->paginate($query->perPage)->appends(PageCacheKey::whitelistedInputs(request()));
     }
 
     /**

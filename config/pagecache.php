@@ -12,8 +12,12 @@ return [
     /*
      * Cache store to use. Null means the application default. No tags are
      * used anywhere, so file, database and Redis all work.
+     *
+     * `?: null` because .env.example ships the key present but empty, and an
+     * empty string is not the same as an absent one: Cache::store('') throws
+     * "Cache store [] is not defined" rather than falling back to the default.
      */
-    'store' => env('PAGE_CACHE_STORE'),
+    'store' => env('PAGE_CACHE_STORE') ?: null,
 
     'ttl' => [
         'default' => 600,       // 10 min — spec §15.6

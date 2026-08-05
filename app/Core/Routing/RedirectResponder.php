@@ -4,6 +4,7 @@ namespace App\Core\Routing;
 
 use App\Core\PageCache\Dimension;
 use App\Core\PageCache\Generations;
+use App\Core\PageCache\PageCacheKey;
 use App\Core\Tenancy\DomainTenantFinder;
 use App\Core\Tenancy\TenantContext;
 use Illuminate\Http\RedirectResponse;
@@ -59,6 +60,13 @@ class RedirectResponder
         // method just ran — never null past this point.
         $tenant = $this->context->current();
 
+        // The documented kill switch has to restore pre-wave behaviour
+        // everywhere, not just in the middleware: with the page cache off,
+        // this lookup goes straight to the table.
+        if (! config('pagecache.enabled', true)) {
+            return $this->redirectTo((string) $this->registry->resolve($path), $path, $request);
+        }
+
         $stamp = $this->generations->stamp($tenant, [Dimension::Catalog]);
 
         // A redirect is born by renaming a slug, so it lives and dies with the
@@ -76,12 +84,25 @@ class RedirectResponder
         // cached 404) and must live in the same store, or a store bump would
         // not flush it and PAGE_CACHE_STORE pointed elsewhere would split it
         // from the rest of the page cache.
+        //
+        // The path is bounded the same way the page cache bounds it
+        // (PageCacheKey::bounded): `cache.key` is varchar(255) and this is the
+        // lookup scanners hammer with arbitrarily long URLs — unbounded, MySQL
+        // answers with "Data too long for column 'key'", i.e. a 500 where the
+        // visitor should simply have received a 404. Every in-route 404 lands
+        // here too (the storefront controllers' firstOrFail() ends up in this
+        // responder), so a long unknown slug is the same hazard.
         $target = Cache::store(config('pagecache.store'))->remember(
-            'redirect:'.$tenant->getKey().':'.$stamp.':'.$path,
+            'redirect:'.$tenant->getKey().':'.$stamp.':'.PageCacheKey::bounded($path),
             (int) config('pagecache.ttl.not_found', 3600),
             fn (): string => (string) $this->registry->resolve($path),
         );
 
+        return $this->redirectTo($target, $path, $request);
+    }
+
+    private function redirectTo(string $target, string $path, Request $request): ?RedirectResponse
+    {
         if ($target === '') {
             return null;
         }

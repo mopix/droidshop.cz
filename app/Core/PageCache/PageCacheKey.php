@@ -9,6 +9,14 @@ use Illuminate\Support\Str;
 
 class PageCacheKey
 {
+    /**
+     * How much of a single free-form key segment (the path, the host) is kept
+     * verbatim before the rest is folded into a hash. Short, ordinary values
+     * stay readable in the store, which is what makes a key useful when
+     * debugging; anything longer is bounded.
+     */
+    public const SEGMENT_VERBATIM = 120;
+
     public function __construct(private readonly Generations $generations) {}
 
     /**
@@ -39,13 +47,53 @@ class PageCacheKey
     }
 
     /**
+     * Bounds one free-form segment of a cache key.
+     *
+     * `cache.key` is `varchar(255)` and the database store is the shipped
+     * default, so an unbounded segment is not just untidy — it throws a
+     * QueryException on write. A path is unbounded by construction:
+     * `/produkt/{slug}` matches any segment, an unknown slug renders an
+     * in-route 404, and a 404 is storable, so a long enough URL turns a 404
+     * into a 500. Scanners produce exactly those URLs.
+     *
+     * The hash suffix keeps two long values that share a prefix apart, so
+     * bounding never merges two pages onto one entry.
+     */
+    public static function bounded(string $value): string
+    {
+        if (strlen($value) <= self::SEGMENT_VERBATIM) {
+            return $value;
+        }
+
+        return substr($value, 0, self::SEGMENT_VERBATIM).'~'.substr(hash('sha256', $value), 0, 16);
+    }
+
+    /**
      * @param  list<Dimension>  $dimensions
      */
     public function for(Request $request, Tenant $tenant, array $dimensions): string
     {
+        // The host is part of the key, not just the tenant.
+        //
+        // A tenant's subdomain and their custom domain do not share an entry,
+        // because between verification and promotion both of them serve the
+        // storefront: DomainTenantFinder resolves on `verified_at`, while
+        // RedirectToCanonicalHost only redirects once the primary domain is
+        // already the custom one — and promotion happens on certificate
+        // success, which can fail terminally. Cached HTML carries absolute,
+        // host-derived URLs (Seo::canonicalFor(), og:url, the add-to-cart form
+        // action), so without the host in the key whichever host warmed the
+        // entry wins: the other one gets a foreign canonical, and its
+        // add-to-cart POST lands on a host with no matching session (
+        // SESSION_DOMAIN is null) and 419s.
+        //
+        // The duplicate entries only exist while a tenant is mid-migration:
+        // after promotion the non-canonical host is redirected away and never
+        // warms anything again.
         $key = 'page:'.$tenant->getKey()
+            .':'.self::bounded($request->getHost())
             .':'.$this->generations->stamp($tenant, $dimensions)
-            .':/'.trim($request->path(), '/');
+            .':'.self::bounded('/'.trim($request->path(), '/'));
 
         $query = $this->normaliseQuery($request);
 
@@ -53,6 +101,16 @@ class PageCacheKey
     }
 
     /**
+     * The whitelisted, normalised query parameters this key is built from —
+     * the single definition of "the query that survives caching".
+     *
+     * Public because the paginator needs the very same set: a cached page is a
+     * pure function of its cache key, so any link it renders may only contain
+     * parameters that are part of that key. `withQueryString()` appends the
+     * raw request query instead, which bakes one visitor's `mc_eid`, `gclid`
+     * or `utm_*` into the HTML every later visitor receives (see
+     * EloquentProductCatalog::paginate()).
+     *
      * Keeps only whitelisted scalar parameters, normalised to match what the
      * application actually reads. This prevents unbounded cardinality: invalid
      * values fall back to defaults in ProductQuery::fromInput(), so they
@@ -63,8 +121,10 @@ class PageCacheKey
      * name. This moves the marker out of the value space (unreachable by query
      * strings) to avoid collision with scalar inputs like q=__invalid__.
      * Other parameters fall back to defaults, same as missing parameters.
+     *
+     * @return array<string, string>
      */
-    private function normaliseQuery(Request $request): string
+    public static function whitelistedQuery(Request $request): array
     {
         /** @var list<string> $allowed */
         $allowed = config('pagecache.query_whitelist', []);
@@ -93,7 +153,7 @@ class PageCacheKey
                 continue;
             }
 
-            $normalised = $this->normaliseParameter($name, (string) $value);
+            $normalised = self::normaliseParameter($name, (string) $value);
 
             if ($normalised === null) {
                 continue;
@@ -104,14 +164,42 @@ class PageCacheKey
 
         ksort($params);
 
-        return http_build_query($params);
+        return $params;
+    }
+
+    /**
+     * The same set, minus the internal markers that only exist in key space.
+     *
+     * This is what may be rendered back into the page — a pagination link, a
+     * hidden field carrying the search term through the sort form. The
+     * `q#nonscalar` marker is not a real parameter (no query string can
+     * produce that name), so writing it into a URL or a form field would put
+     * a nonsense input in front of the visitor.
+     *
+     * @return array<string, string>
+     */
+    public static function whitelistedInputs(Request $request): array
+    {
+        return array_filter(
+            self::whitelistedQuery($request),
+            fn (string $name): bool => ! str_contains($name, '#'),
+            ARRAY_FILTER_USE_KEY,
+        );
+    }
+
+    /**
+     * The same set, flattened into the string that is hashed into the key.
+     */
+    private function normaliseQuery(Request $request): string
+    {
+        return http_build_query(self::whitelistedQuery($request));
     }
 
     /**
      * Normalise a scalar query parameter value to match application logic.
-     * Called only for scalar values (guaranteed by normaliseQuery).
+     * Called only for scalar values (guaranteed by whitelistedQuery).
      */
-    private function normaliseParameter(string $name, string $value): ?string
+    private static function normaliseParameter(string $name, string $value): ?string
     {
         if ($name === 'razeni') {
             // Only keep if it's in the valid sorts list; otherwise drop it

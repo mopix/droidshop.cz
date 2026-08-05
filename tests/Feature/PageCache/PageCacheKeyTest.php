@@ -32,14 +32,71 @@ class PageCacheKeyTest extends TestCase
         return $this->keys->for(Request::create($uri), $tenant, [Dimension::Catalog]);
     }
 
-    public function test_the_key_carries_tenant_generation_and_path(): void
+    public function test_the_key_carries_tenant_host_generation_and_path(): void
     {
         $tenant = Tenant::factory()->create();
 
+        // Request::create() with a bare path defaults the host to localhost.
         $this->assertSame(
-            'page:'.$tenant->id.':1:/kategorie/boty',
+            'page:'.$tenant->id.':localhost:1:/kategorie/boty',
             $this->key($tenant, '/kategorie/boty'),
         );
+    }
+
+    /**
+     * Whole-branch review, finding 3a. A tenant's subdomain and their custom
+     * domain both serve the storefront between verification and promotion:
+     * DomainTenantFinder resolves on `verified_at`, while
+     * RedirectToCanonicalHost only redirects once the primary domain is
+     * already the custom one, and promotion waits on a certificate that can
+     * fail terminally. Cached HTML carries absolute host-derived URLs
+     * (canonical, og:url, the add-to-cart form action), so sharing one entry
+     * between the two hosts hands the loser a foreign canonical and an
+     * add-to-cart that 419s on a host with no matching session.
+     */
+    public function test_two_hosts_of_one_tenant_never_share_a_key(): void
+    {
+        $tenant = Tenant::factory()->create();
+
+        $this->assertNotSame(
+            $this->key($tenant, 'http://obchod.droidshop/kategorie/boty'),
+            $this->key($tenant, 'http://obchod.cz/kategorie/boty'),
+        );
+    }
+
+    /**
+     * Whole-branch review, finding 3b. `cache.key` is varchar(255) and the
+     * database store is the shipped default, so an unbounded path turns a
+     * would-be 404 into a write error.
+     */
+    public function test_a_very_long_path_produces_a_bounded_key(): void
+    {
+        $tenant = Tenant::factory()->create();
+
+        $key = $this->key($tenant, '/produkt/'.str_repeat('a', 5000));
+
+        $this->assertLessThan(255, strlen($key));
+    }
+
+    public function test_bounding_a_long_path_still_keeps_two_of_them_apart(): void
+    {
+        $tenant = Tenant::factory()->create();
+
+        // Same 4000-character prefix, different tail: the hash is what keeps
+        // them from collapsing onto one entry once the verbatim part is cut.
+        $prefix = '/produkt/'.str_repeat('a', 4000);
+
+        $this->assertNotSame(
+            $this->key($tenant, $prefix.'-jedna'),
+            $this->key($tenant, $prefix.'-dva'),
+        );
+    }
+
+    public function test_a_short_path_stays_readable_in_the_key(): void
+    {
+        $tenant = Tenant::factory()->create();
+
+        $this->assertStringContainsString('/kategorie/boty', $this->key($tenant, '/kategorie/boty'));
     }
 
     public function test_two_tenants_never_share_a_key(): void

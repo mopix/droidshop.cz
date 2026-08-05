@@ -20,12 +20,22 @@ use Illuminate\Database\Eloquent\Model;
  * value labels), even though the variant matrix's rows (ProductVariant) were
  * already covered.
  *
- * Two query-builder writes are the deliberate exceptions: they update
+ * ProductImage is here because an image is not decoration on one page: it is
+ * the gallery on the product page, og:image, the tile on every product card
+ * in category/homepage/search listings, and IMGURL in both feeds. Without it
+ * an uploaded photo appeared nowhere for ten minutes and in no feed for an
+ * hour.
+ *
+ * Three query-builder writes are the deliberate exceptions: they update
  * through the query builder and fire no Eloquent event, so each bumps for
  * itself instead of relying on this observer.
  * - EloquentProductCatalog::decrementStock (stock write-off). See wave 3.0
  *   spec, decision 8.
  * - CategoryTree::reorder (bulk positional update of category siblings).
+ * - ProductImageService::reorder (bulk positional update of one product's
+ *   images). Its sibling ProductImageService::makeMain() also writes through
+ *   the builder, but is already covered: the very next statement saves the
+ *   newly-main image through Eloquent, which this observer does see.
  *
  * Both are documented at their own call site so the fix stays next to the
  * write it fixes; this class does not call Generations for either.
@@ -51,6 +61,7 @@ class PageCacheObserver
         'Modules\\Products\\Models\\ProductVariant' => Dimension::Catalog,
         'Modules\\Products\\Models\\ProductOption' => Dimension::Catalog,
         'Modules\\Products\\Models\\ProductOptionValue' => Dimension::Catalog,
+        'Modules\\Products\\Models\\ProductImage' => Dimension::Catalog,
         'Modules\\Categories\\Models\\Category' => Dimension::Catalog,
     ];
 

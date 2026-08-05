@@ -4,14 +4,18 @@ namespace Tests\Feature\PageCache;
 
 use App\Core\PageCache\Dimension;
 use App\Core\PageCache\Generations;
+use App\Core\Storage\FileStorage;
 use App\Core\Tax\TaxRates;
 use App\Core\Tenancy\TenantContext;
 use App\Models\Tenant;
 use App\Models\TenantTheme;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 use Modules\Categories\Services\CategoryTree;
 use Modules\Pages\Models\Page;
 use Modules\Products\Models\Product;
+use Modules\Products\Services\ProductImageService;
 use Modules\Products\Services\ProductWriter;
 use Modules\Products\Services\VariantWriter;
 use Modules\Storefront\Enums\BlockType;
@@ -34,6 +38,10 @@ class PageCacheInvalidationTest extends TestCase
 
         config()->set('cache.default', 'array');
         config()->set('tenancy.platform_domain', 'droidshop');
+
+        // Image uploads go through FileStorage; nothing may reach a real disk.
+        Storage::fake(FileStorage::PUBLIC_DISK);
+        Storage::fake(FileStorage::PRIVATE_DISK);
 
         $this->artisan('modules:sync')->assertSuccessful();
 
@@ -238,6 +246,62 @@ class PageCacheInvalidationTest extends TestCase
     }
 
     /**
+     * Whole-branch review, finding 4: ProductImage was on no list at all, yet
+     * an image is the product page gallery, og:image, the tile on every
+     * product card in category/homepage/search listings and IMGURL in both
+     * feeds. An upload showed up nowhere for ten minutes and in no feed for
+     * an hour.
+     */
+    public function test_adding_an_image_bumps_the_catalogue(): void
+    {
+        $tenant = $this->shop();
+        $product = $this->makeProduct();
+
+        $before = (int) $tenant->fresh()->page_gen_catalog;
+
+        app(ProductImageService::class)->add($product, UploadedFile::fake()->image('foto.jpg'));
+
+        $this->assertGreaterThan($before, (int) $tenant->fresh()->page_gen_catalog);
+    }
+
+    public function test_deleting_an_image_bumps_the_catalogue(): void
+    {
+        $tenant = $this->shop();
+        $product = $this->makeProduct();
+        $image = app(ProductImageService::class)->add($product, UploadedFile::fake()->image('foto.jpg'));
+
+        $before = (int) $tenant->fresh()->page_gen_catalog;
+
+        app(ProductImageService::class)->remove($image);
+
+        $this->assertGreaterThan($before, (int) $tenant->fresh()->page_gen_catalog);
+    }
+
+    /**
+     * ProductImageService::reorder() writes positions through the query
+     * builder in a loop, so no Eloquent event fires and the observer never
+     * sees it — the same shape as CategoryTree::reorder(). Which image leads
+     * the gallery and the listing tile depends on that order, so it bumps
+     * once for the whole call, not once per row that moved.
+     */
+    public function test_reordering_images_bumps_the_catalogue_exactly_once(): void
+    {
+        $tenant = $this->shop();
+        $product = $this->makeProduct();
+
+        $images = app(ProductImageService::class);
+        $a = $images->add($product, UploadedFile::fake()->image('a.jpg'));
+        $b = $images->add($product, UploadedFile::fake()->image('b.jpg'));
+        $c = $images->add($product, UploadedFile::fake()->image('c.jpg'));
+
+        $before = (int) $tenant->fresh()->page_gen_catalog;
+
+        $images->reorder($product, [$c->id, $b->id, $a->id]);
+
+        $this->assertSame($before + 1, (int) $tenant->fresh()->page_gen_catalog);
+    }
+
+    /**
      * Review round 2, finding 2: CategoryTree::reorder() writes through the
      * query builder in a loop (Category::query()->whereKey($id)->update(...)),
      * so no Eloquent event fires and the observer never sees it — the same
@@ -259,5 +323,41 @@ class PageCacheInvalidationTest extends TestCase
         $tree->reorder(null, [$c->id, $b->id, $a->id]);
 
         $this->assertSame($before + 1, (int) $tenant->fresh()->page_gen_catalog);
+    }
+
+    /**
+     * Whole-branch review, finding 5, kept as the record of a premise that
+     * did not hold: the static-page route was to gain `catalog` because "the
+     * shared layout renders $navCategories". It does not — pages::show is a
+     * standalone HTML document that never includes storefront::layouts.shop,
+     * where both the header nav and the theme composer live. Nothing
+     * catalogue-shaped reaches this page, so `catalog` would only re-render
+     * every static page on every stock write-off.
+     *
+     * This test holds the premise still: the day this view moves onto the
+     * shared layout it starts failing, which is the signal to add `catalog`
+     * to the route's dimensions.
+     */
+    public function test_a_static_page_renders_no_catalogue_data(): void
+    {
+        $this->withoutVite();
+
+        $tenant = $this->shop();
+        $this->activateModule($tenant, 'categories');
+        $this->activateModule($tenant, 'pages');
+
+        app(CategoryTree::class)->create(['name' => 'Boty', 'is_visible' => true]);
+
+        Page::query()->create([
+            'slug' => 'o-nas',
+            'title' => 'O nas',
+            'body' => 'Text stranky.',
+            'is_published' => true,
+        ]);
+
+        $this->get('http://obchod.droidshop/stranka/o-nas')
+            ->assertOk()
+            ->assertSee('Text stranky.')
+            ->assertDontSee('Boty');
     }
 }

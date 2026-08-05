@@ -25,7 +25,17 @@ class PageCachePolicy
             return null;
         }
 
-        if (! $request->isMethod('GET') && ! $request->isMethod('HEAD')) {
+        // GET only — a HEAD may not even read the cache, let alone write it.
+        //
+        // Router::runRouteWithinStack() calls prepareResponse() *inside* the
+        // route middleware pipeline, and Symfony's Response::prepare() runs
+        // setContent(null) for a HEAD request. So this middleware would
+        // inspect an already-emptied body: mayStore() sees a clean 200 and
+        // stores an empty body under a key that does not carry the method. A
+        // single `curl -I https://shop/` — the default check of most uptime
+        // monitors — would blank that page for every visitor for the whole
+        // TTL.
+        if (! $request->isMethod('GET')) {
             return null;
         }
 

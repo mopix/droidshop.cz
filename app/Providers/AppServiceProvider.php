@@ -184,6 +184,7 @@ class AppServiceProvider extends ServiceProvider
             'Modules\\Products\\Models\\ProductVariant',
             'Modules\\Products\\Models\\ProductOption',
             'Modules\\Products\\Models\\ProductOptionValue',
+            'Modules\\Products\\Models\\ProductImage',
             'Modules\\Categories\\Models\\Category',
             'Modules\\Storefront\\Models\\HomepageBlock',
             'Modules\\Pages\\Models\\Page',
