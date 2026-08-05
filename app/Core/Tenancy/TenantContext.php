@@ -30,6 +30,12 @@ class TenantContext
         return Tenant::checkCurrent();
     }
 
+    /**
+     * The single way this class switches tenants. runAs() and
+     * runWithoutTenant() both route through here rather than calling
+     * makeCurrent() themselves, so the short-circuit described below is
+     * handled in exactly one place.
+     */
     public function set(Tenant $tenant): void
     {
         // spatie/laravel-multitenancy's makeCurrent() short-circuits
@@ -80,6 +86,14 @@ class TenantContext
      * a foreign tenant current would turn one failed job into cross-tenant
      * writes for everything that ran after it on the same worker.
      *
+     * Switches go through set(), never through makeCurrent() directly — see
+     * the comment there for why. This method used to call makeCurrent()
+     * itself and so kept the whole stale-instance hole open for every caller
+     * that switches through it (superadmin status change, Stripe webhook,
+     * lifecycle sweeper, TenantProvisioner, AuditLog): handed a freshly
+     * fetched model of the tenant that was already bound, it short-circuited
+     * and the callback read the OLD instance's attributes.
+     *
      * @template TReturn
      *
      * @param  Closure(Tenant): TReturn  $callback
@@ -89,15 +103,15 @@ class TenantContext
     {
         $previous = Tenant::current();
 
-        $tenant->makeCurrent();
+        $this->set($tenant);
 
         try {
             return $callback($tenant);
         } finally {
             if ($previous) {
-                $previous->makeCurrent();
+                $this->set($previous);
             } else {
-                Tenant::forgetCurrent();
+                $this->forget();
             }
         }
     }
@@ -109,12 +123,14 @@ class TenantContext
     {
         $previous = Tenant::current();
 
-        Tenant::forgetCurrent();
+        $this->forget();
 
         try {
             return $callback();
         } finally {
-            $previous?->makeCurrent();
+            if ($previous) {
+                $this->set($previous);
+            }
         }
     }
 }
