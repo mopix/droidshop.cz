@@ -222,3 +222,99 @@ function initPacketaWidget() {
 }
 
 initPacketaWidget();
+
+/**
+ * Cookie consent.
+ *
+ * The banner is baked into every cached page — page-cache entries must not
+ * vary by cookie (the same reason wave 3.0 dropped `has_cart`), so the HTML
+ * is identical for everyone and the decision is applied here. An inline
+ * script in the layout head has already hidden the banner before paint for
+ * anyone who decided; this adds the submit-without-reload path and exposes
+ * the decision to the tracking snippets.
+ *
+ * Everything degrades: with JS off the banner stays visible and its plain
+ * form POST still records the decision.
+ */
+function readConsent() {
+    const match = document.cookie.match(/(?:^|;\s*)cookie_consent=([^;]*)/);
+
+    if (!match) {
+        return null;
+    }
+
+    try {
+        const parsed = JSON.parse(decodeURIComponent(match[1]));
+
+        if (String(parsed.v) !== document.documentElement.dataset.consentVersion) {
+            return null;
+        }
+
+        return Array.isArray(parsed.c) ? parsed.c : [];
+    } catch (error) {
+        // A tampered cookie means "ask again", never "assume yes".
+        return null;
+    }
+}
+
+function consentAllows(category) {
+    const decided = readConsent();
+
+    return decided !== null && decided.includes(category);
+}
+
+function initConsentBanner() {
+    const banner = document.getElementById('cookie-banner');
+
+    if (!banner) {
+        return;
+    }
+
+    const form = banner.querySelector('form');
+
+    if (!form) {
+        return;
+    }
+
+    form.addEventListener('submit', (event) => {
+        const choice = event.submitter?.value;
+
+        if (!choice) {
+            return; // Let the browser submit normally.
+        }
+
+        event.preventDefault();
+
+        const body = new FormData(form);
+        body.set('volba', choice);
+
+        fetch(form.action, {
+            method: 'POST',
+            body,
+            headers: { 'X-Requested-With': 'XMLHttpRequest' },
+            credentials: 'same-origin',
+        })
+            .then(() => {
+                banner.remove();
+                document.documentElement.classList.add('consent-decided');
+                // Tracking snippets listen for this rather than polling, so a
+                // visitor who accepts is measured on the very page where they
+                // accepted, not only from the next one.
+                document.dispatchEvent(new CustomEvent('consent:changed', {
+                    detail: { categories: readConsent() ?? [] },
+                }));
+            })
+            .catch(() => {
+                // Network down, adblock, CSP — fall back to the plain form
+                // submit so the decision is still recorded.
+                form.submit();
+            });
+    });
+}
+
+initConsentBanner();
+
+// Exposed for the tracking snippets rendered by the analytics module. They
+// are separate <script> tags in the page, not part of this bundle, because a
+// tenant may run none of them.
+window.droidshopConsent = { allows: consentAllows, read: readConsent };

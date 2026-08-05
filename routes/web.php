@@ -1,6 +1,7 @@
 <?php
 
 use App\Core\Storage\FileStorage;
+use App\Http\Controllers\ConsentController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ImpersonationController;
 use App\Http\Controllers\LegalController;
@@ -38,6 +39,15 @@ Route::get('/', StorefrontEntryController::class)
 Route::get('/pravni/{document}', [LegalController::class, 'show'])
     ->middleware('platform.host')
     ->name('legal.show');
+
+// Cookie consent. In the kernel, not in the analytics module: a banner is a
+// legal duty for every shop, including one that measures nothing.
+//
+// Deliberately no `page-cache` middleware. The settings screen reflects this
+// visitor's own decision, so it is the one storefront page that must never be
+// shared — and the POST sets a cookie, which PageCachePolicy refuses anyway.
+Route::get('/souhlas-cookies', [ConsentController::class, 'show'])->name('consent.show');
+Route::post('/souhlas-cookies', [ConsentController::class, 'store'])->name('consent.store');
 
 Route::get('/dashboard', DashboardController::class)
     ->middleware(['auth', 'verified'])->name('dashboard');

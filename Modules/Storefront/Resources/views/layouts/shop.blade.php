@@ -1,5 +1,10 @@
 <!DOCTYPE html>
-<html lang="cs">
+{{--
+    data-consent-version is read by storefront.js to tell a current decision
+    from one recorded against older wording. Per tenant, not per visitor, so
+    it is safe inside cached HTML.
+--}}
+<html lang="cs" data-consent-version="{{ config('consent.version') }}">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -18,6 +23,32 @@
     @endif
 
     @stack('head')
+
+    {{--
+        Hides the cookie banner before the first paint.
+
+        The banner is baked into every cached page (see the component for
+        why), so for a visitor who already decided it would flash on every
+        single page load if this waited for the deferred bundle at the end of
+        the body. Inline, in the head, it costs one class on <html>.
+
+        Deliberately not a full consent parser — it only asks "is there a
+        decision recorded against the current version". The real reading is
+        done by storefront.js, which also decides what may load.
+    --}}
+    <script>
+        (function () {
+            var m = document.cookie.match(/(?:^|;\s*)cookie_consent=([^;]*)/);
+            if (!m) return;
+            try {
+                var c = JSON.parse(decodeURIComponent(m[1]));
+                if (String(c.v) === @json((string) config('consent.version'))) {
+                    document.documentElement.classList.add('consent-decided');
+                }
+            } catch (e) { /* a broken cookie just means the banner shows */ }
+        })();
+    </script>
+    <style>.consent-decided #cookie-banner { display: none; }</style>
 
     @vite(['resources/css/storefront.css', 'resources/js/storefront.js'])
 </head>
@@ -107,22 +138,34 @@
 
     <footer class="mt-16 border-t border-slate-200 bg-slate-50">
         <div class="mx-auto max-w-6xl px-4 py-8 text-sm text-slate-600">
-            @if (($footerPages ?? collect())->isNotEmpty())
-                <nav aria-label="Informace o obchodě" class="mb-4">
-                    <ul class="flex flex-wrap gap-x-6 gap-y-2">
-                        @foreach ($footerPages as $page)
-                            <li>
-                                <a href="{{ url('/'.$page->slug) }}" class="underline hover:text-slate-900">
-                                    {{ $page->title }}
-                                </a>
-                            </li>
-                        @endforeach
-                    </ul>
-                </nav>
-            @endif
+            <nav aria-label="Informace o obchodě" class="mb-4">
+                <ul class="flex flex-wrap gap-x-6 gap-y-2">
+                    @foreach (($footerPages ?? collect()) as $page)
+                        <li>
+                            <a href="{{ url('/'.$page->slug) }}" class="underline hover:text-slate-900">
+                                {{ $page->title }}
+                            </a>
+                        </li>
+                    @endforeach
+                    {{--
+                        Permanent, on every page: withdrawing consent has to be
+                        as easy as giving it, and the banner is gone once a
+                        decision exists.
+                    --}}
+                    <li>
+                        <a href="{{ route('consent.show') }}" class="underline hover:text-slate-900">
+                            Nastavení cookies
+                        </a>
+                    </li>
+                </ul>
+            </nav>
 
             <p>&copy; {{ date('Y') }} {{ $shopName }}</p>
         </div>
     </footer>
+
+    @stack('tracking')
+
+    <x-consent-banner />
 </body>
 </html>
