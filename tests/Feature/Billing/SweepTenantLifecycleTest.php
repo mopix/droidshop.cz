@@ -106,6 +106,11 @@ class SweepTenantLifecycleTest extends TestCase
         Mail::assertSent(TrialExpiredMail::class, function (TrialExpiredMail $mail) use ($owner): bool {
             return $mail->hasTo($owner->email);
         });
+
+        // Wave 3.1 moved the send out of this command and onto the
+        // TenantStatusChanged listener. If the command's own send were ever
+        // restored alongside it, the owner would get the same message twice.
+        Mail::assertSent(TrialExpiredMail::class, 1);
     }
 
     public function test_suspended_shop_emails_owner(): void

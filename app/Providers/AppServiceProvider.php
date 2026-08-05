@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Core\Billing\Listeners\SendTenantStatusMail;
 use App\Core\Checkout\Contracts\CartRepository;
 use App\Core\Checkout\NullCartRepository;
 use App\Core\Customers\Contracts\CustomerIdentity;
@@ -44,7 +45,9 @@ use App\Core\Shipping\NullPickupPointCatalog;
 use App\Core\Shipping\NullShipmentBook;
 use App\Core\Shipping\NullShippingOptions;
 use App\Core\Storage\StorageLimitCounter;
+use App\Core\Tenancy\Events\TenantStatusChanged;
 use App\Models\TenantTheme;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Vite;
 use Illuminate\Support\ServiceProvider;
 
@@ -194,5 +197,10 @@ class AppServiceProvider extends ServiceProvider
                 $model::observe(PageCacheObserver::class);
             }
         }
+
+        // Lifecycle mail (wave 3.1). Tenant::changeStatus() dispatches; this
+        // is the only listener, so every status change reaches the owner
+        // regardless of which of the five call sites triggered it.
+        Event::listen(TenantStatusChanged::class, SendTenantStatusMail::class);
     }
 }
