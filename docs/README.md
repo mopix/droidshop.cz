@@ -28,7 +28,7 @@ Pravidla: [`DOCUMENTATION-LAYERS.md`](DOCUMENTATION-LAYERS.md).
 |--------|------|
 | [`design-droidshop/`](design-droidshop/) | Design handoff (zatím prázdné) |
 | [`future/`](future/) | Post-MVP specifikace |
-| [`legal/`](legal/) | Právní / setup návody |
+| [`legal/`](legal/) | **Právní dokumenty platformy** — VOP, zásady zpracování údajů, zpracovatelská smlouva (GDPR čl. 28), cookies. Zdroj pravdy pro stránky `/pravni/*` |
 | [`SETUP.md`](SETUP.md) | Lokální instalace (z šablony) |
 | [`DEPLOY-TO-PROJECT.md`](DEPLOY-TO-PROJECT.md) | Jak se šablona Claude nasazovala |
 
