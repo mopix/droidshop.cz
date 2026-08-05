@@ -27,12 +27,20 @@ test.describe('purchase without JavaScript', () => {
     await expect(page).toHaveURL(/\/kosik/)
     await page.getByRole('link', { name: /Pokračovat k pokladně/ }).click()
 
-    // 4. Shipping and payment. The first option of each is enough — what is
-    // under test is that the flow completes, not the matrix (which has its
-    // own PHPUnit coverage).
+    // 4. Shipping, then payment — deliberately two steps without JavaScript.
+    // Which payments are offered depends on the chosen carrier (the
+    // shipping×payment matrix), so the payment fieldset only appears once a
+    // carrier has been submitted. With JavaScript this could be one screen;
+    // without it, it is a round trip, and that is a working checkout rather
+    // than a broken one.
     await expect(page).toHaveURL(/\/pokladna\/doprava/)
     await page.locator('input[name="shipping_method_id"]').first().check()
-    await page.locator('input[name="payment_method_id"]').first().check()
+    await page.getByRole('button', { name: 'Pokračovat' }).click()
+
+    await expect(page).toHaveURL(/\/pokladna\/doprava/)
+    const payment = page.locator('input[name="payment_method_id"]').first()
+    await expect(payment, 'no payment method was offered for the chosen carrier').toBeVisible()
+    await payment.check()
     await page.getByRole('button', { name: 'Pokračovat' }).click()
 
     // 5. Details.
@@ -58,6 +66,12 @@ test.describe('purchase without JavaScript', () => {
   /**
    * The banner is the one piece of the page that could plausibly need JS, so
    * it gets its own check: consent has to be expressible without it.
+   *
+   * The banner STAYS VISIBLE afterwards, and that is by design (wave 3.3):
+   * it is baked into every cached page and hidden by a script, so with
+   * JavaScript off it cannot be hidden. It blocks nothing — without
+   * JavaScript no measurement script runs either — and what actually matters
+   * is that the decision was recorded, which is what this asserts.
    */
   test('consent can be given without JavaScript', async ({ page }) => {
     await page.goto(shopUrl('/'))
@@ -65,7 +79,9 @@ test.describe('purchase without JavaScript', () => {
     await expect(page.locator('#cookie-banner')).toBeVisible()
     await page.getByRole('button', { name: 'Odmítnout vše' }).click()
 
-    // A plain form POST and a redirect back.
-    await expect(page.locator('#cookie-banner')).toBeHidden()
+    const consent = (await page.context().cookies()).find((c) => c.name === 'cookie_consent')
+
+    expect(consent, 'a plain form POST did not record the decision').toBeDefined()
+    expect(JSON.parse(decodeURIComponent(consent!.value)).c).toEqual([])
   })
 })
