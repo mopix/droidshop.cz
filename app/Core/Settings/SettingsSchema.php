@@ -52,6 +52,11 @@ final readonly class SettingsSchema
                 default: $definition['default'] ?? null,
                 help: $definition['help'] ?? null,
                 options: $definition['options'] ?? [],
+                // A credential (spec §16.5). The settings table stores plain
+                // JSON, so anything sensitive has to say so and be encrypted
+                // on the way in — the same treatment payment_methods and
+                // shipping_methods give their own credentials.
+                secret: (bool) ($definition['secret'] ?? false),
             );
         }
 

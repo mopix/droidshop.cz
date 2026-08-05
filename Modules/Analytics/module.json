@@ -1,0 +1,22 @@
+{
+    "name": "analytics",
+    "version": "1.0.0",
+    "title": {
+        "cs": "Měření a analytika"
+    },
+    "description": {
+        "cs": "Google Analytics 4, Sklik, Meta Pixel a Heureka Ověřeno zákazníky — vždy až po souhlasu návštěvníka."
+    },
+    "core": false,
+    "billable": false,
+    "level": "base",
+    "requires": {},
+    "provides": [],
+    "listens": [],
+    "permissions": [
+        "analytics.manage"
+    ],
+    "settings_schema": "settings.json",
+    "settings_permission": "analytics.manage",
+    "nav": []
+}
