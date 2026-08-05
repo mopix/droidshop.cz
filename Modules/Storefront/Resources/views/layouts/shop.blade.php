@@ -42,16 +42,16 @@
                 <label for="hledani" class="sr-only">Hledat v e-shopu</label>
                 <div class="flex gap-2">
                     {{--
-                        Folded the same way SearchController folds the term
-                        for the heading/title/canonical (Str::lower(Str::ascii(...))):
-                        this layout is shared by every storefront page a
-                        page-cache entry can be built from, so echoing the raw
-                        query string here would leave one raw fragment on an
-                        otherwise-folded cached page — exactly the half-fold
-                        this must not do.
+                        Folded the same way PageCacheKey::foldSearchTerm() folds
+                        the term for the cache key and SearchController folds it
+                        for the heading/title/canonical: this layout is shared by
+                        every storefront page a page-cache entry can be built
+                        from, so echoing the raw query string here would leave
+                        one raw fragment on an otherwise-folded cached page —
+                        exactly the half-fold this must not do.
                     --}}
                     <input id="hledani" name="q" type="search"
-                           value="{{ \Illuminate\Support\Str::lower(\Illuminate\Support\Str::ascii((string) request()->query('q', ''))) }}"
+                           value="{{ \App\Core\PageCache\PageCacheKey::foldSearchTerm((string) request()->query('q', '')) }}"
                            class="field-input mt-0 w-full sm:w-64"
                            placeholder="Hledat…">
                     <button type="submit" class="btn btn-primary">Hledat</button>

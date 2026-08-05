@@ -208,6 +208,27 @@ class StorefrontSearchTest extends TestCase
         $this->assertStringNotContainsString('q=BUNDA', $matches[1]);
     }
 
+    public function test_the_header_search_box_trims_the_term_on_a_cached_page(): void
+    {
+        // PageCacheKey::foldSearchTerm() (the cache key's own fold) trims the
+        // term; the header search box on this shared layout must fold the
+        // exact same way, or a whitespace-padded query and its trimmed
+        // equivalent land on one cache entry while rendering different box
+        // contents depending on which request warmed it. Page cache is on
+        // here on purpose — this is the scenario the drift actually bites in.
+        config()->set('pagecache.enabled', true);
+
+        $this->makeProduct($this->tenantA);
+
+        $content = $this->get('http://shop1.droidshop/hledani?q=%20bunda%20')
+            ->assertOk()
+            ->getContent();
+
+        preg_match('/id="hledani"[^>]*value="([^"]*)"/s', $content, $matches);
+
+        $this->assertSame('bunda', $matches[1] ?? null);
+    }
+
     public function test_reindex_command_rebuilds_the_column(): void
     {
         $this->makeProduct($this->tenantA);

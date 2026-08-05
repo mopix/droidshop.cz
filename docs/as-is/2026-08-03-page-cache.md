@@ -20,7 +20,7 @@ Toto je **etapa 1 (aplikační vrstva)** z dvou plánovaných. Etapa 2 (statick�
 |--------|-------|
 | `app/Core/PageCache/Dimension.php` | enum `Catalog`/`Content`/`Theme`, mapuje na sloupec `page_gen_{value}` |
 | `app/Core/PageCache/Generations.php` | čítače nad `tenants`: `stamp()` (čte), `bump()` (atomický `increment` + sync in-memory instance), `bumpAll()` |
-| `app/Core/PageCache/PageCacheKey.php` | klíč `page:{tenant}:{gen-stamp}:{path}:{qs-hash}`; whitelist query parametrů; `foldSearchTerm()` jediná definice foldu `q` |
+| `app/Core/PageCache/PageCacheKey.php` | klíč `page:{tenant}:{host}:{gen-stamp}:{path}[:{qs-hash}]`; whitelist query parametrů; `foldSearchTerm()` jediná definice foldu `q` |
 | `app/Core/PageCache/PageCacheObserver.php` | jeden observer, mapa model → dimenze |
 | `app/Core/PageCache/PageCachePolicy.php` | `tenantFor()` (smí se číst/zapisovat vůbec), `mayStore()` (smí se uložit tahle konkrétní odpověď) |
 | `app/Core/PageCache/DynamicTokens.php` | `mask()`/`unmask()` CSRF tokenu |
@@ -43,7 +43,7 @@ Toto je **etapa 1 (aplikační vrstva)** z dvou plánovaných. Etapa 2 (statick�
 ## Plnění spec §15.6 po bodech
 
 - **Whole-HTML cache pro anonymní GET.** Middleware `page-cache:{dimenze}` opt-in per routa (homepage `catalog,content,theme`; kategorie/produkt `catalog,theme`; statické stránky `content,theme`; hledání jede přes `SearchController` s vlastním guardem). Žádná routa cache nedědí automaticky.
-- **Klíč per nájemce, per cesta, per generace.** `page:{tenant_id}:{gen-stamp}:{path}:{qs-hash}`. Klíč nese jen dimenze, na kterých stránka závisí — přebarvení neshodí katalog.
+- **Klíč per nájemce, per host, per cesta, per generace.** `page:{tenant_id}:{host}:{gen-stamp}:{path}[:{qs-hash}]`. Klíč nese jen dimenze, na kterých stránka závisí — přebarvení neshodí katalog. Host je v klíči zvlášť vedle `tenant_id`, protože mezi ověřením vlastní domény a jejím povýšením na primární servírují storefront **oba** hosty (subdoména i custom doména) bez vzájemného redirectu a cachované HTML nese absolutní URL odvozené od hostu (canonical, `og:url`, `action` formuláře přidání do košíku) — bez hostu v klíči by jeden z nich zdědil cizí canonical a odeslání košíku by skončilo na hostu bez odpovídající session.
 - **Query string whitelist** (`razeni`, `skladem`, `page`, `q`) — vše ostatní se zahodí, neplatné hodnoty padnou na stejný klíč jako výchozí. `?utm_source=fb` netříští cache.
 - **CSRF bez úniku mezi návštěvníky.** Token se na MISS nahradí značkou `<!--PAGECACHE_CSRF-->` a na HIT vrátí čerstvým tokenem toho, kdo žádá.
 - **Přihlášený zákazník cache neuvidí ani nezapíše.** `PageCachePolicy::hasVisitorState()` — guard `customer`, guard `web` (personál/impersonace), flash/validační chyby v session.
