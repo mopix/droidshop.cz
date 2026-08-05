@@ -9,7 +9,9 @@ use App\Core\PageCache\Generations;
 use App\Core\Settings\Exceptions\InvalidSetting;
 use App\Core\Tenancy\Exceptions\MissingTenantContext;
 use App\Core\Tenancy\TenantContext;
+use Illuminate\Contracts\Encryption\DecryptException;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
@@ -55,7 +57,7 @@ class SettingsService
         // The schema is the single source of the default. Leaving it to each
         // call site (get('docs', 'due_days', config(...))) means schema and code
         // can disagree about what an untouched shop is running on.
-        return [...$this->schemaFor($module)?->defaults() ?? [], ...$stored];
+        return $this->decryptSecrets($module, [...$this->schemaFor($module)?->defaults() ?? [], ...$stored]);
     }
 
     public function set(string $module, string $key, mixed $value): void
@@ -85,9 +87,17 @@ class SettingsService
     {
         $tenantId = $this->requireTenant();
 
+        // A secret submitted blank means "leave it alone", not "erase it" —
+        // the admin screen never shows the stored value back, so a blank box
+        // is what an untouched field looks like. Same keep-on-update rule the
+        // Comgate and Packeta credential forms already follow.
+        $values = $this->dropUntouchedSecrets($module, $values);
+
         foreach ($values as $key => $value) {
             $this->validate($module, $key, $value);
         }
+
+        $values = $this->encryptSecrets($module, $values);
 
         DB::transaction(function () use ($tenantId, $module, $values): void {
             foreach ($values as $key => $value) {
@@ -99,6 +109,83 @@ class SettingsService
         });
 
         $this->forget($module);
+    }
+
+    /**
+     * Which keys of this module are credentials.
+     *
+     * @return list<string>
+     */
+    private function secretKeys(string $module): array
+    {
+        $schema = $this->schemaFor($module);
+
+        if ($schema === null) {
+            return [];
+        }
+
+        // fields() is array_values()'d, so its keys are positions, not field
+        // names — the name has to come off the field itself.
+        return array_values(array_map(
+            fn (SettingsField $field) => $field->key,
+            array_filter($schema->fields(), fn (SettingsField $field) => $field->secret),
+        ));
+    }
+
+    /**
+     * @param  array<string, mixed>  $values
+     * @return array<string, mixed>
+     */
+    private function dropUntouchedSecrets(string $module, array $values): array
+    {
+        foreach ($this->secretKeys($module) as $key) {
+            if (array_key_exists($key, $values) && (string) $values[$key] === '') {
+                unset($values[$key]);
+            }
+        }
+
+        return $values;
+    }
+
+    /**
+     * @param  array<string, mixed>  $values
+     * @return array<string, mixed>
+     */
+    private function encryptSecrets(string $module, array $values): array
+    {
+        foreach ($this->secretKeys($module) as $key) {
+            if (array_key_exists($key, $values) && is_string($values[$key]) && $values[$key] !== '') {
+                $values[$key] = Crypt::encryptString($values[$key]);
+            }
+        }
+
+        return $values;
+    }
+
+    /**
+     * @param  array<string, mixed>  $values
+     * @return array<string, mixed>
+     */
+    private function decryptSecrets(string $module, array $values): array
+    {
+        foreach ($this->secretKeys($module) as $key) {
+            if (! is_string($values[$key] ?? null) || $values[$key] === '') {
+                continue;
+            }
+
+            try {
+                $values[$key] = Crypt::decryptString($values[$key]);
+            } catch (DecryptException) {
+                // A value written before the field became a secret, or after
+                // an APP_KEY rotation. Reading it as plaintext would hand the
+                // caller ciphertext and let it be sent to a third party as if
+                // it were the credential; an empty string makes the feature
+                // fail closed and the tenant re-enter it.
+                $values[$key] = '';
+            }
+        }
+
+        return $values;
     }
 
     public function forget(string $module): void

@@ -1,6 +1,6 @@
 # As-is status — DroidShop.cz
 
-Poslední aktualizace: **2026-08-05** · Verze: **0.37.0** (vlna 3.2)
+Poslední aktualizace: **2026-08-05** · Verze: **0.38.0** (vlna 3.3)
 
 ## Oblasti
 
@@ -55,7 +55,8 @@ Poslední aktualizace: **2026-08-05** · Verze: **0.37.0** (vlna 3.2)
 | Vlastní domény nájemců + automatické TLS | **hotovo** | vlna 2.1 | [detail](2026-07-23-custom-domains.md); DNS ověření (TXT+routing) `DomainVerifier`, gating neověřených v resolveru, Caddy ask endpoint `/internal/tls-check` (token+verified-only), cert probe → issued, canonical swap + 301 subdoména→custom, `domains:sweep-pending`, admin obrazovka; infra (Caddyfile, edge DNS, `PLATFORM_TLS_CHECK_TOKEN`) = deploy runbook |
 | Tarify / trial / billing | **hotovo** | §3.1 | tabulka `plans` + přiřazení z UI, trial + lifecycle + platformní faktura + reálné inkaso přes Stripe hotové; roční interval a upgrade/downgrade tarifu odloženo |
 | Technické dluhy — stale tenant, feed cache, e-mail o stavu, routa stránek | **hotovo** | vlna 3.1 | [detail](2026-08-05-technicke-dluhy.md); `runAs()`/`runWithoutTenant()` přepínají přes `set()` (short-circuit `makeCurrent()` nechával svázanou starou instanci každému volajícímu, který přes ně přepíná — superadmin, oba Stripe handlery, sweeper, `TenantProvisioner`, `AuditLog`); `ShippingMethod` → `Dimension::Catalog`, takže přejmenovaný dopravce už nezůstane ve feedu hodinu; `Tenant::changeStatus()` dispatchne `TenantStatusChanged` přes `DB::afterCommit` a jediný listener mapuje **oba konce** přechodu na zprávu (trial→past_due je expirace, cokoli jiného→past_due je selhaná platba), sweeper své dvě odeslání ztratil; statické stránky přesunuty na `/{page-slug}` přes `Route::fallback()` (ne catch-all, ne blacklist — Laravel ho řadí za všechny routy bez ohledu na pořadí registrace, což je load-bearing, protože `pages` se registruje abecedně před `products` i `storefront`), controller odmítá víc segmentů a padá na `RedirectResponder`, stará cesta 301 bez DB dotazu |
-| Playwright E2E | není | CLAUDE.md | blokováno omezením certifikátu, viz níže |
+| Cookie lišta + měřicí kódy nájemce | **hotovo** | vlna 3.3 | [detail](2026-08-05-cookie-lista-mereni.md); souhlas se třemi kategoriemi v jádře (`app/Core/Consent/`, lištu má i e-shop, který nic neměří), nový base modul `analytics` (GA4 s Consent Mode v2, Sklik, Meta Pixel, Heureka Ověřeno zákazníky). **Server renderuje konfiguraci, nikdy rozhodnutí** — měřicí id jsou per tenant a smějí do cachovaného HTML, souhlas je per návštěvník a nesmí; test hlídá, že HTML je byte-identické pro nerozhodnutého, souhlasícího i odmítajícího, takže page cache z 3.0 zůstává nedotčená. GA4 se **nenačítá** s „denied", ačkoli to Google doporučuje: požadavek stejně dorazí a nese IP. Tlačítka „Přijmout vše" a „Odmítnout vše" mají shodné třídy (test na markup — nerovnocenná volba znamená neplatný souhlas). `SettingsField` dostal příznak `secret` (šifrování, maskování, keep-on-update) kvůli Heureka klíči. **Chování JS neověřuje automatický test** — čeká na Playwright ve 3.4 |
+| Playwright E2E | není | CLAUDE.md | blokováno omezením certifikátu, viz níže; **vlna 3.3 na něj čeká** kvůli ověření, že měřicí skripty respektují souhlas |
 | Design handoff | prázdné | `docs/design-droidshop/` | |
 
 ## Odchylky od produktové specifikace

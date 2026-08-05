@@ -68,9 +68,33 @@ class ModuleSettingsController extends Controller
                 'type' => $field->type,
                 'help' => $field->help,
                 'options' => $field->options,
+                'secret' => $field->secret,
             ], $schema->fields()),
-            'values' => $this->settings->all($model->key),
+            'values' => $this->maskSecrets($schema, $this->settings->all($model->key)),
         ]);
+    }
+
+    /**
+     * A stored credential never travels back to the browser — the screen only
+     * learns whether one exists (spec §16.5, same as the Comgate and Packeta
+     * credential forms). SettingsService::setMany() treats a blank secret as
+     * "leave it alone", so an untouched field survives a save.
+     *
+     * @param  array<string, mixed>  $values
+     * @return array<string, mixed>
+     */
+    private function maskSecrets(SettingsSchema $schema, array $values): array
+    {
+        foreach ($schema->fields() as $field) {
+            if (! $field->secret) {
+                continue;
+            }
+
+            $values[$field->key.'_stored'] = ($values[$field->key] ?? '') !== '';
+            $values[$field->key] = '';
+        }
+
+        return $values;
     }
 
     public function update(UpdateModuleSettingsRequest $request, string $module): RedirectResponse

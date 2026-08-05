@@ -1,0 +1,45 @@
+{
+    "ga4_measurement_id": {
+        "rules": "nullable|string|max:32|regex:/^G-[A-Z0-9]{4,}$/D",
+        "label": "Google Analytics 4 — Measurement ID",
+        "type": "text",
+        "default": "",
+        "help": "Ve tvaru G-XXXXXXXXXX. Najdete ho ve vlastnosti GA4 pod Datové proudy. Spustí se až po souhlasu s analytickými cookies."
+    },
+    "sklik_retargeting_id": {
+        "rules": "nullable|string|max:16|regex:/^[0-9]+$/D",
+        "label": "Sklik — ID retargetingu",
+        "type": "text",
+        "default": "",
+        "help": "Číslo retargetingového publika ze Skliku. Spustí se až po souhlasu s marketingovými cookies."
+    },
+    "sklik_conversion_id": {
+        "rules": "nullable|string|max:16|regex:/^[0-9]+$/D",
+        "label": "Sklik — ID konverze",
+        "type": "text",
+        "default": "",
+        "help": "Číslo konverze ze Skliku. Měří dokončené objednávky."
+    },
+    "meta_pixel_id": {
+        "rules": "nullable|string|max:32|regex:/^[0-9]+$/D",
+        "label": "Meta Pixel — ID",
+        "type": "text",
+        "default": "",
+        "help": "Číselné ID pixelu z Meta Business Manageru. Spustí se až po souhlasu s marketingovými cookies."
+    },
+    "heureka_enabled": {
+        "rules": "boolean",
+        "label": "Heureka — Ověřeno zákazníky",
+        "type": "boolean",
+        "default": false,
+        "help": "Po dokončení objednávky pošle Heurece e-mail zákazníka, aby mohla poslat dotazník spokojenosti. Neukládá cookies, takže nevyžaduje souhlas — ale musíte na to upozornit v zásadách ochrany osobních údajů."
+    },
+    "heureka_api_key": {
+        "rules": "nullable|string|max:64",
+        "label": "Heureka — API klíč",
+        "type": "password",
+        "secret": true,
+        "default": "",
+        "help": "Najdete ho v administraci Heureky pod Ověřeno zákazníky. Uložený klíč se nikdy nezobrazí zpět."
+    }
+}

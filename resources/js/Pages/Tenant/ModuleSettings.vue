@@ -5,9 +5,10 @@ import AdminLayout from '@/Layouts/AdminLayout.vue'
 type Field = {
   key: string
   label: string
-  type: 'boolean' | 'select' | 'textarea' | 'number' | 'text'
+  type: 'boolean' | 'select' | 'textarea' | 'number' | 'text' | 'password'
   help: string | null
   options: Record<string, string>
+  secret: boolean
 }
 
 const props = defineProps<{
@@ -36,10 +37,23 @@ function errorFor(key: string): string | undefined {
   return form.errors[`values.${key}` as keyof typeof form.errors] as string | undefined
 }
 
+// A stored credential never comes back from the server — the screen only
+// learns that one exists, so an empty box means 'unchanged', not 'erase'.
+function hasStoredSecret(field: Field): boolean {
+  return field.secret && props.values[`${field.key}_stored`] === true
+}
+
 function describedBy(field: Field): string | undefined {
   const ids = [errorFor(field.key) ? `${field.key}-error` : null, field.help ? `${field.key}-help` : null]
 
   return ids.filter(Boolean).join(' ') || undefined
+}
+
+function inputTypeFor(field: Field): string {
+  if (field.type === 'password') return 'password'
+  if (field.type === 'number') return 'number'
+
+  return 'text'
 }
 
 function submit() {
@@ -110,13 +124,16 @@ function submit() {
               v-else
               :id="field.key"
               v-model="form.values[field.key]"
-              :type="field.type === 'number' ? 'number' : 'text'"
+              :type="inputTypeFor(field)"
               class="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-gray-900 focus:ring-gray-900"
               :aria-invalid="errorFor(field.key) ? 'true' : undefined"
               :aria-describedby="describedBy(field)"
             />
           </template>
 
+          <p v-if="hasStoredSecret(field)" class="mt-1 text-sm text-gray-600">
+            Uloženo. Ponechte prázdné, pokud nechcete měnit.
+          </p>
           <p v-if="field.help" :id="`${field.key}-help`" class="mt-1 text-sm text-gray-600">{{ field.help }}</p>
           <p v-if="errorFor(field.key)" :id="`${field.key}-error`" class="mt-1 text-sm text-red-700">
             {{ errorFor(field.key) }}

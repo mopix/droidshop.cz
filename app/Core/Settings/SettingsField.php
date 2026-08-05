@@ -10,6 +10,9 @@ final readonly class SettingsField
 {
     /**
      * @param  array<string, string>  $options  value => label, select only
+     * @param  bool  $secret  a credential per spec §16.5: stored encrypted,
+     *                        never returned to the admin screen, and left
+     *                        untouched when the form comes back with it blank
      */
     public function __construct(
         public string $key,
@@ -19,5 +22,6 @@ final readonly class SettingsField
         public mixed $default = null,
         public ?string $help = null,
         public array $options = [],
+        public bool $secret = false,
     ) {}
 }

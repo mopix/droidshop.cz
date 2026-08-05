@@ -11,6 +11,25 @@ Pravidla: [`.claude/skills/versioning/SKILL.md`](.claude/skills/versioning/SKILL
 
 > CHANGELOG vede milníky (minor/major). Detail patchů je v `git log`.
 
+## [0.38.0] – 2026-08-05
+
+**Fáze 2 / vlna 3.3 — cookie lišta a měřicí kódy nájemce.** Uzavření vlny (`docs/as-is/2026-08-05-cookie-lista-mereni.md`). 49 nových testů; celkem 2003 zelených.
+
+### Souhlas se třemi kategoriemi
+Nezbytné (vždy), analytické, marketingové. Tlačítka „Přijmout vše" a „Odmítnout vše" mají **shodné třídy** a hlídá to test — nerovnocenná volba znamená, že souhlas není svobodný, a okem se to v review neuhlídá. Funguje bez JavaScriptu: prostý form POST a redirect. Lišta žije v jádře (`app/Core/Consent/`), protože je to povinnost i pro e-shop, který nic neměří.
+
+### Měření bez ztráty page cache
+Server renderuje **konfiguraci, nikdy rozhodnutí**: měřicí id jsou per tenant a smějí do cachovaného HTML, souhlas je per návštěvník a nesmí. Blade `@if` na souhlasu by z cachované stránky udělal roznašeč cizího rozhodnutí — táž třída chyby, kvůli které 3.0 zrušila cookie `has_cart`. Test asertuje, že HTML je byte-identické pro nerozhodnutého, souhlasícího i odmítajícího.
+
+### GA4 se nenačítá s „denied"
+Consent Mode v2 to dovoluje a Google to doporučuje, ale požadavek stejně dorazí a nese IP adresu návštěvníka — a právě požadavek před souhlasem ePrivacy zakazuje. Volání `consent default denied` přesto běží první, protože bez něj se GA4 v EU nespáruje s Google Ads.
+
+### Nový base modul `analytics`
+GA4, Sklik (retargeting i konverze), Meta Pixel a Heureka Ověřeno zákazníky. Ids se validují **tvarem**, ne jen jako řetězec — typo měří do prázdna a nájemce to zjistí za měsíc. Heureka stojí mimo souhlas (neukládá nic do prohlížeče, titulem je oprávněný zájem) a vzor zásad z 3.2 ji nově jmenuje.
+
+### `SettingsField` umí credentials
+Tabulka `settings` ukládá prostý JSON, takže Heureka klíč dostal příznak `secret`: šifrování, maskování v administraci, keep-on-update. Dešifrování selhává do prázdna, ne do ciphertextu — po rotaci `APP_KEY` by se jinak odeslal třetí straně jako by to byl klíč.
+
 ## [0.37.0] – 2026-08-05
 
 **Fáze 2 / vlna 3.2 — právní minimum platformy.** Uzavření vlny (`docs/as-is/2026-08-05-pravni-minimum.md`). 41 nových testů; celkem 1954 zelených.

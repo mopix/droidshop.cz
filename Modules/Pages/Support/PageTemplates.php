@@ -161,7 +161,15 @@ class PageTemplates
         [DOPLŇTE — používáte-li analytické nebo reklamní kódy, musíte si na ně vyžádat souhlas předem
         a popsat je zde.]</p>
 
-        <h2>8. Účinnost</h2>
+        <h2>8. Hodnocení nákupu</h2>
+        <p>[DOPLŇTE — smažte celý tento oddíl, pokud nepoužíváte Heureku Ověřeno zákazníky.]
+        Po dokončení objednávky předáváme vaši e-mailovou adresu a seznam zakoupeného zboží službě
+        <strong>Heureka Ověřeno zákazníky</strong> (Heureka Group a.s.), aby vám mohla poslat dotazník
+        spokojenosti. Právním základem je náš oprávněný zájem zjišťovat spokojenost zákazníků.
+        Proti tomuto zpracování můžete kdykoli vznést námitku na [DOPLŇTE e-mail] nebo se odhlásit
+        přímo v dotazníku.</p>
+
+        <h2>9. Účinnost</h2>
         <p>Tyto zásady jsou účinné od [DOPLŇTE datum].</p>
         HTML;
     }

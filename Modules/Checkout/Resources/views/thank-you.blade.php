@@ -99,3 +99,17 @@
         </p>
     </div>
 @endsection
+
+@push('tracking')
+    {{--
+        Purchase conversion, if the shop runs the analytics module and has a
+        measurement id. $purchase comes from that module's composer; the
+        checkout knows nothing about measurement and stays that way.
+
+        The order value may be here because this page is `no-store` and never
+        a page-cache entry — on a cached page it would leak between customers.
+    --}}
+    @if (($purchase ?? []) !== [])
+        @include('analytics::purchase')
+    @endif
+@endpush
