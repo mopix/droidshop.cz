@@ -120,7 +120,7 @@ class XmlOutputInvalidationTest extends TestCase
         // Before this fix the stamp never moved for a page-only change.
         $this->get('http://obchod.droidshop/sitemap.xml')
             ->assertOk()
-            ->assertSee('/stranka/o-nas', escape: false);
+            ->assertSee('http://obchod.droidshop/o-nas', escape: false);
     }
 
     /**

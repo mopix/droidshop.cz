@@ -4,12 +4,28 @@ use Illuminate\Support\Facades\Route;
 use Modules\Pages\Http\Controllers\PageController;
 
 /*
- * Note: the storefront rule puts static pages at /{page-slug}. A catch-all at
- * the root would swallow every other storefront route, and route ordering
- * across modules is not solved until the theme module lands. Until then this
- * sits under /stranka/{slug}. Recorded as a deviation in the wave as-is.
+ * Static pages live at /{page-slug}, per the binding storefront rule.
+ *
+ * The mechanism is Route::fallback(), not a catch-all /{slug}: Laravel
+ * evaluates a fallback after every other route regardless of registration
+ * order, so it cannot swallow a storefront path — including ones added after
+ * this file was written. ModuleRouteRegistrar walks glob() (alphabetically),
+ * which puts `pages` ahead of `products` and `storefront`, so a plain
+ * catch-all here really would have eaten /kosik, /hledani and the rest. The
+ * other candidate, a blacklist of reserved first segments, would have to be
+ * extended by hand for every new route and would fail silently when it was
+ * not.
+ *
+ * The price of a fallback is that it also matches multi-segment paths and
+ * /admin/*; PageController::show() rejects anything with a slash and
+ * abort(404)s, which is what hands those requests to RedirectResponder (the
+ * NotFoundHttpException handler that answers renamed slugs with a 301).
  */
-Route::get('/stranka/{slug}', [PageController::class, 'show'])
+Route::get('/stranka/{slug}', [PageController::class, 'legacy'])
+    ->where('slug', '[^/]+')
+    ->name('legacy');
+
+Route::fallback([PageController::class, 'show'])
     // Deliberately without `catalog`. The whole-branch review of wave 3.0
     // asked for it on the grounds that the shared layout renders
     // $navCategories from Category::query()->visible() — but this route does

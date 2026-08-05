@@ -35,7 +35,7 @@ const columns: Column[] = [
       <template #empty>Zatím tu není žádná stránka.</template>
       <template #cell-title="{ row }">{{ (row as Page).title }}</template>
       <template #cell-slug="{ row }">
-        <code class="text-xs">/stranka/{{ (row as Page).slug }}</code>
+        <code class="text-xs">/{{ (row as Page).slug }}</code>
       </template>
       <template #cell-state="{ row }">
         <!-- Text, not just a colour: state has to survive being read aloud. -->

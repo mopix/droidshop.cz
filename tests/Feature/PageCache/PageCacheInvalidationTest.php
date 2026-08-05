@@ -355,7 +355,7 @@ class PageCacheInvalidationTest extends TestCase
             'is_published' => true,
         ]);
 
-        $this->get('http://obchod.droidshop/stranka/o-nas')
+        $this->get('http://obchod.droidshop/o-nas')
             ->assertOk()
             ->assertSee('Text stranky.')
             ->assertDontSee('Boty');

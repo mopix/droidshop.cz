@@ -109,7 +109,7 @@ class SitemapController
             ->where('is_published', true)
             ->get()
             ->map(fn ($page) => [
-                'loc' => url('/stranka/'.$page->slug),
+                'loc' => url('/'.$page->slug),
                 'lastmod' => $page->updated_at,
             ]);
     }
