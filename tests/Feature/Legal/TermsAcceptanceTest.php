@@ -40,4 +40,45 @@ class TermsAcceptanceTest extends TestCase
 
         $this->assertInstanceOf(Carbon::class, $user->fresh()->terms_accepted_at);
     }
+
+    public function test_registration_without_consent_is_refused_and_creates_nobody(): void
+    {
+        $this->post('/register', [
+            'name' => 'Jan Novák',
+            'email' => 'jan@example.com',
+            'password' => 'heslo-heslo-heslo',
+            'password_confirmation' => 'heslo-heslo-heslo',
+        ])->assertSessionHasErrors('terms');
+
+        $this->assertGuest();
+        $this->assertDatabaseMissing('users', ['email' => 'jan@example.com']);
+    }
+
+    public function test_registration_with_consent_records_the_time_and_the_version(): void
+    {
+        $this->post('/register', [
+            'name' => 'Jan Novák',
+            'email' => 'jan@example.com',
+            'password' => 'heslo-heslo-heslo',
+            'password_confirmation' => 'heslo-heslo-heslo',
+            'terms' => true,
+        ])->assertRedirect(route('onboarding.create', absolute: false));
+
+        $user = User::query()->where('email', 'jan@example.com')->firstOrFail();
+
+        $this->assertNotNull($user->terms_accepted_at);
+        $this->assertSame('2026-08-05', $user->terms_version);
+    }
+
+    public function test_the_refusal_is_explained_in_czech(): void
+    {
+        $this->post('/register', [
+            'name' => 'Jan Novák',
+            'email' => 'jan@example.com',
+            'password' => 'heslo-heslo-heslo',
+            'password_confirmation' => 'heslo-heslo-heslo',
+        ])->assertSessionHasErrors([
+            'terms' => 'Bez souhlasu s obchodními podmínkami se nelze zaregistrovat.',
+        ]);
+    }
 }
