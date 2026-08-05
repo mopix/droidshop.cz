@@ -1,5 +1,6 @@
 <?php
 
+use App\Core\Consent\ConsentCookie;
 use App\Core\Routing\RedirectResponder;
 use App\Http\Middleware\AllowLocalOnly;
 use App\Http\Middleware\CacheStorefrontPage;
@@ -64,6 +65,17 @@ $app = Application::configure(basePath: dirname(__DIR__))
         $middleware->web(append: [
             HandleInertiaRequests::class,
             AddLinkHeadersForPreloadedAssets::class,
+        ]);
+
+        // The consent cookie is the one cookie the storefront's own
+        // JavaScript has to read: it hides the banner before the page paints
+        // and decides which tracking scripts may load. Encrypted, it would be
+        // opaque to it. The payload is three booleans and a version — nothing
+        // personal, nothing an attacker gains from reading, and nothing that
+        // grants access if forged (a forged "accepted" only opts that same
+        // visitor into tracking).
+        $middleware->encryptCookies(except: [
+            ConsentCookie::NAME,
         ]);
 
         $middleware->alias([
