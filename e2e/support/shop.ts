@@ -80,6 +80,41 @@ export async function setConsent(page: Page, categories: string[]): Promise<void
   ])
 }
 
+/**
+ * Creates a product with a Size axis, so the variant island has something to
+ * react to.
+ *
+ * The demo seed ships no variants at all, and a scenario that skips itself
+ * when the fixture is missing is a scenario nobody notices has stopped
+ * running. Idempotent: re-running the suite reuses the product.
+ */
+export function seedVariantProduct(slug = 'e2e-varianty'): string {
+  artisanEval(`
+    $t = App\\Models\\Tenant::whereHas('domains', fn($q) => $q->where('domain', 'obchod.${HOST}'))->firstOrFail();
+    app(App\\Core\\Tenancy\\TenantContext::class)->runAs($t, function () {
+      if (Modules\\Products\\Models\\Product::where('slug', '${slug}')->exists()) {
+        return;
+      }
+
+      $product = app(Modules\\Products\\Services\\ProductWriter::class)->create([
+        'name' => 'E2E tričko',
+        'slug' => '${slug}',
+        'price' => 49900,
+        'status' => Modules\\Products\\Models\\Product::STATUS_ACTIVE,
+        'tax_rate_id' => app(App\\Core\\Tax\\TaxRates::class)->default()->id,
+      ]);
+
+      // upsertVariant creates the axis and its values on the way through, so
+      // the two calls below are the whole matrix.
+      $writer = app(Modules\\Products\\Services\\VariantWriter::class);
+      $writer->upsertVariant($product, ['Velikost' => 'S'], ['price' => 49900, 'stock_qty' => 5, 'stock_tracked' => true]);
+      $writer->upsertVariant($product, ['Velikost' => 'L'], ['price' => 59900, 'stock_qty' => 5, 'stock_tracked' => true]);
+    });
+  `)
+
+  return slug
+}
+
 /** The slug of a product the demo shop is seeded with. */
 export async function firstProductSlug(page: Page): Promise<string> {
   await page.goto(shopUrl('/'))
