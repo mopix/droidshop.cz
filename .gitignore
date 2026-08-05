@@ -26,3 +26,7 @@ Thumbs.db
 .env.local
 .env.testing
 /public/media
+
+/e2e/.artifacts
+/playwright-report
+/test-results
