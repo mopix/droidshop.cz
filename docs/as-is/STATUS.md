@@ -1,6 +1,6 @@
 # As-is status — DroidShop.cz
 
-Poslední aktualizace: **2026-08-05** · Verze: **0.36.0** (vlna 3.1)
+Poslední aktualizace: **2026-08-05** · Verze: **0.37.0** (vlna 3.2)
 
 ## Oblasti
 
@@ -16,7 +16,8 @@ Poslední aktualizace: **2026-08-05** · Verze: **0.36.0** (vlna 3.1)
 | Kernel služba — MailService | **hotovo** | §15.1 | [detail](../superpowers/plans/2026-07-20-faze-1-vlna-13-etapa-1-mailservice.md); šablony verifikace a reset hesla dodal modul `customers`, potvrzení objednávky a stavové e-maily dodal modul `orders` |
 | Kernel služba — EventBus | odloženo | §15.1 | čeká na prvního volajícího |
 | Module system | **hotovo** | kap. 5, §15.5 | [detail](2026-07-19-system-modulu.md) — bez odinstalace |
-| Referenční modul `Pages` | **hotovo** | — | statické stránky, Blade SSR |
+| Modul `pages` — statické stránky + editor | **hotovo** | — | Blade SSR na `/{slug}` (vlna 3.1); editor doplněn vlnou 3.2 — do té doby byla obrazovka read-only, takže nájemce nemohl své VOP vůbec publikovat. `PageWriter` (sanitizace při zápisu, unikátní slug, 301 při přejmenování), CRUD, vzory s `[DOPLŇTE …]`. Bez WYSIWYG — HTML v textarea |
+| Právní minimum platformy | **hotovo** | kap. 11 | [detail](2026-08-05-pravni-minimum.md); vlna 3.2. Čtyři dokumenty v `docs/legal/` + renderované na `/pravni/*` (VOP, zásady zpracování = my správce vůči nájemci, DPA čl. 28 = my zpracovatel vůči jeho zákazníkům, cookies); prefix `/pravni/` je **nutný** — jednosegmentová platformní routa by na hostu nájemce zastínila jeho stránku, protože `RequirePlatformHost` 404uje až po matchi a fallback z 3.1 by se neuplatnil. Souhlas při registraci se zapisuje s datem i verzí (`users.terms_accepted_at`/`terms_version`), validace server-side. Nový e-shop dostane tři vzory místo prázdna; `footerPages` sdílí modul `pages` dvěma views, protože Blade child se renderuje **před** layoutem a composer na layoutu do pokladny nedosáhne. **Drafty bez právní revize** (rozhodnutí vlastníka) — markery `K PRÁVNÍ REVIZI` u limitace škody, SLA, lhůty ohlášení porušení a rozsahu auditu |
 | Superadmin auth / `platform_admins` / 2FA / impersonace | **hotovo** | §15.4, §6.12 | [detail](2026-07-19-superadmin-auth.md) |
 | Superadmin management UI — tenanti, stavy, tarify, moduly, kill switch | **hotovo** | §6.12, §15.5 | [detail](2026-07-20-superadmin-ui.md); bez metrik a bez zakládání tenantů |
 | Admin nájemce — shell, navigace z modulů, oprávnění | **hotovo** | §15.4, §15.5 | [detail](2026-07-20-katalog-jadro.md) |
