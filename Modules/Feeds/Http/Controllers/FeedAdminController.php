@@ -12,10 +12,14 @@ use Modules\Categories\Models\Category;
 use Modules\Feeds\Http\Requests\UpdateFeedRequest;
 use Modules\Feeds\Models\FeedCategoryMapping;
 use Modules\Feeds\Models\ProductFeed;
+use Modules\Feeds\Support\FeedCache;
 
 class FeedAdminController
 {
-    public function __construct(private readonly TenantContext $context) {}
+    public function __construct(
+        private readonly TenantContext $context,
+        private readonly FeedCache $cache,
+    ) {}
 
     public function index(Request $request): Response
     {
@@ -105,9 +109,31 @@ class FeedAdminController
     /**
      * A merchant who just fixed a category must not wait an hour to see it in
      * the feed; the TTL is there for crawler traffic, not for the admin.
+     *
+     * The feed's cache key now carries the tenant's catalogue generation
+     * (wave 3.0), so the plain `Cache::forget('feed:'.$tenant.':'.$type)`
+     * this used to do can no longer match anything — the key it built never
+     * had a generation stamp in it. `FeedCache::key()` reconstructs today's
+     * exact key (tenant, type, current stamp) and this forgets precisely
+     * that entry.
+     *
+     * Bumping the tenant's Catalog generation instead — the way
+     * `CategoryTree::reorder()` bumps it inline after a write that bypasses
+     * `PageCacheObserver` — was considered and rejected here: `Catalog` is
+     * also read by the homepage, every product and category page, the
+     * sitemap, and the *other* feed type, so a bump would evict the tenant's
+     * entire catalogue-facing cache over one feed's settings. Forgetting the
+     * single computed key gets the same "must not wait an hour" outcome
+     * without the blast radius.
      */
     private function forgetCache(string $type): void
     {
-        Cache::forget('feed:'.$this->context->id().':'.$type);
+        $tenant = $this->context->current();
+
+        if ($tenant === null) {
+            return;
+        }
+
+        Cache::forget($this->cache->key($tenant, $type));
     }
 }

@@ -4,6 +4,8 @@ namespace App\Core\Modules;
 
 use App\Core\Modules\Exceptions\PlanDoesNotIncludeModule;
 use App\Core\Modules\Exceptions\UnresolvableDependencies;
+use App\Core\PageCache\Dimension;
+use App\Core\PageCache\Generations;
 use App\Core\Services\AuditLog;
 use App\Core\Tenancy\TenantContext;
 use App\Models\Module;
@@ -27,6 +29,7 @@ class ModuleRegistry
         private readonly TenantContext $context,
         private readonly DependencyResolver $resolver,
         private readonly AuditLog $audit,
+        private readonly Generations $generations,
     ) {}
 
     /**
@@ -158,6 +161,32 @@ class ModuleRegistry
     public function forgetTenant(Tenant $tenant): void
     {
         Cache::forget("modules:enabled:{$tenant->id}");
+
+        // A cached page renders whatever ShopModules said at render time
+        // (page cache, wave 3.0). activate() and deactivate() both funnel
+        // through here, so bumping in this one place covers both. Bumps the
+        // $tenant this call is acting on — activate()/deactivate() are also
+        // reached from the superadmin plan reconciler and from the Stripe
+        // subscription webhook, both of which pass a tenant that is not
+        // necessarily the ambient TenantContext::current().
+        //
+        // Not deferred with DB::afterCommit: unlike EloquentProductCatalog's
+        // stock write-off, nothing here would gain from it. The only two
+        // callers that reach this from inside their own transaction —
+        // PlanSwitcher::switch() and TenantPlanSwitcher::switchTo() (always
+        // called from inside StripeWebhookHandler's single transaction) —
+        // both write this same tenants row (plan_id/billing_interval) with
+        // forceFill()->save() BEFORE calling activate()/deactivate(), so by
+        // the time this runs, that transaction already holds the row for
+        // its own reasons. Bumping inline here adds no new lock and no new
+        // ordering versus what that transaction already does; it is not the
+        // stock write-off's situation, where the bump would have been the
+        // transaction's first and only touch of tenants, opening the door to
+        // two concurrent orders taking the tenants and a product lock in
+        // opposite order. PlanModuleReconciler::apply(), the third caller,
+        // wraps nothing at all around its activate()/deactivate() calls, so
+        // each one autocommits on its own regardless.
+        $this->generations->bump($tenant, Dimension::Theme);
     }
 
     /**

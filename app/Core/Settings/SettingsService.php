@@ -4,6 +4,8 @@ namespace App\Core\Settings;
 
 use App\Core\Modules\Manifest;
 use App\Core\Modules\ModuleRegistry;
+use App\Core\PageCache\Dimension;
+use App\Core\PageCache\Generations;
 use App\Core\Settings\Exceptions\InvalidSetting;
 use App\Core\Tenancy\Exceptions\MissingTenantContext;
 use App\Core\Tenancy\TenantContext;
@@ -24,6 +26,7 @@ class SettingsService
     public function __construct(
         private readonly TenantContext $context,
         private readonly ModuleRegistry $registry,
+        private readonly Generations $generations,
     ) {}
 
     public function get(string $module, string $key, mixed $default = null): mixed
@@ -100,7 +103,28 @@ class SettingsService
 
     public function forget(string $module): void
     {
-        Cache::forget("settings:{$this->requireTenant()}:{$module}");
+        $tenantId = $this->requireTenant();
+
+        Cache::forget("settings:{$tenantId}:{$module}");
+
+        // Page cache (wave 3.0): settings reach the rendered storefront (the
+        // variant picker, the order number prefix, the checkout minimum), so
+        // a page cached before this edit must not survive it. set() and
+        // setMany() both funnel through here, so bumping in this one place
+        // covers both without duplicating the call at each write path — and
+        // covers any future direct caller of forget() too.
+        //
+        // requireTenant() above already throws when there is no ambient
+        // tenant, so context->current() here is guaranteed non-null.
+        //
+        // Not deferred with DB::afterCommit: setMany()'s own DB::transaction()
+        // has already closed by the time this runs (forget() is called after
+        // it, not from inside it), so the write is already durable. Nothing
+        // in this codebase calls set()/setMany() from inside a longer,
+        // externally-owned transaction — unlike an order placement, an admin
+        // saving a settings form is a single low-frequency write with nothing
+        // else contending for the tenant row around it.
+        $this->generations->bump($this->context->current(), Dimension::Theme);
     }
 
     /**

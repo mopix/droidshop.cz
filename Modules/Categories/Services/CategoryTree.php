@@ -2,7 +2,10 @@
 
 namespace Modules\Categories\Services;
 
+use App\Core\PageCache\Dimension;
+use App\Core\PageCache\Generations;
 use App\Core\Routing\RedirectRegistry;
+use App\Core\Tenancy\TenantContext;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -25,7 +28,11 @@ class CategoryTree
 {
     public const MAX_DEPTH = 4;
 
-    public function __construct(private readonly RedirectRegistry $redirects) {}
+    public function __construct(
+        private readonly RedirectRegistry $redirects,
+        private readonly TenantContext $context,
+        private readonly Generations $generations,
+    ) {}
 
     /**
      * @param  array<string, mixed>  $attributes
@@ -212,6 +219,17 @@ class CategoryTree
                     ->update(['position' => ($position + 1) * 10]);
             }
         });
+
+        // A bulk positional UPDATE never instantiates a Category, so
+        // PageCacheObserver never sees it — same shape as the stock
+        // write-off exception it documents. This bumps the catalogue once
+        // for the whole reorder, not once per row: a page depends on the
+        // resulting order, not on how many siblings moved to produce it.
+        $tenant = $this->context->current();
+
+        if ($tenant !== null) {
+            $this->generations->bump($tenant, Dimension::Catalog);
+        }
     }
 
     /**

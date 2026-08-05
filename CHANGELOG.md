@@ -11,6 +11,26 @@ Pravidla: [`.claude/skills/versioning/SKILL.md`](.claude/skills/versioning/SKILL
 
 > CHANGELOG vede milníky (minor/major). Detail patchů je v `git log`.
 
+## [0.35.0] – 2026-08-05
+
+**Fáze 2 / vlna 3.0 — page cache storefrontu (§15.6), etapa 1.** Uzavření vlny (`docs/as-is/2026-08-03-page-cache.md`). 96 nových testů v `tests/Feature/PageCache/` a `tests/Unit/PageCache/` (224 assertions).
+
+### Whole-HTML cache pro anonymní GET
+Storefront do teď renderoval každý požadavek od nuly — cíl TTFB < 200 ms ze specifikace §8 nechránil nic. Nová jádrová infrastruktura `app/Core/PageCache/` (ne modul — slouží všem storefront modulům) přidává opt-in middleware `page-cache:{dimenze}` za `StartSession`. Klíč `page:{tenant}:{host}:{gen-stamp}:{path}[:{qs-hash}]` s query whitelistem (`razeni`, `skladem`, `page`, `q`); přihlášený zákazník i personál cache vždy obchází; CSRF token se v cache nahrazuje HTML-komentářovou značkou a při servírování vrací čerstvý.
+
+### Invalidace generačními čítači ve sloupcích `tenants`
+Spec §15.6 psala tagy, ale ty umí jen Redis, kterou projekt dosud nikde nepoužívá. Tři čítače (`page_gen_catalog/content/theme`) leží přímo na `tenants`, ne v cache store — vystěhovaný čítač by se vrátil na 1 a obživil staré stránky. Bump spouští observer modelů (`Product`, `ProductVariant`, `Category`, `HomepageBlock`, `Page`, `TenantTheme`, …), s explicitními výjimkami tam, kde zápis obchází Eloquent (odpis skladu na hranici skladem/vyprodáno, reorder kategorií). Sjednocuje pod sebe dřívější ad-hoc hodinovou cache sitemap a feedů (2.9) — přecenění se teď projeví okamžitě, ne až po TTL.
+
+### Co zachytilo review
+- **`mayStore()` kontrolovala i `Cache-Control: private`** — Symfony razítkuje `no-cache, private` na každou odpověď se session cookie jako framework default, takže by se podle plánu neuložilo vůbec nic. Oprava: kontroluje jen `no-store`.
+- **CSRF značka `@@PAGECACHE_CSRF@@` procházela beze změny Blade escapingem i `HtmlSanitizer`** — nájemce, který by ji napsal do popisu produktu, by dostal živý token náhodného návštěvníka vlepený do svého obsahu. Tvar změněn na `<!--PAGECACHE_CSRF-->`, který sanitizace/escaping vždy pozmění.
+- **404 na neexistující cestě middleware routy nikdy neuvidí** — routing vyhodí výjimku dřív, než doběhne k middlewaru. `RedirectResponder` (handler `NotFoundHttpException`) proto cachuje výsledek hledání v `redirects` sám, klíčovaný na katalogovou generaci.
+- **Fold hledaného termínu měl dvě nezávislé definice** — klíč jen trimoval `q`, hledání samo folduje case i diakritiku (`SearchText::normalise()`). Sjednoceno do `PageCacheKey::foldSearchTerm()`, použité v klíči, v hlavičce i na `/hledani`.
+- **`spatie/laravel-multitenancy`'s krátký obvod v `makeCurrent()`** nechával `TenantContext::current()` servírovat atributy z prvního requestu na workeru, který přežije víc než jeden request — objeveno přes čítače, které se v DB měnily, ale do cache klíče se nepropisovaly. Oprava v `app/Core/Tenancy/TenantContext.php`, mimo deklarovaný rozsah vlny, ponechána ve větvi na rozhodnutí vlastníka.
+
+### Mimo rozsah, odloženo na nasazení
+Etapa 2 (statický soubor servírovaný web serverem, s otevřenou otázkou CSRF u staticky servírovaných stránek) a etapa 3 (datová a fragmentová cache — menu, patička, číselník sazeb).
+
 ## [0.34.0] – 2026-07-31
 
 **Fáze 2 / vlna 2.12 — doprava a poplatek na dokladu + dotažení účetního exportu.** Uzavření vlny (`docs/as-is/2026-07-31-doprava-na-dokladu.md`). 1755 testů (6206 assertions).

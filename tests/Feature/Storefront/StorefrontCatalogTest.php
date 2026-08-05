@@ -224,6 +224,43 @@ class StorefrontCatalogTest extends TestCase
         $this->assertLessThan(strpos($html, 'Drahy'), strpos($html, 'Levny'));
     }
 
+    /**
+     * Whole-branch review, finding 2: the listing paginated with
+     * withQueryString(), which appends the *raw* request query to every
+     * page link — including the marketing parameters PageCacheKey
+     * deliberately drops from the key. On a cached page that means the
+     * visitor who arrived from a mailing list warms an entry whose page-2
+     * link carries their own `mc_eid`, and every later anonymous visitor is
+     * handed it. `gclid`, `fbclid` and `utm_*` behave the same.
+     */
+    public function test_pagination_links_never_carry_a_visitors_tracking_parameters(): void
+    {
+        $category = $this->makeCategory($this->tenantA, ['slug' => 'strankovane']);
+
+        // One more than the page size (ProductQuery: 24), so links() renders.
+        for ($i = 1; $i <= 25; $i++) {
+            $this->makeProduct($this->tenantA, [
+                'name' => 'Produkt '.$i,
+                'slug' => 'produkt-'.$i,
+            ], $category);
+        }
+
+        // Visitor A warms the entry with their own identifier attached.
+        $this->get('http://shop1.droidshop/kategorie/strankovane?mc_eid=AAA')->assertOk();
+
+        $html = $this->get('http://shop1.droidshop/kategorie/strankovane?mc_eid=BBB')
+            ->assertOk()
+            ->getContent();
+
+        // The links really are on the page, so the assertions below are not
+        // passing on an empty listing.
+        $this->assertStringContainsString('page=2', $html);
+
+        $this->assertStringNotContainsString('mc_eid', $html);
+        $this->assertStringNotContainsString('AAA', $html);
+        $this->assertStringNotContainsString('BBB', $html);
+    }
+
     public function test_filtered_listing_is_noindex(): void
     {
         $this->makeCategory($this->tenantA, ['slug' => 'vse']);

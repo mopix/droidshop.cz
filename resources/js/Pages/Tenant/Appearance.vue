@@ -112,6 +112,25 @@ const logoDescribedBy = computed(() =>
 const faviconDescribedBy = computed(() =>
   [form.errors.favicon ? 'favicon-error' : null, 'favicon-hint'].filter(Boolean).join(' '),
 )
+
+// Reversible, non-destructive (nothing is lost — the cache just rebuilds on
+// the next request), so unlike logo/favicon removal this does not get a
+// confirmation dialog.
+const flushingCache = ref(false)
+
+function flushCache() {
+  flushingCache.value = true
+  router.post(
+    route('admin.appearance.cache.flush'),
+    {},
+    {
+      preserveScroll: true,
+      onFinish: () => {
+        flushingCache.value = false
+      },
+    },
+  )
+}
 </script>
 
 <template>
@@ -300,6 +319,22 @@ const faviconDescribedBy = computed(() =>
           </button>
         </div>
       </form>
+
+      <section class="mt-8 border-t border-gray-200 pt-6">
+        <h2 class="text-base font-semibold text-gray-900">Cache e-shopu</h2>
+        <p class="mt-1 text-sm text-gray-600">
+          Storefront se zobrazuje z uložené podoby, aby byl rychlý. Změny se projeví samy;
+          tohle tlačítko je pro případ, kdy vidíte zastaralý obsah a nechcete čekat.
+        </p>
+        <button
+          type="button"
+          :disabled="flushingCache"
+          class="mt-3 rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-900 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:text-gray-400"
+          @click="flushCache"
+        >
+          Vymazat cache e-shopu
+        </button>
+      </section>
     </div>
 
     <ConfirmDialog

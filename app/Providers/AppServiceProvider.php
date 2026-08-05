@@ -30,6 +30,7 @@ use App\Core\Orders\Contracts\OrderSettlement;
 use App\Core\Orders\NullOrderBook;
 use App\Core\Orders\NullOrderPlacement;
 use App\Core\Orders\NullOrderSettlement;
+use App\Core\PageCache\PageCacheObserver;
 use App\Core\Payments\Contracts\PaymentGatewayRegistry;
 use App\Core\Payments\NullPaymentGatewayRegistry;
 use App\Core\Shipping\Contracts\CarrierRegistry;
@@ -43,6 +44,7 @@ use App\Core\Shipping\NullPickupPointCatalog;
 use App\Core\Shipping\NullShipmentBook;
 use App\Core\Shipping\NullShippingOptions;
 use App\Core\Storage\StorageLimitCounter;
+use App\Models\TenantTheme;
 use Illuminate\Support\Facades\Vite;
 use Illuminate\Support\ServiceProvider;
 
@@ -172,5 +174,24 @@ class AppServiceProvider extends ServiceProvider
         // queued counts too, and why failed does not).
         $this->app->make(LimitsService::class)
             ->registerCounter($this->app->make(MailLimitCounter::class));
+
+        // Page cache invalidation (wave 3.0). Registered on the class name as
+        // a string: core knows a module by its key, never by a compile-time
+        // import (same convention as DefaultHomepage in TenantProvisioner).
+        foreach ([
+            TenantTheme::class,
+            'Modules\\Products\\Models\\Product',
+            'Modules\\Products\\Models\\ProductVariant',
+            'Modules\\Products\\Models\\ProductOption',
+            'Modules\\Products\\Models\\ProductOptionValue',
+            'Modules\\Products\\Models\\ProductImage',
+            'Modules\\Categories\\Models\\Category',
+            'Modules\\Storefront\\Models\\HomepageBlock',
+            'Modules\\Pages\\Models\\Page',
+        ] as $model) {
+            if (class_exists($model)) {
+                $model::observe(PageCacheObserver::class);
+            }
+        }
     }
 }

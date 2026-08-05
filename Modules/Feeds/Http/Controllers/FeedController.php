@@ -7,6 +7,7 @@ use App\Core\Tenancy\TenantContext;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Cache;
 use Modules\Feeds\Models\ProductFeed;
+use Modules\Feeds\Support\FeedCache;
 use Modules\Feeds\Support\FeedItemBuilder;
 
 /**
@@ -27,6 +28,7 @@ class FeedController
         private readonly TenantContext $context,
         private readonly FeedItemBuilder $builder,
         private readonly ShippingOptions $shipping,
+        private readonly FeedCache $cache,
     ) {}
 
     public function __invoke(string $type): Response
@@ -42,7 +44,7 @@ class FeedController
         abort_if($feed === null || ! $feed->enabled, 404);
 
         $xml = Cache::remember(
-            'feed:'.$tenant->id.':'.$type,
+            $this->cache->key($tenant, $type),
             self::CACHE_TTL,
             fn () => $this->render($feed),
         );

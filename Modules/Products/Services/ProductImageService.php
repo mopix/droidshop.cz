@@ -2,7 +2,10 @@
 
 namespace Modules\Products\Services;
 
+use App\Core\PageCache\Dimension;
+use App\Core\PageCache\Generations;
 use App\Core\Storage\FileStorage;
+use App\Core\Tenancy\TenantContext;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
@@ -31,7 +34,11 @@ class ProductImageService
     /** @var list<string> the types the contents must actually be */
     public const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 
-    public function __construct(private readonly FileStorage $storage) {}
+    public function __construct(
+        private readonly FileStorage $storage,
+        private readonly TenantContext $context,
+        private readonly Generations $generations,
+    ) {}
 
     public function add(Product $product, UploadedFile $file, ?string $alt = null): ProductImage
     {
@@ -98,6 +105,17 @@ class ProductImageService
                     ->update(['position' => ($position + 1) * 10]);
             }
         });
+
+        // A bulk positional UPDATE never instantiates a ProductImage, so
+        // PageCacheObserver never sees it — same shape as CategoryTree::reorder
+        // and the stock write-off. Which image leads the gallery and the
+        // listing tile depends on this order, so the catalogue is bumped once
+        // for the whole call, not once per row that moved.
+        $tenant = $this->context->current();
+
+        if ($tenant !== null) {
+            $this->generations->bump($tenant, Dimension::Catalog);
+        }
     }
 
     public function remove(ProductImage $image): void

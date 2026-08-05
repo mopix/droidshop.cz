@@ -2,6 +2,8 @@
 
 namespace Modules\Storefront\Http\Controllers;
 
+use App\Core\PageCache\Dimension;
+use App\Core\PageCache\Generations;
 use App\Core\Tenancy\TenantContext;
 use Illuminate\Http\Response;
 use Illuminate\Support\Collection;
@@ -30,6 +32,7 @@ class SitemapController
     public function __construct(
         private readonly TenantContext $context,
         private readonly ShopModules $modules,
+        private readonly Generations $generations,
     ) {}
 
     public function __invoke(): Response
@@ -38,8 +41,14 @@ class SitemapController
 
         abort_if($tenant === null, 404);
 
+        // Catalog covers the product/category entries; Content covers the
+        // static Page entries pageEntries() adds below — Page is bumped
+        // under Dimension::Content by PageCacheObserver, not Catalog, so
+        // publishing or unpublishing a page must be able to change this key.
+        $stamp = $this->generations->stamp($tenant, [Dimension::Catalog, Dimension::Content]);
+
         $xml = Cache::remember(
-            'sitemap:'.$tenant->id,
+            'sitemap:'.$tenant->id.':'.$stamp,
             self::CACHE_TTL,
             fn () => $this->build(),
         );

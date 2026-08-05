@@ -2,10 +2,14 @@
 
 namespace App\Core\Routing;
 
+use App\Core\PageCache\Dimension;
+use App\Core\PageCache\Generations;
+use App\Core\PageCache\PageCacheKey;
 use App\Core\Tenancy\DomainTenantFinder;
 use App\Core\Tenancy\TenantContext;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 
 /**
  * Serves the redirects that RedirectRegistry records (spec §15.3).
@@ -24,6 +28,7 @@ class RedirectResponder
         private readonly RedirectRegistry $registry,
         private readonly TenantContext $context,
         private readonly DomainTenantFinder $finder,
+        private readonly Generations $generations,
     ) {}
 
     public function respond(Request $request): ?RedirectResponse
@@ -51,9 +56,54 @@ class RedirectResponder
 
         $path = '/'.ltrim($request->path(), '/');
 
-        $target = $this->registry->resolve($path);
+        // Resolved above, either by the pipeline or by the host lookup this
+        // method just ran — never null past this point.
+        $tenant = $this->context->current();
 
-        if ($target === null) {
+        // The documented kill switch has to restore pre-wave behaviour
+        // everywhere, not just in the middleware: with the page cache off,
+        // this lookup goes straight to the table.
+        if (! config('pagecache.enabled', true)) {
+            return $this->redirectTo((string) $this->registry->resolve($path), $path, $request);
+        }
+
+        $stamp = $this->generations->stamp($tenant, [Dimension::Catalog]);
+
+        // A redirect is born by renaming a slug, so it lives and dies with the
+        // catalogue generation. Scanners hammer paths that never had a route,
+        // and those are exactly the requests that would otherwise query this
+        // table forever without ever finding a row.
+        //
+        // The empty string stands for "no redirect". It cannot be confused
+        // with a real target: RedirectRegistry::normalise() never produces
+        // one (every stored to_path starts with a leading slash), and casting
+        // a null lookup result to string is what produces it here.
+        //
+        // Store and TTL come from the same config CacheStorefrontPage reads
+        // for its own "not found" entries — this is the same concept (a
+        // cached 404) and must live in the same store, or a store bump would
+        // not flush it and PAGE_CACHE_STORE pointed elsewhere would split it
+        // from the rest of the page cache.
+        //
+        // The path is bounded the same way the page cache bounds it
+        // (PageCacheKey::bounded): `cache.key` is varchar(255) and this is the
+        // lookup scanners hammer with arbitrarily long URLs — unbounded, MySQL
+        // answers with "Data too long for column 'key'", i.e. a 500 where the
+        // visitor should simply have received a 404. Every in-route 404 lands
+        // here too (the storefront controllers' firstOrFail() ends up in this
+        // responder), so a long unknown slug is the same hazard.
+        $target = Cache::store(config('pagecache.store'))->remember(
+            'redirect:'.$tenant->getKey().':'.$stamp.':'.PageCacheKey::bounded($path),
+            (int) config('pagecache.ttl.not_found', 3600),
+            fn (): string => (string) $this->registry->resolve($path),
+        );
+
+        return $this->redirectTo($target, $path, $request);
+    }
+
+    private function redirectTo(string $target, string $path, Request $request): ?RedirectResponse
+    {
+        if ($target === '') {
             return null;
         }
 
