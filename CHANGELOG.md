@@ -11,6 +11,22 @@ Pravidla: [`.claude/skills/versioning/SKILL.md`](.claude/skills/versioning/SKILL
 
 > CHANGELOG vede milníky (minor/major). Detail patchů je v `git log`.
 
+## [0.39.0] – 2026-08-06
+
+**Fáze 2 / vlna 3.4 — E2E testy v prohlížeči (Playwright).** Uzavření vlny (`docs/as-is/2026-08-06-e2e-playwright.md`). 22 E2E testů, tři běhy po sobě zelené.
+
+### Poprvé něco spouští JavaScript
+Projekt měl 2003 zelených testů a ani jeden nespouštěl skripty. Tři závazné vlastnosti tím zůstávaly neověřené: že měřicí kódy respektují souhlas (3.3), že checkout funguje bez JS (§16.3) a že storefront splňuje WCAG 2.2 AA.
+
+### Obě premisy vlny neplatily
+V `STATUS.md` od vlny 1.x viselo, že Playwright blokuje omezení certifikátu — týká se `curl` přes HTTPS, ne headless prohlížeče na HTTP. Plán proto stavěl na samostatné `droidshop.test`; ověřeno, že ani ta není potřeba, protože Chromium explicitní `http://` URL s portem neupgraduje. Sada jede na `obchod.droidshop` a nevyžaduje žádný nový záznam v `/etc/hosts`.
+
+### Testy, o kterých víme, že umí selhat
+Gate souhlasu byl dočasně porušen, aby se ověřilo, že sada zčervená. Zčervenala — ale jiné testy, než plán čekal: nosné jsou scénáře **odmítnutí**, protože bez zaznamenaného rozhodnutí se snippet nespustí vůbec. Totéž u axe: `axe-sanity` podstrčí obrázek bez `alt`, protože zelený a slepý audit jsou zvenčí k nerozeznání.
+
+### Nálezy
+Bez JS je checkout o krok delší (platby závisí na zvolené dopravě) — funkční, jen to dosud nikdo neviděl. Demo neseeduje jedinou variantu, takže si scénář produkt zakládá sám. Axe nenašel žádné porušení `critical` ani `serious` na sedmi stránkách.
+
 ## [0.38.0] – 2026-08-05
 
 **Fáze 2 / vlna 3.3 — cookie lišta a měřicí kódy nájemce.** Uzavření vlny (`docs/as-is/2026-08-05-cookie-lista-mereni.md`). 49 nových testů; celkem 2003 zelených.

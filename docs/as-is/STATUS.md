@@ -1,6 +1,6 @@
 # As-is status — DroidShop.cz
 
-Poslední aktualizace: **2026-08-05** · Verze: **0.38.0** (vlna 3.3)
+Poslední aktualizace: **2026-08-06** · Verze: **0.39.0** (vlna 3.4)
 
 ## Oblasti
 
@@ -56,7 +56,7 @@ Poslední aktualizace: **2026-08-05** · Verze: **0.38.0** (vlna 3.3)
 | Tarify / trial / billing | **hotovo** | §3.1 | tabulka `plans` + přiřazení z UI, trial + lifecycle + platformní faktura + reálné inkaso přes Stripe hotové; roční interval a upgrade/downgrade tarifu odloženo |
 | Technické dluhy — stale tenant, feed cache, e-mail o stavu, routa stránek | **hotovo** | vlna 3.1 | [detail](2026-08-05-technicke-dluhy.md); `runAs()`/`runWithoutTenant()` přepínají přes `set()` (short-circuit `makeCurrent()` nechával svázanou starou instanci každému volajícímu, který přes ně přepíná — superadmin, oba Stripe handlery, sweeper, `TenantProvisioner`, `AuditLog`); `ShippingMethod` → `Dimension::Catalog`, takže přejmenovaný dopravce už nezůstane ve feedu hodinu; `Tenant::changeStatus()` dispatchne `TenantStatusChanged` přes `DB::afterCommit` a jediný listener mapuje **oba konce** přechodu na zprávu (trial→past_due je expirace, cokoli jiného→past_due je selhaná platba), sweeper své dvě odeslání ztratil; statické stránky přesunuty na `/{page-slug}` přes `Route::fallback()` (ne catch-all, ne blacklist — Laravel ho řadí za všechny routy bez ohledu na pořadí registrace, což je load-bearing, protože `pages` se registruje abecedně před `products` i `storefront`), controller odmítá víc segmentů a padá na `RedirectResponder`, stará cesta 301 bez DB dotazu |
 | Cookie lišta + měřicí kódy nájemce | **hotovo** | vlna 3.3 | [detail](2026-08-05-cookie-lista-mereni.md); souhlas se třemi kategoriemi v jádře (`app/Core/Consent/`, lištu má i e-shop, který nic neměří), nový base modul `analytics` (GA4 s Consent Mode v2, Sklik, Meta Pixel, Heureka Ověřeno zákazníky). **Server renderuje konfiguraci, nikdy rozhodnutí** — měřicí id jsou per tenant a smějí do cachovaného HTML, souhlas je per návštěvník a nesmí; test hlídá, že HTML je byte-identické pro nerozhodnutého, souhlasícího i odmítajícího, takže page cache z 3.0 zůstává nedotčená. GA4 se **nenačítá** s „denied", ačkoli to Google doporučuje: požadavek stejně dorazí a nese IP. Tlačítka „Přijmout vše" a „Odmítnout vše" mají shodné třídy (test na markup — nerovnocenná volba znamená neplatný souhlas). `SettingsField` dostal příznak `secret` (šifrování, maskování, keep-on-update) kvůli Heureka klíči. **Chování JS neověřuje automatický test** — čeká na Playwright ve 3.4 |
-| Playwright E2E | není | CLAUDE.md | blokováno omezením certifikátu, viz níže; **vlna 3.3 na něj čeká** kvůli ověření, že měřicí skripty respektují souhlas |
+| Playwright E2E | **hotovo** | vlna 3.4 | [detail](2026-08-06-e2e-playwright.md); 22 testů v `e2e/`, `npm run e2e`, vlastní CI job. Souhlas a měření (7 scénářů — zavírá mezeru z 3.3), nákup bez JS (AK §16.3, poprvé skutečně proklikané), nákup s JS včetně ostrůvku variant a konverze, axe nad 7 stránkami. **Obě premisy vlny neplatily:** omezení certifikátu se týká `curl` přes HTTPS, ne headless prohlížeče na HTTP, a Chromium doménu bez TLD u explicitní `http://` URL s portem zvládne — sada proto jede na `obchod.droidshop` a nepotřebuje žádný nový záznam v `/etc/hosts`. Gate souhlasu byl dočasně porušen, aby se ověřilo, že sada umí zčervenat; nosné jsou scénáře **odmítnutí**, ne „před rozhodnutím" |
 | Design handoff | prázdné | `docs/design-droidshop/` | |
 
 ## Odchylky od produktové specifikace
@@ -76,7 +76,7 @@ Nejdůležitější:
 
 ## Známá omezení, na která se narazí dřív než na cokoliv jiného
 
-- **`curl` na subdoménách potřebuje `-k`** — OpenSSL nebere wildcard `*.droidshop` nad jedinou úrovní. Blokuje kontrolní seznam ve `storefront-rendering.md` i Playwright. Oprava = lokální doména `droidshop.test`.
+- **`curl` na subdoménách potřebuje `-k`** — OpenSSL nebere wildcard `*.droidshop` nad jedinou úrovní. Týká se **jen HTTPS**: kontrolní seznam ve `storefront-rendering.md` používá `curl` proti HTTPS. **Playwright to neblokovalo** (vlna 3.4) — E2E sada mluví prostým HTTP proti `artisan serve` a běží na `obchod.droidshop` bez jakéhokoli certifikátu.
 - **Platformní joby musí implementovat `NotTenantAware`** — jinak je tenant-aware fronta tiše zahodí.
 - **Hledání běží přes `LIKE '%term%'` nad `products.search_text`** — index se nepoužije. U desítek tisíc produktů bude potřeba přepsat (fulltext nebo externí index). Argument „fulltext nejede na SQLite v testech" z rozhodnutí 2026-07-20 **už neplatí** — testy jedou na MySQL (`phpunit.xml`). Přepis = vlna 3.2.
 - **Page cache podle §15.6 je hotová jen v aplikační vrstvě (vlna 3.0).** Middleware ušetří render a DB dotazy, ale bootování Laravelu (~30–60 ms) zůstává — to sundá až statický soubor servírovaný web serverem (etapa 2), který čeká na VPS a na rozhodnutí o CSRF u staticky servírovaných stránek.
