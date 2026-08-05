@@ -3,8 +3,10 @@
 namespace Modules\Analytics\Providers;
 
 use App\Core\Orders\Contracts\OrderView;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\View;
 use Illuminate\Support\ServiceProvider;
+use Modules\Analytics\Listeners\ReportOrderToHeureka;
 use Modules\Analytics\Support\PurchasePayload;
 use Modules\Analytics\Support\TrackingCodes;
 
@@ -14,6 +16,11 @@ class ModuleProvider extends ServiceProvider
     {
         $this->shareTrackingCodes();
         $this->sharePurchase();
+
+        // Resolved by name, not by importing the orders module's event class:
+        // analytics declares no `requires` on orders, so a deploy without it
+        // must still boot. An event that never fires costs nothing.
+        Event::listen('Modules\\Orders\\Events\\OrderPlaced', ReportOrderToHeureka::class);
     }
 
     /**
