@@ -53,6 +53,15 @@ class ShopSettingsService
 
         $settings = ShopSettings::updateOrCreate(['tenant_id' => $tenant->id], $data);
 
+        // Mirrored onto the tenant row, which is loaded on every request
+        // anyway. EnsureShopUnlocked and PageCachePolicy both ask "is this
+        // shop locked" on requests a warm page cache would otherwise answer
+        // without a single query; reading it from here would put two back.
+        if (array_key_exists('locked', $data) && $tenant->storefront_locked !== $settings->locked) {
+            $tenant->storefront_locked = $settings->locked;
+            $tenant->save();
+        }
+
         $this->generations->bumpAll($tenant);
 
         return $settings;

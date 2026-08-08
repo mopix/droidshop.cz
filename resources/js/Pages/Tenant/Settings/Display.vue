@@ -11,12 +11,18 @@ const props = defineProps<{
     show_footer_contact: boolean
   }
   defaultEmptySearchText: string
+  lock: {
+    locked: boolean
+    has_password: boolean
+  }
 }>()
 
 const form = useForm({
   hide_empty_categories: props.display.hide_empty_categories,
   empty_search_text: props.display.empty_search_text ?? '',
   show_footer_contact: props.display.show_footer_contact,
+  locked: props.lock.locked,
+  lock_password: '',
 })
 
 const submit = () => form.patch(route('admin.display.update'), { preserveScroll: true })
@@ -58,6 +64,29 @@ const submit = () => form.patch(route('admin.display.update'), { preserveScroll:
             v-model="form.show_footer_contact"
             label="Zobrazovat kontakty v patičce"
             hint="Vypíše, co máte vyplněné v Nastavení → Kontakty. Nevyplněné údaje se nezobrazí tak jako tak."
+          />
+        </fieldset>
+
+        <fieldset class="space-y-4 rounded-md border border-gray-200 p-4">
+          <legend class="px-1 text-sm font-medium text-gray-700">Zaheslování e-shopu</legend>
+
+          <CheckboxField
+            v-model="form.locked"
+            label="Zamknout e-shop heslem"
+            hint="Návštěvník uvidí místo e-shopu formulář s heslem. Vy jako přihlášený správce vidíte e-shop dál."
+          />
+
+          <TextField
+            v-model="form.lock_password"
+            label="Heslo"
+            type="password"
+            autocomplete="new-password"
+            :hint="
+              lock.has_password
+                ? 'Heslo je uložené. Vyplňte, jen když ho chcete změnit.'
+                : 'Aspoň 4 znaky.'
+            "
+            :error="form.errors.lock_password"
           />
         </fieldset>
 

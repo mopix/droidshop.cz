@@ -28,6 +28,9 @@ class Tenant extends SpatieTenant
             'status' => TenantStatus::class,
             'billing_address' => 'array',
             'vat_payer' => 'boolean',
+            // Mirrors shop_settings.locked; see that migration for why the
+            // flag is duplicated here.
+            'storefront_locked' => 'boolean',
             'trial_ends_at' => 'datetime',
             'suspended_at' => 'datetime',
             'deletion_requested_at' => 'datetime',

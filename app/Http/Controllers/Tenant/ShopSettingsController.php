@@ -12,6 +12,7 @@ use App\Http\Requests\Tenant\UpdateSeoRequest;
 use App\Http\Requests\Tenant\UpdateShopRequest;
 use App\Models\ShopSettings;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -164,16 +165,44 @@ class ShopSettingsController extends Controller
                 'show_footer_contact' => $settings->show_footer_contact,
             ],
             'defaultEmptySearchText' => ShopSettings::DEFAULT_EMPTY_SEARCH_TEXT,
+            'lock' => [
+                'locked' => $settings->locked,
+                // Never the password itself, not even hashed. The screen only
+                // needs to know whether one exists.
+                'has_password' => $settings->lock_password !== null,
+            ],
         ]);
     }
 
     public function updateDisplay(UpdateDisplayRequest $request): RedirectResponse
     {
-        $this->settings->update([
+        $current = $this->settings->forCurrentTenant();
+        $locked = $request->boolean('locked');
+        $password = $request->validated('lock_password');
+
+        // Locking with no password anywhere would shut the merchant out of
+        // their own storefront with no way back in from it.
+        if ($locked && $password === null && $current->lock_password === null) {
+            throw ValidationException::withMessages([
+                'lock_password' => 'Zadejte heslo, kterým se do e-shopu vstoupí.',
+            ]);
+        }
+
+        $data = [
             'hide_empty_categories' => $request->boolean('hide_empty_categories'),
             'empty_search_text' => $request->validated('empty_search_text'),
             'show_footer_contact' => $request->boolean('show_footer_contact'),
-        ]);
+            'locked' => $locked,
+        ];
+
+        // Keep-on-update, like every other stored credential (payment and
+        // carrier settings, waves 1.3 and 2.5): an empty field means "leave
+        // the password alone", not "clear it".
+        if ($password !== null && $password !== '') {
+            $data['lock_password'] = $password;
+        }
+
+        $this->settings->update($data);
 
         return back()->with('success', 'Nastavení zobrazení bylo uloženo.');
     }
