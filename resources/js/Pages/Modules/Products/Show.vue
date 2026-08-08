@@ -14,7 +14,7 @@ type Product = {
   short_description: string | null
   description: string | null
   price: number
-  net_price: number
+  net_price: number | null
   sale_price: number | null
   sale_starts_at: string | null
   sale_ends_at: string | null
@@ -60,6 +60,7 @@ type ProductVariant = {
 const props = defineProps<{
   product: Product
   taxRates: { id: number; name: string; percent: number }[]
+  vatApplies: boolean
   categories: { id: number; name: string; depth: number }[]
   options: ProductOption[]
   variants: ProductVariant[]
@@ -113,6 +114,7 @@ const form = useForm({
   short_description: props.product.short_description ?? '',
   description: props.product.description ?? '',
   price: props.product.price,
+  net_price: null as number | null,
   sale_price: props.product.sale_price,
   sale_starts_at: props.product.sale_starts_at,
   sale_ends_at: props.product.sale_ends_at,
@@ -642,7 +644,7 @@ const runVariantDelete = () => {
 
           <div>
             <label for="p-price" class="block text-sm font-medium text-gray-700">
-              Cena s DPH (v haléřích)
+              {{ vatApplies ? 'Cena s DPH (v haléřích)' : 'Cena (v haléřích)' }}
             </label>
             <input
               id="p-price"
@@ -653,14 +655,50 @@ const runVariantDelete = () => {
               class="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-gray-900 focus:ring-gray-900"
               aria-describedby="p-price-hint"
               :aria-invalid="form.errors.price ? 'true' : undefined"
+              @input="form.net_price = null"
             />
             <p id="p-price-hint" class="mt-1 text-sm text-gray-600">
-              {{ money(form.price) }} · bez DPH přibližně {{ money(netPreview) }}
+              <template v-if="vatApplies">
+                {{ money(form.price) }} · bez DPH přibližně {{ money(netPreview) }}
+              </template>
+              <template v-else>{{ money(form.price) }}</template>
             </p>
             <p v-if="form.errors.price" class="mt-1 text-sm text-red-700">{{ form.errors.price }}</p>
           </div>
 
-          <div>
+          <!--
+            Entering the price without VAT (wave 3.7). Wholesale price lists
+            quote net, and retyping them through a calculator is how a haléř
+            gets lost.
+
+            The conversion is the server's: filling this in clears the gross
+            field, and the request computes it. Doing the arithmetic here would
+            round differently often enough that the merchant would watch the
+            price change on save.
+          -->
+          <div v-if="vatApplies">
+            <label for="p-net-price" class="block text-sm font-medium text-gray-700">
+              Cena bez DPH (v haléřích)
+            </label>
+            <input
+              id="p-net-price"
+              v-model.number="form.net_price"
+              type="number"
+              min="0"
+              step="1"
+              class="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-gray-900 focus:ring-gray-900"
+              aria-describedby="p-net-price-hint"
+              @input="form.price = null"
+            />
+            <p id="p-net-price-hint" class="mt-1 text-sm text-gray-600">
+              Vyplňte jedno z polí — cenu s DPH nebo bez ní. Druhé dopočítá server podle sazby.
+            </p>
+            <p v-if="form.errors.net_price" class="mt-1 text-sm text-red-700">
+              {{ form.errors.net_price }}
+            </p>
+          </div>
+
+          <div v-if="vatApplies">
             <label for="p-rate" class="block text-sm font-medium text-gray-700">Sazba DPH</label>
             <select
               id="p-rate"
