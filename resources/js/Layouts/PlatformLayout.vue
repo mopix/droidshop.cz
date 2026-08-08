@@ -39,6 +39,11 @@ const topItems: NavItem[] = [
   { label: 'Tarify', route: 'platform.plans.index', icon: 'tag', active: 'platform.plans.*' },
 ]
 
+/** The administrator's own account, pinned to the bottom like in the tenant admin. */
+const accountItems: NavItem[] = [
+  { label: 'Profil', route: 'platform.profile.edit', icon: 'user' },
+]
+
 const nav = useSideNav(() => [])
 </script>
 
@@ -63,7 +68,7 @@ const nav = useSideNav(() => [])
       <SideNav
         :top="topItems"
         :groups="[]"
-        :account="[]"
+        :account="accountItems"
         :sign-out-route="route('platform.logout')"
         variant="platform"
         :open-groups="nav.openGroups.value"
@@ -78,7 +83,7 @@ const nav = useSideNav(() => [])
         <TopBar
           title="Správa platformy"
           :user-name="admin?.name ?? null"
-          :profile-route="null"
+          :profile-route="route('platform.profile.edit')"
           :sign-out-route="route('platform.logout')"
           variant="platform"
           @open-drawer="nav.openDrawer"

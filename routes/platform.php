@@ -4,6 +4,7 @@ use App\Http\Controllers\Platform\Auth\LoginController;
 use App\Http\Controllers\Platform\Auth\TwoFactorController;
 use App\Http\Controllers\Platform\ImpersonationController;
 use App\Http\Controllers\Platform\ModuleController;
+use App\Http\Controllers\Platform\ProfileController as PlatformProfileController;
 use App\Http\Controllers\Platform\PlanController;
 use App\Http\Controllers\Platform\PlatformInvoiceDownloadController;
 use App\Http\Controllers\Platform\TenantController;
@@ -45,6 +46,18 @@ Route::middleware('platform.host')->group(function () {
         Route::get('/superadmin', fn () => Inertia::render('Platform/Dashboard', [
             'admin' => auth('platform')->user()->only('name', 'email'),
         ]))->name('platform.dashboard');
+
+        // The administrator's own account. Behind the same 2FA gate as
+        // everything else here: changing the e-mail on this account is
+        // changing where its password resets land.
+        Route::get('/superadmin/profil', [PlatformProfileController::class, 'edit'])
+            ->name('platform.profile.edit');
+        Route::patch('/superadmin/profil', [PlatformProfileController::class, 'update'])
+            ->name('platform.profile.update');
+        Route::put('/superadmin/profil/heslo', [PlatformProfileController::class, 'updatePassword'])
+            ->name('platform.profile.password');
+        Route::post('/superadmin/profil/zalozni-kody', [PlatformProfileController::class, 'regenerateRecoveryCodes'])
+            ->name('platform.profile.recoveryCodes');
 
         Route::get('/superadmin/tenanti', [TenantController::class, 'index'])
             ->name('platform.tenants.index');

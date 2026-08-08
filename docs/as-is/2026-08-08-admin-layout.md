@@ -109,7 +109,6 @@ Vlastník chtěl sjednotit obojí. Sjednoceno je **rozvržení**; tmavý panel s
 
 - **Menu se všemi sekcemi otevřenými přeteče** a roluje. Výchozí stav je sbalený, takže v běžném provozu nenastane, ale na malém displeji s otevřenými čtyřmi sekcemi se roluje.
 - **Nástěnka neukazuje graf ani srovnání s minulým obdobím** — čtyři čísla a odkazy.
-- **Superadmin nemá `Profil`** v menu — platformní administrátor svůj profil nemá kde upravit (předchází této vlně).
 
 ## Dodatek: počeštění (2026-08-08, hned po vlně)
 
@@ -129,6 +128,36 @@ Při tom vypadly dvě další věci ze stejné rodiny nedodělaných defaultů:
 `Profile/Edit.vue` a `Dashboard.vue` navíc ztratily `max-w-7xl` a `py-12` —
 zbytky staré skořápky, které by v administraci na plnou šířku obsah znovu
 zúžily.
+
+## Dodatek: profil superadmina (2026-08-08)
+
+Druhý dluh z výčtu výše, opravený tentýž den. Platformní administrátor
+dosud neměl kde změnit vlastní jméno, e-mail ani heslo — mohl pozastavit
+cizí e-shop, ale ne si nastavit svůj účet.
+
+Nová obrazovka `/superadmin/profil` (v menu i v horním panelu) má tři části:
+údaje účtu, změnu hesla a stav dvoufaktorového ověření s možností vydat nové
+záložní kódy.
+
+Kontroly jsou přísnější než u profilu nájemce, protože jde o účet s
+nejširším dosahem v systému:
+
+- **Změna e-mailu vyžaduje současné heslo.** Měnit adresu tohoto účtu
+  znamená měnit, kam chodí obnova jeho hesla; nehlídaná session na to nesmí
+  stačit. Jméno heslo nevyžaduje — nestojí to za tření.
+- **Vydání nových záložních kódů vyžaduje heslo.** Je to jediná akce, která
+  vydá cestu kolem druhého faktoru.
+- Heslo se ověřuje **explicitně přes `Hash::check`**, ne Laravelím pravidlem
+  `current_password`: to validuje proti výchozímu guardu, kde tento účet
+  vůbec přihlášený není, a prošlo by neověřené.
+- **Účet nejde smazat.** Superadmin, který odstraní vlastní řádek, by mohl
+  nechat platformu bez jediného administrátora a nic v aplikaci by si toho
+  nevšimlo. Test hlídá, že routa neexistuje.
+
+13 testů v `tests/Feature/Platform/PlatformProfileTest.php`. Vizuálně
+neověřeno: demo superadmin má zapnuté 2FA a projít challenge headless
+skriptem se nepodařilo — samotné ověřování TOTP i záložních kódů přitom
+funguje (ověřeno přímo proti službě).
 
 ## Pre-deploy checklist
 
