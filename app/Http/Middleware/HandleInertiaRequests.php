@@ -113,7 +113,11 @@ class HandleInertiaRequests extends Middleware
 
         return [
             'name' => $tenant->name,
+            // Flat list kept alongside the grouped one: it is what a page
+            // would use to answer "does this shop run X", and dropping it
+            // would make every such check reach into the group structure.
             'nav' => app(NavigationBuilder::class)->forTenant($tenant),
+            'navGroups' => app(NavigationBuilder::class)->groupedForTenant($tenant),
             'permissions' => $user === null
                 ? []
                 : array_values(array_filter(

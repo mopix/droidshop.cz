@@ -8,7 +8,6 @@ use App\Models\Module;
 use App\Models\Tenant;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Route;
 use Tests\Concerns\ActivatesModules;
 use Tests\TestCase;
 
@@ -16,6 +15,18 @@ class AdminHomeTest extends TestCase
 {
     use ActivatesModules;
     use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $this->withoutVite();
+        config()->set('cache.default', 'array');
+
+        // The dashboard reads the module registry, so the modules have to be
+        // on record before a tenant can switch one on.
+        $this->artisan('modules:sync')->assertSuccessful();
+    }
 
     private function ownerOnHost(): array
     {
@@ -27,38 +38,46 @@ class AdminHomeTest extends TestCase
         return [$tenant, $owner];
     }
 
-    public function test_owner_hitting_admin_is_redirected_to_a_real_route(): void
+    /**
+     * Since wave 3.5 `/admin` is a screen of its own.
+     *
+     * It used to redirect to whichever module came first in the menu, which
+     * meant the owner landed on a product list with no sense of how the shop
+     * was doing — and the grouped menu the owner asked for starts with
+     * "Nástěnka", which needed somewhere to go.
+     */
+    public function test_admin_renders_the_dashboard(): void
     {
         [$tenant, $owner] = $this->ownerOnHost();
-
-        // "admin.products.index" is a real route: ModuleRouteRegistrar mounts
-        // Modules/Products/routes/admin.php at boot regardless of tenant
-        // activation, so this is a genuinely resolvable target, not a stub.
-        Module::factory()->key('products')->create([
-            'manifest' => [
-                'name' => 'products',
-                'version' => '1.0.0',
-                'requires' => [],
-                'nav' => [['area' => 'admin', 'label' => 'Produkty', 'route' => 'admin.products.index', 'order' => 10]],
-            ],
-        ]);
         $this->activateModule($tenant, 'products');
 
-        $response = $this->actingAs($owner)
-            ->get('http://shop.'.config('tenancy.platform_domain').'/admin');
-
-        $this->assertTrue(Route::has('admin.products.index'));
-        $response->assertRedirect(route('admin.products.index'));
+        $this->actingAs($owner)
+            ->get('http://shop.'.config('tenancy.platform_domain').'/admin')
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->component('Tenant/Dashboard')
+                ->has('summary')
+                ->has('usage')
+                ->where('shop.name', $tenant->name));
     }
 
-    public function test_tenant_with_no_active_modules_falls_back_to_billing(): void
+    /**
+     * A shop running no orders module still gets a dashboard — with zeroes
+     * and no dead links — rather than an error. Same guest-safe null-binding
+     * rule the rest of the platform follows.
+     */
+    public function test_a_shop_without_the_orders_module_still_gets_a_dashboard(): void
     {
-        [$tenant, $owner] = $this->ownerOnHost();
+        [, $owner] = $this->ownerOnHost();
 
-        $response = $this->actingAs($owner)
-            ->get('http://shop.'.config('tenancy.platform_domain').'/admin');
-
-        $response->assertRedirect(route('admin.billing.edit'));
+        $this->actingAs($owner)
+            ->get('http://shop.'.config('tenancy.platform_domain').'/admin')
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->component('Tenant/Dashboard')
+                ->where('summary.placed', 0)
+                ->where('summary.revenue', 0)
+                ->where('links.orders', null));
     }
 
     public function test_suspended_tenant_can_still_read_the_admin(): void
@@ -69,7 +88,7 @@ class AdminHomeTest extends TestCase
         $response = $this->actingAs($owner)
             ->get('http://shop.'.config('tenancy.platform_domain').'/admin');
 
-        // A redirect to billing (or products) — not a 503 — proves read access survives.
+        // Anything but a 503 proves read access survives.
         $this->assertNotSame(503, $response->getStatusCode());
     }
 

@@ -1,6 +1,6 @@
 # As-is status — DroidShop.cz
 
-Poslední aktualizace: **2026-08-06** · Verze: **0.39.0** (vlna 3.4)
+Poslední aktualizace: **2026-08-08** · Verze: **0.40.0** (vlna 3.5)
 
 ## Oblasti
 
@@ -20,6 +20,7 @@ Poslední aktualizace: **2026-08-06** · Verze: **0.39.0** (vlna 3.4)
 | Právní minimum platformy | **hotovo** | kap. 11 | [detail](2026-08-05-pravni-minimum.md); vlna 3.2. Čtyři dokumenty v `docs/legal/` + renderované na `/pravni/*` (VOP, zásady zpracování = my správce vůči nájemci, DPA čl. 28 = my zpracovatel vůči jeho zákazníkům, cookies); prefix `/pravni/` je **nutný** — jednosegmentová platformní routa by na hostu nájemce zastínila jeho stránku, protože `RequirePlatformHost` 404uje až po matchi a fallback z 3.1 by se neuplatnil. Souhlas při registraci se zapisuje s datem i verzí (`users.terms_accepted_at`/`terms_version`), validace server-side. Nový e-shop dostane tři vzory místo prázdna; `footerPages` sdílí modul `pages` dvěma views, protože Blade child se renderuje **před** layoutem a composer na layoutu do pokladny nedosáhne. **Drafty bez právní revize** (rozhodnutí vlastníka) — markery `K PRÁVNÍ REVIZI` u limitace škody, SLA, lhůty ohlášení porušení a rozsahu auditu |
 | Superadmin auth / `platform_admins` / 2FA / impersonace | **hotovo** | §15.4, §6.12 | [detail](2026-07-19-superadmin-auth.md) |
 | Superadmin management UI — tenanti, stavy, tarify, moduly, kill switch | **hotovo** | §6.12, §15.5 | [detail](2026-07-20-superadmin-ui.md); bez metrik a bez zakládání tenantů |
+| Admin nájemce — layout, seskupené menu, nástěnka | **hotovo** | vlna 3.5 | [detail](2026-08-08-admin-layout.md); plná šířka, levé menu ve čtyřech kategoriích (kategorie a jejich pořadí drží jádro, manifest říká jen `group`), sbalitelné do ikon, na mobilu drawer. `/admin` má poprvé vlastní nástěnku (`OrderBook::dashboardSummary()` — čtyři agregáty jedním dotazem). Superadmin dostal totéž rozvržení, ale nechal si tmavý panel — záměna dvou administrací je způsob, jak pozastavit špatný e-shop. Zavřený drawer je `invisible`, ne jen posunutý mimo obrazovku: jinak zůstává v pořadí tabulátoru a odečítač ho čte |
 | Admin nájemce — shell, navigace z modulů, oprávnění | **hotovo** | §15.4, §15.5 | [detail](2026-07-20-katalog-jadro.md) |
 | Kernel — sazby DPH, redirects, sanitizace HTML | **hotovo** | §6.2, §15.3, §16.1 | [detail](2026-07-20-katalog-jadro.md) |
 | Modul `categories` — strom, admin, 301 | **hotovo** | §6.3, §16.2 | max 4 úrovně; řazení tlačítky, ne drag&drop |

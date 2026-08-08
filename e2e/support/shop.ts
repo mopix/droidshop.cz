@@ -115,6 +115,26 @@ export function seedVariantProduct(slug = 'e2e-varianty'): string {
   return slug
 }
 
+/**
+ * Signs in as the shop's owner.
+ *
+ * Through the real form rather than a session shortcut: the login screen is
+ * part of what a tenant uses, and a helper that bypassed it would let it
+ * break unnoticed.
+ */
+export async function signInAsOwner(page: Page, email = 'admin@demo.cz'): Promise<void> {
+  await page.goto(shopUrl('/login'))
+
+  // By label, not by name: Breeze's TextInput renders an id but no name
+  // attribute. The labels are still the Breeze defaults in English — the
+  // registration form was translated in wave 3.2, this one was not.
+  await page.getByLabel(/E-?mail/i).fill(email)
+  await page.getByLabel(/Password|Heslo/i).fill('password')
+  await page.getByRole('button', { name: /Přihlásit|Log in/i }).click()
+
+  await page.waitForURL(/\/dashboard|\/admin/)
+}
+
 /** The slug of a product the demo shop is seeded with. */
 export async function firstProductSlug(page: Page): Promise<string> {
   await page.goto(shopUrl('/'))

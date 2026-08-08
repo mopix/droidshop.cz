@@ -15,9 +15,18 @@
         "storefront-theme"
     ],
     "listens": [],
-    "permissions": ["storefront.homepage.manage"],
+    "permissions": [
+        "storefront.homepage.manage"
+    ],
     "settings_schema": null,
     "nav": [
-        { "area": "admin", "label": "Homepage", "route": "admin.storefront.homepage.index", "icon": "layout", "order": 40 }
+        {
+            "area": "admin",
+            "label": "Homepage",
+            "route": "admin.storefront.homepage.index",
+            "icon": "layout",
+            "order": 10,
+            "group": "settings"
+        }
     ]
 }

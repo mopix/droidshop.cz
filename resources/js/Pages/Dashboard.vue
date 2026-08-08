@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
+import AdminLayout from '@/Layouts/AdminLayout.vue';
 import { Head, Link } from '@inertiajs/vue3';
 
 defineProps<{
@@ -10,7 +10,7 @@ defineProps<{
 <template>
     <Head title="Moje e-shopy" />
 
-    <AuthenticatedLayout>
+    <AdminLayout>
         <template #header>
             <h2 class="text-xl font-semibold leading-tight text-gray-800">
                 Moje e-shopy
@@ -44,7 +44,12 @@ defineProps<{
                                 <div>
                                     <span class="font-medium">{{ shop.name }}</span>
                                     <span class="ml-2 text-sm text-gray-500">{{ shop.host }}</span>
-                                    <span class="ml-2 text-xs uppercase tracking-wide text-gray-400">{{ shop.status }}</span>
+                                    <!-- gray-600, not gray-400: at 12px the
+                                         lighter shade sits at 2.53:1 against
+                                         white, well under the 4.5:1 WCAG AA
+                                         needs. Found by axe once wave 3.5
+                                         brought this page under audit. -->
+                                    <span class="ml-2 text-xs uppercase tracking-wide text-gray-600">{{ shop.status }}</span>
                                 </div>
                                 <a
                                     v-if="shop.host"
@@ -59,5 +64,5 @@ defineProps<{
                 </div>
             </div>
         </div>
-    </AuthenticatedLayout>
+    </AdminLayout>
 </template>

@@ -24,7 +24,8 @@
             "label": "Stránky",
             "route": "admin.pages.index",
             "icon": "file-text",
-            "order": 50
+            "order": 20,
+            "group": "settings"
         }
     ]
 }

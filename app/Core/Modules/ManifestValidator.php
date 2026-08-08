@@ -5,6 +5,7 @@ namespace App\Core\Modules;
 use App\Core\Modules\Exceptions\InvalidManifest;
 use Composer\Semver\VersionParser;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\Rule;
 use Throwable;
 
 /**
@@ -63,6 +64,11 @@ class ManifestValidator
             'nav.*.label' => ['required_with:nav', 'string'],
             'nav.*.route' => ['required_with:nav', 'string'],
             'nav.*.order' => ['sometimes', 'integer'],
+            // Caught at modules:sync rather than at request time. A typo here
+            // would otherwise drop the entry into the fallback section, where
+            // it looks filed rather than misfiled — and nobody goes looking
+            // for a menu item that is visible, just in the wrong place.
+            'nav.*.group' => ['sometimes', 'string', Rule::enum(NavigationGroup::class)],
         ], [
             'name.regex' => 'must be a lowercase slug (letters, digits, hyphens).',
         ]);

@@ -60,4 +60,21 @@ interface OrderBook
      * @return Collection<int, OrderView>
      */
     public function forShippingProvider(string $provider): Collection;
+
+    /**
+     * Counts and turnover for the admin dashboard.
+     *
+     * A single aggregate rather than the dashboard paginating orders and
+     * counting them itself: "how many and for how much" is one question, and
+     * answering it by loading rows would make the first screen of the admin
+     * the most expensive one in it.
+     *
+     * Cancelled orders are excluded from the turnover — money that was never
+     * taken is not revenue — but counted under `awaiting` only while they are
+     * genuinely waiting to be handled.
+     *
+     * @return array{awaiting: int, unpaid: int, placed: int, revenue: int}
+     *                                                                      revenue in minor units of the shop's currency
+     */
+    public function dashboardSummary(\DateTimeInterface $since): array;
 }
