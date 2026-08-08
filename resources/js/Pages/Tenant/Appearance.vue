@@ -3,6 +3,9 @@ import { computed, ref } from 'vue'
 import { router, useForm } from '@inertiajs/vue3'
 import AdminLayout from '@/Layouts/AdminLayout.vue'
 import ConfirmDialog from '@/Components/Ui/ConfirmDialog.vue'
+import SettingsPage from '@/Components/Settings/SettingsPage.vue'
+import SettingsGrid from '@/Components/Settings/SettingsGrid.vue'
+import SettingsCard from '@/Components/Settings/SettingsCard.vue'
 
 const props = defineProps<{
   appearance: {
@@ -135,31 +138,26 @@ function flushCache() {
 
 <template>
   <AdminLayout title="Vzhled">
-    <div class="mx-auto max-w-2xl">
-      <div class="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 class="text-lg font-semibold text-gray-900">Vzhled</h1>
-          <p class="mt-1 text-sm text-gray-600">
-            Barvy a logo vašeho e-shopu. Změny se projeví na storefrontu ihned po uložení.
-          </p>
-        </div>
-
+    <SettingsPage
+      title="Vzhled"
+      description="Barvy a logo vašeho e-shopu. Změny se projeví na storefrontu ihned po uložení."
+    >
+      <template #actions>
         <a
           href="/"
           target="_blank"
           rel="noopener noreferrer"
-          class="shrink-0 rounded-md border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-900"
+          class="rounded-md border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-900"
         >
           Zobrazit e-shop
           <span class="sr-only">(otevře se v novém okně)</span>
         </a>
-      </div>
+      </template>
 
-      <form class="mt-6 space-y-6" enctype="multipart/form-data" @submit.prevent="submit">
-        <fieldset class="rounded-md border border-gray-200 p-4">
-          <legend class="px-1 text-sm font-medium text-gray-700">Barvy</legend>
-
-          <div class="grid gap-4 sm:grid-cols-2">
+      <form class="space-y-6" enctype="multipart/form-data" @submit.prevent="submit">
+        <SettingsGrid>
+          <SettingsCard legend="Barvy">
+            <div class="grid gap-4 sm:grid-cols-2">
             <div>
               <label for="primary-color-hex" class="block text-sm font-medium text-gray-700">
                 Primární barva
@@ -228,11 +226,10 @@ function flushCache() {
           >
             <strong>Nízký kontrast.</strong> Text na tlačítkách může být špatně čitelný (poměr
             {{ primaryContrast.toFixed(2) }}:1 vůči bílé, doporučeno alespoň 4.5:1).
-          </p>
-        </fieldset>
+            </p>
+          </SettingsCard>
 
-        <fieldset class="rounded-md border border-gray-200 p-4">
-          <legend class="px-1 text-sm font-medium text-gray-700">Logo</legend>
+          <SettingsCard legend="Logo">
 
           <div v-if="appearance.logo_url" class="flex items-center gap-4">
             <img
@@ -268,10 +265,9 @@ function flushCache() {
               {{ form.errors.logo }}
             </p>
           </div>
-        </fieldset>
+          </SettingsCard>
 
-        <fieldset class="rounded-md border border-gray-200 p-4">
-          <legend class="px-1 text-sm font-medium text-gray-700">Favicon</legend>
+          <SettingsCard legend="Favicon">
 
           <div v-if="appearance.favicon_url" class="flex items-center gap-4">
             <img
@@ -307,7 +303,8 @@ function flushCache() {
               {{ form.errors.favicon }}
             </p>
           </div>
-        </fieldset>
+          </SettingsCard>
+        </SettingsGrid>
 
         <div class="flex justify-end">
           <button
@@ -320,7 +317,7 @@ function flushCache() {
         </div>
       </form>
 
-      <section class="mt-8 border-t border-gray-200 pt-6">
+      <section class="border-t border-gray-200 pt-6">
         <h2 class="text-base font-semibold text-gray-900">Cache e-shopu</h2>
         <p class="mt-1 text-sm text-gray-600">
           Storefront se zobrazuje z uložené podoby, aby byl rychlý. Změny se projeví samy;
@@ -335,7 +332,7 @@ function flushCache() {
           Vymazat cache e-shopu
         </button>
       </section>
-    </div>
+    </SettingsPage>
 
     <ConfirmDialog
       :show="confirmingLogoRemoval"

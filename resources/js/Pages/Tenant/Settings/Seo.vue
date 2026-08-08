@@ -2,6 +2,9 @@
 import { computed, ref } from 'vue'
 import { router, useForm } from '@inertiajs/vue3'
 import AdminLayout from '@/Layouts/AdminLayout.vue'
+import SettingsPage from '@/Components/Settings/SettingsPage.vue'
+import SettingsGrid from '@/Components/Settings/SettingsGrid.vue'
+import SettingsCard from '@/Components/Settings/SettingsCard.vue'
 import TextField from '@/Components/Ui/TextField.vue'
 import CheckboxField from '@/Components/Ui/CheckboxField.vue'
 import ConfirmDialog from '@/Components/Ui/ConfirmDialog.vue'
@@ -60,88 +63,82 @@ const previewDescription = computed(
 
 <template>
   <AdminLayout title="SEO">
-    <div class="mx-auto max-w-2xl">
-      <h1 class="text-lg font-semibold text-gray-900">Vyhledávače a sdílení</h1>
-      <p class="mt-1 text-sm text-gray-600">
-        Co o vašem e-shopu uvidí Google a co se ukáže, když někdo sdílí odkaz na sociální síti.
-      </p>
-
-      <form class="mt-6 space-y-6" enctype="multipart/form-data" @submit.prevent="submit">
-        <fieldset class="space-y-4 rounded-md border border-gray-200 p-4">
-          <legend class="px-1 text-sm font-medium text-gray-700">Úvodní stránka</legend>
-
-          <TextField
-            v-model="form.seo_title"
-            label="Titulek"
-            hint="Zhruba 60 znaků. Prázdné = použije se název obchodu."
-            :error="form.errors.seo_title"
-            :maxlength="255"
-          />
-
-          <TextField
-            v-model="form.seo_description"
-            label="Popis"
-            hint="Zhruba 160 znaků. Prázdné = doplní se automaticky."
-            :rows="3"
-            :maxlength="500"
-            :error="form.errors.seo_description"
-          />
-
-          <div class="rounded-md border border-gray-200 bg-gray-50 p-3">
-            <p class="text-xs font-medium uppercase tracking-wide text-gray-600">Náhled</p>
-            <p class="mt-1 truncate text-base text-blue-800">{{ previewTitle }}</p>
-            <p class="line-clamp-2 text-sm text-gray-700">{{ previewDescription }}</p>
-          </div>
-        </fieldset>
-
-        <fieldset class="space-y-4 rounded-md border border-gray-200 p-4">
-          <legend class="px-1 text-sm font-medium text-gray-700">Obrázek pro sdílení</legend>
-
-          <div v-if="seo.og_image_url" class="flex flex-wrap items-center gap-4">
-            <img
-              :src="seo.og_image_url"
-              alt="Obrázek pro sdílení"
-              class="h-24 w-auto rounded border border-gray-200 bg-white"
+    <SettingsPage
+      title="Vyhledávače a sdílení"
+      description="Co o vašem e-shopu uvidí Google a co se ukáže, když někdo sdílí odkaz na sociální síti."
+    >
+      <form class="space-y-6" enctype="multipart/form-data" @submit.prevent="submit">
+        <SettingsGrid>
+          <SettingsCard legend="Úvodní stránka">
+            <TextField
+              v-model="form.seo_title"
+              label="Titulek"
+              hint="Zhruba 60 znaků. Prázdné = použije se název obchodu."
+              :error="form.errors.seo_title"
+              :maxlength="255"
             />
-            <button
-              type="button"
-              class="rounded-md border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
-              @click="confirmingRemoval = true"
-            >
-              Odebrat
-            </button>
-          </div>
 
-          <div>
-            <label for="og-image" class="block text-sm font-medium text-gray-700">
-              {{ seo.og_image_url ? 'Nahradit obrázek' : 'Nahrát obrázek' }}
-            </label>
-            <input
-              id="og-image"
-              ref="imageInput"
-              type="file"
-              accept="image/png,image/jpeg,image/webp"
-              class="mt-1 block w-full text-sm text-gray-700 file:mr-4 file:rounded-md file:border-0 file:bg-gray-900 file:px-4 file:py-2 file:text-sm file:font-medium file:text-white"
-              @change="onImageChange"
+            <TextField
+              v-model="form.seo_description"
+              label="Popis"
+              hint="Zhruba 160 znaků. Prázdné = doplní se automaticky."
+              :rows="3"
+              :maxlength="500"
+              :error="form.errors.seo_description"
             />
-            <p class="mt-1 text-sm text-gray-600">
-              PNG, JPG nebo WebP, ideálně 1200 × 630 px, max 1 MB.
-            </p>
-            <p v-if="form.errors.og_image" class="mt-1 text-sm text-red-700">
-              {{ form.errors.og_image }}
-            </p>
-          </div>
-        </fieldset>
 
-        <fieldset class="space-y-4 rounded-md border border-gray-200 p-4">
-          <legend class="px-1 text-sm font-medium text-gray-700">Indexování</legend>
+            <div class="rounded-md border border-gray-200 bg-gray-50 p-3">
+              <p class="text-xs font-medium uppercase tracking-wide text-gray-600">Náhled</p>
+              <p class="mt-1 truncate text-base text-blue-800">{{ previewTitle }}</p>
+              <p class="line-clamp-2 text-sm text-gray-700">{{ previewDescription }}</p>
+            </div>
+          </SettingsCard>
 
-          <CheckboxField
-            v-model="form.noindex"
-            label="Nepovolit vyhledávačům indexovat e-shop"
-            hint="Vhodné, dokud e-shop připravujete. Zapnuté znamená, že se e-shop nebude objevovat ve výsledcích vyhledávání."
-          />
-        </fieldset>
+          <SettingsCard legend="Obrázek pro sdílení">
+            <div v-if="seo.og_image_url" class="flex flex-wrap items-center gap-4">
+              <img
+                :src="seo.og_image_url"
+                alt="Obrázek pro sdílení"
+                class="h-24 w-auto rounded border border-gray-200 bg-white"
+              />
+              <button
+                type="button"
+                class="rounded-md border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
+                @click="confirmingRemoval = true"
+              >
+                Odebrat
+              </button>
+            </div>
+
+            <div>
+              <label for="og-image" class="block text-sm font-medium text-gray-700">
+                {{ seo.og_image_url ? 'Nahradit obrázek' : 'Nahrát obrázek' }}
+              </label>
+              <input
+                id="og-image"
+                ref="imageInput"
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                class="mt-1 block w-full text-sm text-gray-700 file:mr-4 file:rounded-md file:border-0 file:bg-gray-900 file:px-4 file:py-2 file:text-sm file:font-medium file:text-white"
+                @change="onImageChange"
+              />
+              <p class="mt-1 text-sm text-gray-600">
+                PNG, JPG nebo WebP, ideálně 1200 × 630 px, max 1 MB.
+              </p>
+              <p v-if="form.errors.og_image" class="mt-1 text-sm text-red-700">
+                {{ form.errors.og_image }}
+              </p>
+            </div>
+          </SettingsCard>
+
+          <SettingsCard legend="Indexování">
+            <CheckboxField
+              v-model="form.noindex"
+              label="Nepovolit vyhledávačům indexovat e-shop"
+              hint="Vhodné, dokud e-shop připravujete. Zapnuté znamená, že se e-shop nebude objevovat ve výsledcích vyhledávání."
+            />
+          </SettingsCard>
+        </SettingsGrid>
 
         <button
           type="submit"
@@ -151,7 +148,7 @@ const previewDescription = computed(
           Uložit
         </button>
       </form>
-    </div>
+    </SettingsPage>
 
     <ConfirmDialog
       :show="confirmingRemoval"

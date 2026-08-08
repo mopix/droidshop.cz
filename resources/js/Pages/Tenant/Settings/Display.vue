@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { useForm } from '@inertiajs/vue3'
 import AdminLayout from '@/Layouts/AdminLayout.vue'
+import SettingsPage from '@/Components/Settings/SettingsPage.vue'
+import SettingsGrid from '@/Components/Settings/SettingsGrid.vue'
+import SettingsCard from '@/Components/Settings/SettingsCard.vue'
 import TextField from '@/Components/Ui/TextField.vue'
 import CheckboxField from '@/Components/Ui/CheckboxField.vue'
 
@@ -30,65 +33,59 @@ const submit = () => form.patch(route('admin.display.update'), { preserveScroll:
 
 <template>
   <AdminLayout title="Zobrazení">
-    <div class="mx-auto max-w-2xl">
-      <h1 class="text-lg font-semibold text-gray-900">Zobrazení</h1>
-      <p class="mt-1 text-sm text-gray-600">Drobnosti v chování e-shopu, které vidí zákazníci.</p>
+    <SettingsPage
+      title="Zobrazení"
+      description="Drobnosti v chování e-shopu, které vidí zákazníci."
+    >
+      <form class="space-y-6" @submit.prevent="submit">
+        <SettingsGrid>
+          <SettingsCard legend="Katalog">
+            <CheckboxField
+              v-model="form.hide_empty_categories"
+              label="Skrývat prázdné kategorie"
+              hint="Kategorie zmizí z nabídky, jen když v ní ani v žádné její podkategorii není publikovaný produkt."
+            />
+          </SettingsCard>
 
-      <form class="mt-6 space-y-6" @submit.prevent="submit">
-        <fieldset class="space-y-4 rounded-md border border-gray-200 p-4">
-          <legend class="px-1 text-sm font-medium text-gray-700">Katalog</legend>
+          <SettingsCard legend="Vyhledávání">
+            <TextField
+              v-model="form.empty_search_text"
+              label="Text, když hledání nic nenajde"
+              :hint="`Prázdné = použije se: „${defaultEmptySearchText}“`"
+              :maxlength="255"
+              :error="form.errors.empty_search_text"
+            />
+          </SettingsCard>
 
-          <CheckboxField
-            v-model="form.hide_empty_categories"
-            label="Skrývat prázdné kategorie"
-            hint="Kategorie zmizí z nabídky, jen když v ní ani v žádné její podkategorii není publikovaný produkt."
-          />
-        </fieldset>
+          <SettingsCard legend="Patička">
+            <CheckboxField
+              v-model="form.show_footer_contact"
+              label="Zobrazovat kontakty v patičce"
+              hint="Vypíše, co máte vyplněné v Nastavení → Kontakty. Nevyplněné údaje se nezobrazí tak jako tak."
+            />
+          </SettingsCard>
 
-        <fieldset class="space-y-4 rounded-md border border-gray-200 p-4">
-          <legend class="px-1 text-sm font-medium text-gray-700">Vyhledávání</legend>
+          <SettingsCard legend="Zaheslování e-shopu">
+            <CheckboxField
+              v-model="form.locked"
+              label="Zamknout e-shop heslem"
+              hint="Návštěvník uvidí místo e-shopu formulář s heslem. Vy jako přihlášený správce vidíte e-shop dál."
+            />
 
-          <TextField
-            v-model="form.empty_search_text"
-            label="Text, když hledání nic nenajde"
-            :hint="`Prázdné = použije se: „${defaultEmptySearchText}“`"
-            :maxlength="255"
-            :error="form.errors.empty_search_text"
-          />
-        </fieldset>
-
-        <fieldset class="space-y-4 rounded-md border border-gray-200 p-4">
-          <legend class="px-1 text-sm font-medium text-gray-700">Patička</legend>
-
-          <CheckboxField
-            v-model="form.show_footer_contact"
-            label="Zobrazovat kontakty v patičce"
-            hint="Vypíše, co máte vyplněné v Nastavení → Kontakty. Nevyplněné údaje se nezobrazí tak jako tak."
-          />
-        </fieldset>
-
-        <fieldset class="space-y-4 rounded-md border border-gray-200 p-4">
-          <legend class="px-1 text-sm font-medium text-gray-700">Zaheslování e-shopu</legend>
-
-          <CheckboxField
-            v-model="form.locked"
-            label="Zamknout e-shop heslem"
-            hint="Návštěvník uvidí místo e-shopu formulář s heslem. Vy jako přihlášený správce vidíte e-shop dál."
-          />
-
-          <TextField
-            v-model="form.lock_password"
-            label="Heslo"
-            type="password"
-            autocomplete="new-password"
-            :hint="
-              lock.has_password
-                ? 'Heslo je uložené. Vyplňte, jen když ho chcete změnit.'
-                : 'Aspoň 4 znaky.'
-            "
-            :error="form.errors.lock_password"
-          />
-        </fieldset>
+            <TextField
+              v-model="form.lock_password"
+              label="Heslo"
+              type="password"
+              autocomplete="new-password"
+              :hint="
+                lock.has_password
+                  ? 'Heslo je uložené. Vyplňte, jen když ho chcete změnit.'
+                  : 'Aspoň 4 znaky.'
+              "
+              :error="form.errors.lock_password"
+            />
+          </SettingsCard>
+        </SettingsGrid>
 
         <button
           type="submit"
@@ -98,6 +95,6 @@ const submit = () => form.patch(route('admin.display.update'), { preserveScroll:
           Uložit
         </button>
       </form>
-    </div>
+    </SettingsPage>
   </AdminLayout>
 </template>

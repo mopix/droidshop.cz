@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { useForm } from '@inertiajs/vue3'
 import AdminLayout from '@/Layouts/AdminLayout.vue'
+import SettingsPage from '@/Components/Settings/SettingsPage.vue'
+import SettingsGrid from '@/Components/Settings/SettingsGrid.vue'
+import SettingsCard from '@/Components/Settings/SettingsCard.vue'
 
 interface Address {
   street: string
@@ -34,14 +37,13 @@ function submit() {
 
 <template>
   <AdminLayout title="Fakturační údaje">
-    <div class="mx-auto max-w-xl">
-      <h1 class="text-lg font-semibold text-gray-900">Fakturační údaje</h1>
-      <p class="mt-1 text-sm text-gray-600">
-        Tyto údaje se použijí jako dodavatel na vystavených dokladech (faktura, dobropis, zálohová
-        faktura).
-      </p>
-
-      <form class="mt-6 space-y-4" @submit.prevent="submit">
+    <SettingsPage
+      title="Fakturační údaje"
+      description="Tyto údaje se použijí jako dodavatel na vystavených dokladech (faktura, dobropis, zálohová faktura)."
+    >
+      <form class="space-y-6" @submit.prevent="submit">
+        <SettingsGrid>
+          <SettingsCard legend="Dodavatel">
         <div>
           <label for="billing-name" class="block text-sm font-medium text-gray-700">Název / jméno</label>
           <input
@@ -100,9 +102,9 @@ function submit() {
           Jsem plátce DPH
         </label>
 
-        <fieldset class="rounded-md border border-gray-200 p-4">
-          <legend class="px-1 text-sm font-medium text-gray-700">Fakturační adresa</legend>
+          </SettingsCard>
 
+          <SettingsCard legend="Fakturační adresa">
           <div class="space-y-3">
             <div>
               <label for="billing-street" class="block text-sm font-medium text-gray-700">
@@ -178,7 +180,8 @@ function submit() {
               </div>
             </div>
           </div>
-        </fieldset>
+          </SettingsCard>
+        </SettingsGrid>
 
         <div class="flex justify-end">
           <button
@@ -190,6 +193,6 @@ function submit() {
           </button>
         </div>
       </form>
-    </div>
+    </SettingsPage>
   </AdminLayout>
 </template>

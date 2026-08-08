@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { Link, useForm } from '@inertiajs/vue3'
 import AdminLayout from '@/Layouts/AdminLayout.vue'
+import SettingsPage from '@/Components/Settings/SettingsPage.vue'
+import SettingsCard from '@/Components/Settings/SettingsCard.vue'
 
 type Field = {
   key: string
@@ -63,25 +65,32 @@ function submit() {
 
 <template>
   <AdminLayout :title="`Nastavení — ${module.name}`">
-    <div class="mx-auto max-w-2xl">
-      <Link
-        :href="route('admin.settings.modules.index')"
-        class="text-sm font-medium text-gray-600 underline hover:no-underline"
-      >
-        Zpět na nastavení modulů
-      </Link>
+    <SettingsPage
+      :title="`Nastavení — ${module.name}`"
+      description="Chování modulu ve vašem e-shopu. Změny platí ihned po uložení."
+    >
+      <template #actions>
+        <Link
+          :href="route('admin.settings.modules.index')"
+          class="text-sm font-medium text-gray-600 underline hover:no-underline"
+        >
+          Zpět na nastavení modulů
+        </Link>
+      </template>
 
-      <h1 class="mt-2 text-lg font-semibold text-gray-900">Nastavení — {{ module.name }}</h1>
-      <p class="mt-1 text-sm text-gray-600">
-        Chování modulu ve vašem e-shopu. Změny platí ihned po uložení.
-      </p>
-
-      <p v-if="form.errors.values" class="mt-4 rounded-md border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-900">
+      <p v-if="form.errors.values" class="rounded-md border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-900">
         {{ form.errors.values }}
       </p>
 
-      <form class="mt-6 space-y-6" @submit.prevent="submit">
-        <div v-for="field in fields" :key="field.key">
+      <form class="space-y-6" @submit.prevent="submit">
+        <SettingsCard :legend="module.name">
+          <!--
+            Two columns from `sm` up. A module rarely has more than a handful
+            of settings, and a single column of inputs stretched across a
+            full-width admin is a very long line to aim at.
+          -->
+          <div class="grid gap-4 sm:grid-cols-2">
+          <div v-for="field in fields" :key="field.key">
           <template v-if="field.type === 'boolean'">
             <div class="flex items-start gap-2">
               <input
@@ -138,7 +147,9 @@ function submit() {
           <p v-if="errorFor(field.key)" :id="`${field.key}-error`" class="mt-1 text-sm text-red-700">
             {{ errorFor(field.key) }}
           </p>
-        </div>
+          </div>
+          </div>
+        </SettingsCard>
 
         <button
           type="submit"
@@ -148,6 +159,6 @@ function submit() {
           Uložit
         </button>
       </form>
-    </div>
+    </SettingsPage>
   </AdminLayout>
 </template>

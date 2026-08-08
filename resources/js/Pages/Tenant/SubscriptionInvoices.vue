@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import AdminLayout from '@/Layouts/AdminLayout.vue'
+import SettingsPage from '@/Components/Settings/SettingsPage.vue'
 
 defineProps<{
   invoices: Array<{ id: number; number: string; total: number; issued_at: string }>
@@ -10,13 +11,10 @@ const money = (h: number) => (h / 100).toLocaleString('cs-CZ', { style: 'currenc
 
 <template>
   <AdminLayout title="Faktury za předplatné">
-    <div class="mx-auto max-w-2xl">
-      <h1 class="text-lg font-semibold text-gray-900">Faktury za předplatné</h1>
-      <p class="mt-1 text-sm text-gray-600">Přehled faktur, které vám platforma vystavila za předplatné.</p>
+<SettingsPage title="Faktury za předplatné" description="Přehled faktur, které vám platforma vystavila za předplatné.">
+      <p v-if="invoices.length === 0" class="text-sm text-gray-500">Zatím žádné faktury.</p>
 
-      <p v-if="invoices.length === 0" class="mt-6 text-sm text-gray-500">Zatím žádné faktury.</p>
-
-      <ul v-else class="mt-6 space-y-2">
+      <ul v-else class="space-y-2">
         <li
           v-for="invoice in invoices"
           :key="invoice.id"
@@ -31,6 +29,6 @@ const money = (h: number) => (h / 100).toLocaleString('cs-CZ', { style: 'currenc
           </a>
         </li>
       </ul>
-    </div>
+    </SettingsPage>
   </AdminLayout>
 </template>

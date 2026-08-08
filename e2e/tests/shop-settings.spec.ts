@@ -46,6 +46,38 @@ test.describe('shop settings', () => {
     }
   })
 
+  /**
+   * The layout the owner asked for: full width like the rest of the admin,
+   * and the cards that used to sit under one another side by side.
+   *
+   * Asserted on geometry, not on class names — a class can be present and
+   * overridden, and what was wrong before was what the page looked like.
+   */
+  test('cards sit side by side on a wide screen and stack on a narrow one', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 })
+    await page.goto(shopUrl('/admin/nastaveni/obchod'))
+
+    const cards = page.locator('#admin-content fieldset')
+    await expect(cards).toHaveCount(2)
+
+    const [first, second] = [await cards.nth(0).boundingBox(), await cards.nth(1).boundingBox()]
+
+    // Beside, not below.
+    expect(second!.x).toBeGreaterThan(first!.x + first!.width - 1)
+    expect(Math.abs(second!.y - first!.y)).toBeLessThan(4)
+
+    // Filling the width, not a narrow column in the middle: the two cards
+    // together used to cap at 672px whatever the screen.
+    expect(first!.width + second!.width).toBeGreaterThan(900)
+
+    // One column on a phone — two columns of form fields there are unusable.
+    await page.setViewportSize({ width: 390, height: 844 })
+    const stackedFirst = await cards.nth(0).boundingBox()
+    const stackedSecond = await cards.nth(1).boundingBox()
+
+    expect(stackedSecond!.y).toBeGreaterThan(stackedFirst!.y + stackedFirst!.height - 1)
+  })
+
   test('a saved tagline shows up on the storefront', async ({ page }) => {
     await page.goto(shopUrl('/admin/nastaveni/obchod'))
 

@@ -2,6 +2,7 @@
 import { ref } from 'vue'
 import { router } from '@inertiajs/vue3'
 import AdminLayout from '@/Layouts/AdminLayout.vue'
+import SettingsPage from '@/Components/Settings/SettingsPage.vue'
 
 const props = defineProps<{
   status: string
@@ -27,11 +28,8 @@ function post(url: string, body: Record<string, unknown> = {}) {
 
 <template>
   <AdminLayout title="Předplatné">
-    <div class="mx-auto max-w-2xl">
-      <h1 class="text-lg font-semibold text-gray-900">Předplatné</h1>
-      <p class="mt-1 text-sm text-gray-600">Stav vašeho předplatného platformy DroidShop.cz.</p>
-
-      <dl class="mt-6 space-y-3 rounded-md border border-gray-200 p-4 text-sm">
+<SettingsPage title="Předplatné" description="Stav vašeho předplatného platformy DroidShop.cz.">
+      <dl class="space-y-3 rounded-md border border-gray-200 p-4 text-sm">
         <div class="flex justify-between gap-4">
           <dt class="text-gray-600">Stav</dt>
           <dd class="font-medium text-gray-900">{{ props.statusLabel }}</dd>
@@ -66,7 +64,7 @@ function post(url: string, body: Record<string, unknown> = {}) {
 
       <fieldset
         v-if="!props.hasSubscription && props.prices.length > 0"
-        class="mt-6 rounded-md border border-gray-200 p-4"
+        class="rounded-md border border-gray-200 p-4"
       >
         <legend class="px-1 text-sm font-medium text-gray-900">Fakturační období</legend>
         <div class="mt-2 space-y-2">
@@ -90,7 +88,7 @@ function post(url: string, body: Record<string, unknown> = {}) {
         </div>
       </fieldset>
 
-      <div class="mt-6 flex justify-end">
+      <div class="flex justify-end">
         <button
           v-if="!props.hasSubscription"
           type="button"
@@ -110,6 +108,6 @@ function post(url: string, body: Record<string, unknown> = {}) {
           Spravovat předplatné
         </button>
       </div>
-    </div>
+    </SettingsPage>
   </AdminLayout>
 </template>
