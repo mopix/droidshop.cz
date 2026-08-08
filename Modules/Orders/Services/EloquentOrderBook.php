@@ -122,4 +122,30 @@ class EloquentOrderBook implements OrderBook
             ->oldest('placed_at')
             ->get();
     }
+
+    public function dashboardSummary(\DateTimeInterface $since): array
+    {
+        if (! $this->modules->has('orders')) {
+            return ['awaiting' => 0, 'unpaid' => 0, 'placed' => 0, 'revenue' => 0];
+        }
+
+        // Four aggregates, no rows: the dashboard is the first screen of the
+        // admin and must not become the most expensive one in it.
+        $counts = Order::query()
+            ->selectRaw('count(*) as placed')
+            ->selectRaw('sum(case when fulfillment_status = ? then 1 else 0 end) as awaiting', [Order::FULFILLMENT_NEW])
+            ->selectRaw('sum(case when payment_status = ? then 1 else 0 end) as unpaid', [Order::PAYMENT_UNPAID])
+            // Cancelled orders are excluded from turnover: money that was
+            // never taken is not revenue.
+            ->selectRaw('sum(case when fulfillment_status != ? then total else 0 end) as revenue', [Order::FULFILLMENT_CANCELLED])
+            ->where('placed_at', '>=', $since)
+            ->first();
+
+        return [
+            'awaiting' => (int) ($counts->awaiting ?? 0),
+            'unpaid' => (int) ($counts->unpaid ?? 0),
+            'placed' => (int) ($counts->placed ?? 0),
+            'revenue' => (int) ($counts->revenue ?? 0),
+        ];
+    }
 }

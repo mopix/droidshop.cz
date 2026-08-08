@@ -51,4 +51,9 @@ final class NullOrderBook implements OrderBook
     {
         return new Collection;
     }
+
+    public function dashboardSummary(\DateTimeInterface $since): array
+    {
+        return ['awaiting' => 0, 'unpaid' => 0, 'placed' => 0, 'revenue' => 0];
+    }
 }

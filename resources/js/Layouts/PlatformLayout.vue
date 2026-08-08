@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { Head, Link, router, usePage } from '@inertiajs/vue3'
+import { Head, usePage } from '@inertiajs/vue3'
+import SideNav, { type NavItem } from '@/Layouts/Partials/SideNav.vue'
+import TopBar from '@/Layouts/Partials/TopBar.vue'
+import { useSideNav } from '@/composables/useSideNav'
 
 withDefaults(
   defineProps<{
@@ -23,9 +26,20 @@ const impersonating = computed(
   () => (page.props.impersonating as { user_id: number; admin_id: number } | null) ?? null,
 )
 
-// Ziggy's route() helper is registered as a global template property only,
-// so the URL is resolved in the template and handed to this action.
-const logout = (url: string) => router.post(url)
+/**
+ * No sections here.
+ *
+ * The platform console has six screens; sections over six items are filing
+ * for the sake of filing. The layout is shared with the tenant admin — that
+ * is what the owner asked for — but the grouping is not.
+ */
+const topItems: NavItem[] = [
+  { label: 'E-shopy', route: 'platform.tenants.index', icon: 'package', active: 'platform.tenants.*' },
+  { label: 'Moduly', route: 'platform.modules.index', icon: 'sliders', active: 'platform.modules.*' },
+  { label: 'Tarify', route: 'platform.plans.index', icon: 'tag', active: 'platform.plans.*' },
+]
+
+const nav = useSideNav(() => [])
 </script>
 
 <template>
@@ -41,105 +55,71 @@ const logout = (url: string) => router.post(url)
       Přeskočit na obsah
     </a>
 
-    <p
-      v-if="impersonating"
-      class="bg-red-800 px-4 py-2 text-center text-sm font-semibold text-white"
-    >
-      Jednáte jako uživatel #{{ impersonating.user_id }} (impersonace správcem platformy).
-    </p>
+    <div class="flex min-h-screen">
+      <!-- Dark, deliberately unlike the tenant admin: the two consoles do
+           different jobs and mistaking one for the other is how somebody
+           suspends the wrong shop. The owner asked to unify the layout, not
+           the colour. -->
+      <SideNav
+        :top="topItems"
+        :groups="[]"
+        :account="[]"
+        :sign-out-route="route('platform.logout')"
+        variant="platform"
+        :open-groups="nav.openGroups.value"
+        :collapsed="nav.collapsed.value"
+        :drawer-open="nav.drawerOpen.value"
+        @toggle-group="nav.toggleGroup"
+        @toggle-collapsed="nav.toggleCollapsed"
+        @close-drawer="nav.closeDrawer"
+      />
 
-    <!-- Dark bar deliberately separates the platform console from tenant admin. -->
-    <header class="bg-slate-900 text-slate-100">
-      <div
-        class="mx-auto flex max-w-7xl flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8"
-      >
-        <div class="flex flex-wrap items-center gap-x-6 gap-y-2">
-          <span class="text-sm font-bold uppercase tracking-widest">
-            DroidShop — platforma
-          </span>
+      <div class="flex min-w-0 flex-1 flex-col">
+        <TopBar
+          title="Správa platformy"
+          :user-name="admin?.name ?? null"
+          :profile-route="null"
+          :sign-out-route="route('platform.logout')"
+          variant="platform"
+          @open-drawer="nav.openDrawer"
+        />
 
-          <nav aria-label="Hlavní navigace platformy">
-            <ul class="flex items-center gap-1">
-              <li>
-                <Link
-                  :href="route('platform.tenants.index')"
-                  :aria-current="route().current('platform.tenants.*') ? 'page' : undefined"
-                  class="rounded-md px-3 py-2 text-sm font-medium text-slate-200 hover:bg-slate-800 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900 aria-[current=page]:bg-slate-800 aria-[current=page]:text-white"
-                >
-                  Tenanti
-                </Link>
-              </li>
-              <li>
-                <Link
-                  :href="route('platform.modules.index')"
-                  :aria-current="route().current('platform.modules.*') ? 'page' : undefined"
-                  class="rounded-md px-3 py-2 text-sm font-medium text-slate-200 hover:bg-slate-800 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900 aria-[current=page]:bg-slate-800 aria-[current=page]:text-white"
-                >
-                  Moduly
-                </Link>
-              </li>
-              <li>
-                <Link
-                  :href="route('platform.plans.index')"
-                  :aria-current="route().current('platform.plans.*') ? 'page' : undefined"
-                  class="rounded-md px-3 py-2 text-sm font-medium text-slate-200 hover:bg-slate-800 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900 aria-[current=page]:bg-slate-800 aria-[current=page]:text-white"
-                >
-                  Tarify
-                </Link>
-              </li>
-            </ul>
-          </nav>
-        </div>
+        <p
+          v-if="impersonating"
+          class="bg-red-800 px-4 py-2 text-center text-sm font-semibold text-white"
+        >
+          Jednáte jako uživatel #{{ impersonating.user_id }} (impersonace správcem platformy).
+        </p>
 
-        <div class="flex items-center gap-3">
-          <span v-if="admin" class="text-sm text-slate-300">
-            {{ admin.name }}
-            <span class="hidden sm:inline">({{ admin.email }})</span>
-          </span>
-
-          <button
-            type="button"
-            class="rounded-md border border-slate-500 px-3 py-1.5 text-sm font-medium text-slate-100 hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900"
-            @click="logout(route('platform.logout'))"
+        <div class="min-w-0 flex-1 px-4 py-6 sm:px-6">
+          <p
+            v-if="flash.success"
+            role="status"
+            aria-live="polite"
+            aria-atomic="true"
+            class="mb-6 rounded-md border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm text-emerald-900"
           >
-            Odhlásit
-          </button>
+            {{ flash.success }}
+          </p>
+          <p
+            v-if="flash.error"
+            role="alert"
+            aria-live="assertive"
+            aria-atomic="true"
+            class="mb-6 rounded-md border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-900"
+          >
+            {{ flash.error }}
+          </p>
+
+          <header v-if="$slots.header" class="mb-6">
+            <slot name="header" />
+          </header>
+
+          <main id="platform-content">
+            <slot />
+          </main>
         </div>
       </div>
-    </header>
-
-    <div
-      v-if="flash.success || flash.error"
-      class="mx-auto max-w-7xl px-4 pt-6 sm:px-6 lg:px-8"
-    >
-      <p
-        v-if="flash.success"
-        role="status"
-        aria-live="polite"
-        aria-atomic="true"
-        class="rounded-md border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm text-emerald-900"
-      >
-        {{ flash.success }}
-      </p>
-      <p
-        v-if="flash.error"
-        role="alert"
-        aria-live="assertive"
-        aria-atomic="true"
-        class="mt-3 rounded-md border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-900 first:mt-0"
-      >
-        {{ flash.error }}
-      </p>
     </div>
-
-    <header v-if="$slots.header" class="border-b border-gray-200 bg-white">
-      <div class="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-        <slot name="header" />
-      </div>
-    </header>
-
-    <main id="platform-content" class="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-      <slot />
-    </main>
   </div>
 </template>
