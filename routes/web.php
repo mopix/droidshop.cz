@@ -2,6 +2,7 @@
 
 use App\Core\Storage\FileStorage;
 use App\Http\Controllers\ConsentController;
+use App\Http\Controllers\ShopLockController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ImpersonationController;
 use App\Http\Controllers\LegalController;
@@ -46,6 +47,11 @@ Route::get('/pravni/{document}', [LegalController::class, 'show'])
 // Deliberately no `page-cache` middleware. The settings screen reflects this
 // visitor's own decision, so it is the one storefront page that must never be
 // shared — and the POST sets a cookie, which PageCachePolicy refuses anyway.
+// Unlocking a shop the merchant put behind a password (wave 3.6). The form
+// itself is rendered by EnsureShopUnlocked at whatever URL was asked for, so
+// only the submit needs a route of its own.
+Route::post('/zamek', [ShopLockController::class, 'unlock'])->name('shop.unlock');
+
 Route::get('/souhlas-cookies', [ConsentController::class, 'show'])->name('consent.show');
 Route::post('/souhlas-cookies', [ConsentController::class, 'store'])->name('consent.store');
 

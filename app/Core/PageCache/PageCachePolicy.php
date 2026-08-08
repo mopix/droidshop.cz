@@ -49,6 +49,17 @@ class PageCachePolicy
             return null;
         }
 
+        // A locked shop (wave 3.6) never touches the shared cache. Not
+        // because a locked page would be wrong to store — EnsureShopUnlocked
+        // rejects the request before this middleware runs, so nothing gets
+        // that far — but because a page stored BEFORE the lock went on could
+        // otherwise be served after it, and the lock would be decorative. The
+        // generation bump on saving the setting orphans those entries too;
+        // this is the guarantee that does not depend on the bump.
+        if ($tenant->storefront_locked) {
+            return null;
+        }
+
         return $tenant;
     }
 

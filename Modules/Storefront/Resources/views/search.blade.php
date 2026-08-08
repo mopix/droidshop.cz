@@ -12,8 +12,9 @@
     @if ($tooShort)
         <p class="mt-4 text-slate-600">Zadejte alespoň dva znaky.</p>
     @elseif ($products->total() === 0)
+        {{-- The merchant's own wording if they wrote one (wave 3.6). --}}
         <div class="card mt-6 p-6 text-slate-600">
-            Nic jsme nenašli. Zkuste jiný výraz nebo procházejte kategorie.
+            {{ $emptyText }}
         </div>
     @else
         <p class="mt-2 text-sm text-slate-600">Nalezeno {{ $products->total() }} produktů.</p>

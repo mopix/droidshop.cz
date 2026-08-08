@@ -6,6 +6,7 @@ use App\Http\Middleware\AllowLocalOnly;
 use App\Http\Middleware\CacheStorefrontPage;
 use App\Http\Middleware\CheckTenantStatus;
 use App\Http\Middleware\EnsurePlatformTwoFactor;
+use App\Http\Middleware\EnsureShopUnlocked;
 use App\Http\Middleware\EnsureTenantMember;
 use App\Http\Middleware\HandleInertiaRequests;
 use App\Http\Middleware\RedirectToCanonicalHost;
@@ -63,6 +64,12 @@ $app = Application::configure(basePath: dirname(__DIR__))
         ]);
 
         $middleware->web(append: [
+            // A shop the merchant locked answers with a password form instead
+            // of its catalogue. Appended, so it sits behind StartSession (the
+            // unlock is remembered there) and in front of every route
+            // middleware, `page-cache` included — a request this rejects never
+            // reaches the cache at all.
+            EnsureShopUnlocked::class,
             HandleInertiaRequests::class,
             AddLinkHeadersForPreloadedAssets::class,
         ]);

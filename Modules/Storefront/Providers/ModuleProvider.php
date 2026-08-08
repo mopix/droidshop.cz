@@ -2,14 +2,16 @@
 
 namespace Modules\Storefront\Providers;
 
+use App\Core\Shop\ShopSettingsService;
+use App\Core\Storage\FileStorage;
 use App\Core\Storefront\Contracts\StorefrontHome;
 use App\Core\Tenancy\TenantContext;
 use App\Core\Theme\ThemeResolver;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\View;
 use Illuminate\Support\ServiceProvider;
-use Modules\Categories\Models\Category;
 use Modules\Storefront\Http\Controllers\HomeController;
+use Modules\Storefront\Support\NavCategories;
 use Modules\Storefront\Support\ShopModules;
 
 class ModuleProvider extends ServiceProvider
@@ -58,14 +60,26 @@ class ModuleProvider extends ServiceProvider
             $tenant = app(TenantContext::class)->current();
             $shopModules = app(ShopModules::class);
             $hasCustomers = $shopModules->has('customers');
+            $shopSettings = app(ShopSettingsService::class)->forCurrentTenant();
 
             $view->with([
                 'shopName' => $tenant?->name ?? config('app.name'),
-                'navCategories' => ! $shopModules->has('categories') ? collect() : Category::query()
-                    ->visible()
-                    ->whereNull('parent_id')
-                    ->orderBy('position')
-                    ->get(),
+                // The shop's own settings (wave 3.6): tagline in the header,
+                // contact box in the footer. Per tenant, not per visitor, so
+                // safe inside cached HTML (§15.6) — and every write bumps all
+                // three generations, so a change shows immediately.
+                'shopSettings' => $shopSettings,
+                'shopOgImage' => $shopSettings->og_image_path === null
+                    ? null
+                    : app(FileStorage::class)->publicUrl($shopSettings->og_image_path),
+                // "Hide empty categories" (wave 3.6) only means anything with
+                // a catalogue to be empty of; a shop with the products module
+                // off keeps its whole menu.
+                'navCategories' => ! $shopModules->has('categories')
+                    ? collect()
+                    : app(NavCategories::class)->roots(
+                        $shopSettings->hide_empty_categories && $shopModules->has('products'),
+                    ),
                 // Otherwise the customer account area (login, registration,
                 // /ucet) is unreachable by navigation — nothing links to it.
                 // A shop with the module switched off shows nothing at all

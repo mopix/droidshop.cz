@@ -11,6 +11,29 @@ Pravidla: [`.claude/skills/versioning/SKILL.md`](.claude/skills/versioning/SKILL
 
 > CHANGELOG vede milníky (minor/major). Detail patchů je v `git log`.
 
+## [0.41.0] – 2026-08-08
+
+**Fáze 2 / vlna 3.6 — nastavení obchodu pro nájemce.** Uzavření vlny (`docs/as-is/2026-08-08-nastaveni-obchodu.md`). 7 nových E2E scénářů (celkem 39), 55 nových PHPUnit testů.
+
+### Čtyři obrazovky pod NASTAVENÍ
+Obchod (název, slogan, časové pásmo, formáty), Kontakty (e-mail, telefon, adresa, sociální sítě), SEO (titulek a popis úvodní stránky, obrázek pro sdílení, `noindex`) a Zobrazení (skrývání prázdných kategorií, text prázdného hledání, kontakty v patičce, zaheslování). Do menu přibyl i fakturační profil — dosud k němu vedl jen banner, který nájemce jednou odklikl a už ho nenašel.
+
+Vyplněné se zobrazí, nevyplněné ne. Žádné přepínače „kde se to objeví“: tabulka zaškrtávátek je ovládání, které většina nájemců nikdy nepoužije, a každé z nich je způsob, jak si rozbít patičku.
+
+### Vlastní tabulka, ne `settings`
+`tenants` je platformní záznam o zákazníkovi, `tenant_theme` branding čtený na každém requestu a `settings` klíčuje **podle modulu** — muselo by se vymyslet, který modul „vlastní“ časové pásmo. Nájemce bez řádku dostane výchozí hodnoty, ne `null`; každý zápis zvedne všechny tři generace page cache.
+
+### `noindex` na obou místech
+Přepínač jde do meta tagu **i** do `robots.txt`. Jedno bez druhého je poloviční zákaz: crawler, který stránku nestáhne, meta tag nepřečte, a crawler, který `robots.txt` ignoruje, tag přečte. S přepínačem konkrétní stránky se slučuje, nikdy nepřepisuje — košík zůstane `noindex`.
+
+### Zaheslování e-shopu
+Middleware ve `web` skupině před page cache, takže odmítnutý požadavek se k cache vůbec nedostane a stránka uložená před zamčením se po něm neservíruje. Heslo hashované, ověřované `Hash::check`, pokusy omezené počtem. Administrace a **webhooky plateb a dopravců** zůstávají mimo zámek: zamčený e-shop, který přestane přijímat „objednávka je zaplacená“, ztratí platbu tiše.
+
+Vlajka zámku je zrcadlená na `tenants` — čtení ze `shop_settings` stálo dva dotazy na každý cache hit a shodilo rozpočet dotazů z vlny 3.0.
+
+### Skrývání prázdných kategorií se ptá na celou větev
+Běžný katalog má všechno v listech; počítat jen vlastní produkty kořene by smazalo celé horní menu. E-shop bez publikovaných produktů si menu nechá celé — schovat všechno vypadá jako rozbitý e-shop, ne prázdný.
+
 ## [0.40.0] – 2026-08-08
 
 **Fáze 2 / vlna 3.5 — layout administrace.** Uzavření vlny (`docs/as-is/2026-08-08-admin-layout.md`). 10 nových E2E scénářů (celkem 32), 15 nových PHPUnit testů.

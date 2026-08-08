@@ -3,6 +3,9 @@ import { computed, nextTick, ref } from 'vue'
 import { router, useForm } from '@inertiajs/vue3'
 import AdminLayout from '@/Layouts/AdminLayout.vue'
 import ConfirmDialog from '@/Components/Ui/ConfirmDialog.vue'
+import SettingsPage from '@/Components/Settings/SettingsPage.vue'
+import SettingsGrid from '@/Components/Settings/SettingsGrid.vue'
+import SettingsCard from '@/Components/Settings/SettingsCard.vue'
 
 interface CustomDomain {
   domain: string
@@ -101,16 +104,17 @@ async function copy(value: string, label: string) {
 
 <template>
   <AdminLayout title="Vlastní doména">
-    <div class="mx-auto max-w-2xl">
-      <h1 class="text-lg font-semibold text-gray-900">Vlastní doména</h1>
-      <p class="mt-1 text-sm text-gray-600">
-        E-shop běží na subdoméně <strong>{{ subdomain }}</strong>. Můžete si nastavit vlastní doménu
-        (např. muj-eshop.cz) — subdoména bude fungovat dál, dokud pro vlastní doménu nebude vydaný
-        certifikát.
-      </p>
+    <SettingsPage title="Vlastní doména">
+      <template #intro>
+        <p class="mt-1 text-sm text-gray-600">
+          E-shop běží na subdoméně <strong>{{ subdomain }}</strong>. Můžete si nastavit vlastní
+          doménu (např. muj-eshop.cz) — subdoména bude fungovat dál, dokud pro vlastní doménu nebude
+          vydaný certifikát.
+        </p>
+      </template>
 
       <!-- No custom domain yet: add form. -->
-      <form v-if="!custom" class="mt-6 space-y-4" @submit.prevent="submit">
+      <form v-if="!custom" class="max-w-xl space-y-4" @submit.prevent="submit">
         <div>
           <label for="domain" class="block text-sm font-medium text-gray-700">Doména</label>
           <input
@@ -140,12 +144,13 @@ async function copy(value: string, label: string) {
         </div>
       </form>
 
-      <!-- Custom domain exists: status, DNS instructions, actions. -->
-      <div v-else class="mt-6 space-y-6">
-        <div>
-          <p class="text-sm font-medium text-gray-700">Doména</p>
-          <p class="text-base text-gray-900">{{ custom.domain }}</p>
-        </div>
+      <!-- Custom domain exists: status and actions beside the DNS records. -->
+      <SettingsGrid v-else>
+        <SettingsCard legend="Stav">
+          <div>
+            <p class="text-sm font-medium text-gray-700">Doména</p>
+            <p class="text-base text-gray-900">{{ custom.domain }}</p>
+          </div>
 
         <div
           v-if="status"
@@ -157,9 +162,29 @@ async function copy(value: string, label: string) {
           <p v-if="custom.verification_error" class="mt-1">{{ custom.verification_error }}</p>
         </div>
 
-        <div v-if="instructions" class="rounded-md border border-gray-200 p-4">
-          <h2 class="text-sm font-semibold text-gray-900">Nastavení DNS</h2>
-          <p class="mt-1 text-sm text-gray-600">
+
+        <div class="flex flex-wrap justify-between gap-3">
+          <button
+            type="button"
+            :disabled="verifying"
+            class="rounded-md bg-gray-900 px-4 py-2 text-sm font-semibold text-white hover:bg-gray-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-900 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-gray-400 disabled:text-gray-700"
+            @click="verifyNow"
+          >
+            {{ verifying ? 'Ověřuji…' : 'Ověřit teď' }}
+          </button>
+
+          <button
+            type="button"
+            class="rounded-md border border-red-300 px-4 py-2 text-sm font-semibold text-red-700 hover:bg-red-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-700 focus-visible:ring-offset-2"
+            @click="confirmingRemoval = true"
+          >
+            Odebrat doménu
+          </button>
+        </div>
+        </SettingsCard>
+
+        <SettingsCard v-if="instructions" legend="Nastavení DNS">
+          <p class="text-sm text-gray-600">
             U poskytovatele domény nastavte následující záznamy. Ověření může po nastavení trvat i
             několik hodin (šíření DNS).
           </p>
@@ -247,28 +272,9 @@ async function copy(value: string, label: string) {
           <p v-if="copyFeedback" role="status" aria-live="polite" class="mt-3 text-sm text-gray-700">
             {{ copyFeedback }}
           </p>
-        </div>
-
-        <div class="flex flex-wrap justify-between gap-3">
-          <button
-            type="button"
-            :disabled="verifying"
-            class="rounded-md bg-gray-900 px-4 py-2 text-sm font-semibold text-white hover:bg-gray-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-900 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-gray-400 disabled:text-gray-700"
-            @click="verifyNow"
-          >
-            {{ verifying ? 'Ověřuji…' : 'Ověřit teď' }}
-          </button>
-
-          <button
-            type="button"
-            class="rounded-md border border-red-300 px-4 py-2 text-sm font-semibold text-red-700 hover:bg-red-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-700 focus-visible:ring-offset-2"
-            @click="confirmingRemoval = true"
-          >
-            Odebrat doménu
-          </button>
-        </div>
-      </div>
-    </div>
+        </SettingsCard>
+      </SettingsGrid>
+    </SettingsPage>
 
     <ConfirmDialog
       :show="confirmingRemoval"
