@@ -20,6 +20,7 @@ type DocumentRow = {
 const props = defineProps<{
   documents: { data: DocumentRow[]; links: PaginationLink[]; meta?: PaginationMeta }
   accountingEnabled: boolean
+  vatApplies: boolean
 }>()
 
 const TYPE_LABELS: Record<string, string> = {
@@ -62,7 +63,13 @@ const vatTo = ref(toIsoDate(today))
       <p class="mt-1 text-sm text-gray-600">Vystavené faktury k objednávkám. Nový doklad se vystavuje z detailu objednávky.</p>
     </template>
 
+    <!--
+      Only for a shop that is registered for VAT: without a registration there
+      is no VAT return to file and the export would produce a file of zeroes
+      (wave 3.8).
+    -->
     <form
+      v-if="props.vatApplies"
       :action="route('admin.docs.vat-export')"
       method="get"
       class="mb-6 flex flex-wrap items-end gap-3 rounded border border-gray-200 p-4"

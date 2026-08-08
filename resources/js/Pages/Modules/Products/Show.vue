@@ -204,7 +204,11 @@ const newValue = ref<Record<number, string>>({})
  * saved to — the server. Not sent to the server (saveVariant only ever picks
  * the named fields off this).
  */
-type MatrixRow = ProductVariant & { dirty: boolean }
+type MatrixRow = ProductVariant & {
+  /** Typing helper only — never stored. See UpdateProductVariantRequest. */
+  net_price: number | null
+  dirty: boolean
+}
 
 /**
  * A local, decoupled copy of the matrix rows — the same reason every other
@@ -227,7 +231,20 @@ type MatrixRow = ProductVariant & { dirty: boolean }
  * (and thus revert) the stale local quantity. Only a row flagged dirty keeps
  * its local values; every other row re-seeds from the server on each visit.
  */
-const rows = ref<MatrixRow[]>(props.variants.map((variant) => ({ ...variant, dirty: false })))
+/**
+ * The net figure to show as a placeholder, using the rate currently selected
+ * on the product. A preview only: what gets stored is whatever the server
+ * computes from the field the merchant actually typed in.
+ */
+const netOf = (gross: number): number => {
+  const percent = rate.value?.percent ?? 0
+
+  return Math.round(gross / (1 + percent / 100))
+}
+
+const rows = ref<MatrixRow[]>(
+  props.variants.map((variant) => ({ ...variant, net_price: null, dirty: false })),
+)
 
 const markDirty = (row: MatrixRow) => {
   row.dirty = true
@@ -300,6 +317,9 @@ const saveVariant = (variant: MatrixRow) => {
     route('admin.products.variants.update', [props.product.slug, variant.id]),
     {
       price: variant.price,
+      // Only one of the two is ever set: typing in either column clears the
+      // other, and the server converts (see UpdateProductVariantRequest).
+      net_price: variant.net_price,
       sale_price: variant.sale_price,
       sku: variant.sku,
       // The matrix's own "Sleduje sklad" checkbox, not a forced value: a
@@ -1163,6 +1183,7 @@ const runVariantDelete = () => {
               <tr class="text-gray-500">
                 <th scope="col" class="py-2 pr-2 font-medium">Kombinace</th>
                 <th scope="col" class="px-2 py-2 font-medium">Cena (haléře)</th>
+                <th v-if="vatApplies" scope="col" class="px-2 py-2 font-medium">Bez DPH</th>
                 <th scope="col" class="px-2 py-2 font-medium">Akční cena</th>
                 <th scope="col" class="px-2 py-2 font-medium">SKU</th>
                 <th scope="col" class="px-2 py-2 font-medium">Sleduje sklad</th>
@@ -1188,7 +1209,24 @@ const runVariantDelete = () => {
                     placeholder="dědí"
                     :disabled="!can.edit"
                     class="w-28 rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-900 focus:ring-gray-900 disabled:bg-gray-100"
-                    @input="markDirty(variant)"
+                    @input="variant.net_price = null; markDirty(variant)"
+                  />
+                </td>
+
+                <td v-if="vatApplies" class="px-2 py-2">
+                  <label :for="`variant-net-price-${variant.id}`" class="sr-only">
+                    Cena varianty {{ variant.label }} bez DPH v haléřích
+                  </label>
+                  <input
+                    :id="`variant-net-price-${variant.id}`"
+                    v-model.number="variant.net_price"
+                    type="number"
+                    min="0"
+                    step="1"
+                    :placeholder="variant.price === null ? 'dědí' : String(netOf(variant.price))"
+                    :disabled="!can.edit"
+                    class="w-28 rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-900 focus:ring-gray-900 disabled:bg-gray-100"
+                    @input="variant.price = null; markDirty(variant)"
                   />
                 </td>
 
