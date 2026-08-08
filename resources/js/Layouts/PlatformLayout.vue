@@ -37,6 +37,7 @@ const topItems: NavItem[] = [
   { label: 'E-shopy', route: 'platform.tenants.index', icon: 'package', active: 'platform.tenants.*' },
   { label: 'Moduly', route: 'platform.modules.index', icon: 'sliders', active: 'platform.modules.*' },
   { label: 'Tarify', route: 'platform.plans.index', icon: 'tag', active: 'platform.plans.*' },
+  { label: 'Sazby DPH', route: 'platform.tax-rates.index', icon: 'receipt', active: 'platform.tax-rates.*' },
 ]
 
 /** The administrator's own account, pinned to the bottom like in the tenant admin. */
