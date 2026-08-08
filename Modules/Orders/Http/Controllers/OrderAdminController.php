@@ -9,6 +9,7 @@ use App\Core\Orders\Contracts\OrderView;
 use App\Core\Orders\OrderFilter;
 use App\Core\Shipping\Contracts\CarrierRegistry;
 use App\Core\Shipping\Contracts\ShipmentBook;
+use App\Core\Shop\ShopClock;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use Inertia\Response;
@@ -50,6 +51,7 @@ class OrderAdminController
     ];
 
     public function __construct(
+        private readonly ShopClock $clock,
         private readonly OrderBook $orders,
         private readonly DocumentBook $documents,
         // Same read-only pattern as $documents above, and the same one
@@ -161,7 +163,7 @@ class OrderAdminController
                     'from' => $event->from,
                     'to' => $event->to,
                     'note' => $event->note,
-                    'created_at' => $event->created_at?->toIso8601String(),
+                    'created_at' => $this->clock->formatDateTime($event->created_at),
                 ])->values()->all(),
                 // Read through the kernel contract, never the docs module's
                 // Eloquent model — this controller has no business knowing
@@ -254,7 +256,10 @@ class OrderAdminController
             'shipping_total' => $order->orderShippingTotal()->amount,
             'total' => $order->orderTotal()->amount,
             'currency' => $order->orderCurrency(),
-            'placed_at' => $order->orderPlacedAt()?->toIso8601String(),
+            // Formatted here, not in Vue: the shop's time zone and date
+            // format live on the server (wave 3.6), and an ISO string in the
+            // browser would be rendered in the VISITOR's zone, not the shop's.
+            'placed_at' => $this->clock->formatDateTime($order->orderPlacedAt()),
         ];
     }
 }

@@ -8,6 +8,7 @@ use App\Core\Orders\Contracts\OrderBook;
 use App\Core\Orders\Contracts\OrderView;
 use App\Core\Settings\SettingsService;
 use App\Core\Shipping\Contracts\PaymentOptions;
+use App\Core\Shop\ShopClock;
 use App\Core\Storage\FileStorage;
 use App\Core\Tenancy\TenantContext;
 use App\Models\Tenant;
@@ -55,6 +56,7 @@ class GenerateDocumentPdf implements ShouldQueue
         PaymentOptions $payments,
         SettingsService $settings,
         MailService $mail,
+        ShopClock $clock,
     ): void {
         if ($this->tenantId !== null) {
             $tenant = Tenant::find($this->tenantId);
@@ -76,6 +78,10 @@ class GenerateDocumentPdf implements ShouldQueue
             'document' => $document,
             'qr' => $this->safeQrDataUri($document, $orders, $payments),
             'footer' => (string) $settings->get('docs', 'invoice_footer', ''),
+            // The shop's own date format (wave 3.7). Resolved here, after the
+            // tenant context is set above — this job runs on a queue, where
+            // there is no ambient tenant until it puts one there.
+            'clock' => $clock,
         ])->setPaper('a4');
 
         // Keyed by type as well as number: since wave 1.6 a printed number is

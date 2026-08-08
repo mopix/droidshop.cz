@@ -12,7 +12,7 @@
 
         <dl class="card mt-4 grid grid-cols-2 gap-x-4 gap-y-2 p-4 text-sm sm:w-2/3">
             <dt class="text-slate-600">Datum</dt>
-            <dd class="text-slate-900">{{ $order->orderPlacedAt()?->format('d.m.Y H:i') ?? '—' }}</dd>
+            <dd class="text-slate-900">{{ app(\App\Core\Shop\ShopClock::class)->formatDateTime($order->orderPlacedAt()) ?? '—' }}</dd>
 
             <dt class="text-slate-600">Stav objednávky</dt>
             <dd><span class="badge bg-slate-100 text-slate-800">{{ \Modules\Customers\Support\OrderStatusLabels::fulfillment($order->orderFulfillmentStatus()) }}</span></dd>

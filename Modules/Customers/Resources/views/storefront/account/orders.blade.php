@@ -29,7 +29,7 @@
                     @foreach ($orders as $order)
                         <tr>
                             <td class="py-3 pl-4 pr-4 font-medium text-slate-900">{{ $order->orderNumber() }}</td>
-                            <td class="py-3 pr-4 text-slate-700">{{ $order->orderPlacedAt()?->format('d.m.Y') ?? '—' }}</td>
+                            <td class="py-3 pr-4 text-slate-700">{{ app(\App\Core\Shop\ShopClock::class)->formatDate($order->orderPlacedAt()) ?? '—' }}</td>
                             <td class="py-3 pr-4 text-slate-700">{{ \Modules\Customers\Support\OrderStatusLabels::fulfillment($order->orderFulfillmentStatus()) }}</td>
                             <td class="py-3 pr-4 text-slate-700">{{ \Modules\Customers\Support\OrderStatusLabels::payment($order->orderPaymentStatus()) }}</td>
                             <td class="py-3 pr-4 whitespace-nowrap font-medium text-slate-900">{{ $order->orderTotal()->format() }}</td>

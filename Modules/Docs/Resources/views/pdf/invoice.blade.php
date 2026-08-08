@@ -180,13 +180,13 @@
         </tr>
         <tr>
             <td class="label">Datum vystavení</td>
-            <td>{{ optional($document->issued_at)->format('d.m.Y') }}</td>
+            <td>{{ $clock->formatDate($document->issued_at) }}</td>
             <td class="label">Datum splatnosti</td>
-            <td>{{ optional($document->due_at)->format('d.m.Y') }}</td>
+            <td>{{ $clock->formatCalendarDate($document->due_at) }}</td>
         </tr>
         <tr>
             <td class="label">DUZP</td>
-            <td>{{ optional($document->taxable_at)->format('d.m.Y') }}</td>
+            <td>{{ $clock->formatCalendarDate($document->taxable_at) }}</td>
             <td class="label">Číslo objednávky</td>
             <td>{{ $customer['order_number'] ?? '' }}</td>
         </tr>
