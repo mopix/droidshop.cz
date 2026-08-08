@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import { Head, router, useForm } from '@inertiajs/vue3'
-import ApplicationLogo from '@/Components/ApplicationLogo.vue'
 import InputLabel from '@/Components/InputLabel.vue'
 import InputError from '@/Components/InputError.vue'
 import TextInput from '@/Components/TextInput.vue'
@@ -90,7 +89,7 @@ const submit = () => {
   <div class="min-h-screen bg-gray-100">
     <header class="border-b border-gray-200 bg-white">
       <div class="mx-auto flex max-w-3xl items-center justify-between px-4 py-3 sm:px-6">
-        <ApplicationLogo class="h-8 w-8 fill-current text-gray-700" />
+        <span class="text-lg font-bold tracking-tight text-gray-900">DroidShop<span class="text-gray-400">.cz</span></span>
         <button
           type="button"
           class="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-900"

@@ -1,5 +1,4 @@
 <script setup>
-import ApplicationLogo from '@/Components/ApplicationLogo.vue';
 import { Link } from '@inertiajs/vue3';
 </script>
 
@@ -7,9 +6,17 @@ import { Link } from '@inertiajs/vue3';
     <div
         class="flex min-h-screen flex-col items-center bg-gray-100 pt-6 sm:justify-center sm:pt-0"
     >
+        <!--
+            The platform's own wordmark, not the Laravel logo Breeze ships
+            with. This is the first screen a prospective tenant sees, and a
+            framework's logo on it says nothing about whose product this is.
+        -->
         <div>
-            <Link href="/">
-                <ApplicationLogo class="h-20 w-20 fill-current text-gray-500" />
+            <Link
+                href="/"
+                class="text-2xl font-bold tracking-tight text-gray-900 hover:text-gray-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-900"
+            >
+                DroidShop<span class="text-gray-400">.cz</span>
             </Link>
         </div>
 

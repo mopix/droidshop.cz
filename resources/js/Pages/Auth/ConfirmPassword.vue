@@ -19,16 +19,16 @@ const submit = () => {
 
 <template>
     <GuestLayout>
-        <Head title="Confirm Password" />
+        <Head title="Potvrzení hesla" />
 
         <div class="mb-4 text-sm text-gray-600">
-            This is a secure area of the application. Please confirm your
-            password before continuing.
+            Tato část je chráněná. Než budete pokračovat, potvrďte prosím
+            své heslo.
         </div>
 
         <form @submit.prevent="submit">
             <div>
-                <InputLabel for="password" value="Password" />
+                <InputLabel for="password" value="Heslo" />
                 <TextInput
                     id="password"
                     type="password"
@@ -47,7 +47,7 @@ const submit = () => {
                     :class="{ 'opacity-25': form.processing }"
                     :disabled="form.processing"
                 >
-                    Confirm
+                    Potvrdit
                 </PrimaryButton>
             </div>
         </form>
