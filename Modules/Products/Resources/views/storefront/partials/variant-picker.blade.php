@@ -64,12 +64,18 @@
     it only ever displays a string the server already computed.
 --}}
 @php
-    $variantMatrix = $variants->map(function ($variant) use ($product) {
+    // A shop that is not registered for VAT has no net price to show, so the
+    // island gets none and simply leaves that element alone (wave 3.7).
+    $vatApplies = app(\App\Core\Tax\VatMode::class)->appliesVat();
+
+    $variantMatrix = $variants->map(function ($variant) use ($product, $vatApplies) {
         return [
             'id' => $variant->getKey(),
             'selection' => array_values($variant->catalogVariantSelection()),
             'price' => $variant->catalogVariantPrice()->format(),
-            'net_price' => $product->rate()->net($variant->catalogVariantPrice())->format(),
+            'net_price' => $vatApplies
+                ? $product->rate()->net($variant->catalogVariantPrice())->format()
+                : null,
             'regular_price' => $variant->catalogVariantRegularPrice()->format(),
             'on_sale' => $variant->catalogVariantIsOnSale(),
             'available' => $variant->catalogVariantIsAvailable(),

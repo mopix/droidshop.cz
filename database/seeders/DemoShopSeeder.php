@@ -55,7 +55,26 @@ class DemoShopSeeder extends Seeder
             );
 
             $tenant = app(TenantProvisioner::class)->provision($owner, 'Demo obchod', 'obchod', $plan);
-            $tenant->update(['status' => TenantStatus::Active, 'mail_reply_to' => 'demo@droidshop.cz']);
+            $tenant->update([
+                'status' => TenantStatus::Active,
+                'mail_reply_to' => 'demo@droidshop.cz',
+                // A VAT payer with a filled-in billing profile, so the demo
+                // shows what most shops look like: prices with VAT, a rate on
+                // every product, a recap in the checkout and a proper tax
+                // document. A shop that is not registered is the narrower case
+                // (wave 3.7) and would leave half the platform invisible in
+                // the demo.
+                'vat_payer' => true,
+                'billing_name' => 'Demo obchod s.r.o.',
+                'billing_ico' => '12345678',
+                'billing_dic' => 'CZ12345678',
+                'billing_address' => [
+                    'street' => 'Demoluční 1',
+                    'city' => 'Brno',
+                    'zip' => '60200',
+                    'country' => 'CZ',
+                ],
+            ]);
         }
 
         app(TenantContext::class)->runAs($tenant, fn () => $this->seedShop());

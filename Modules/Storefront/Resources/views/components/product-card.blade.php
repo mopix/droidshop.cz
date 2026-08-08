@@ -38,7 +38,11 @@
                 <s class="ml-1 text-sm text-slate-500">{{ $product->catalogRegularPrice()->format() }}</s>
             @endif
 
-            <span class="block text-xs text-slate-500">s DPH</span>
+            {{-- A shop that is not registered for VAT says nothing about it
+                 (wave 3.7). --}}
+            @if (app(\App\Core\Tax\VatMode::class)->appliesVat())
+                <span class="block text-xs text-slate-500">s DPH</span>
+            @endif
         </p>
 
         <a href="{{ $product->catalogUrl() }}" class="btn btn-outline">Detail</a>
