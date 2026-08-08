@@ -3,6 +3,7 @@
 namespace Modules\Storefront\Http\Controllers;
 
 use App\Core\Catalog\Contracts\ProductCatalog;
+use App\Core\Shop\ShopSettingsService;
 use App\Core\Storefront\Contracts\StorefrontHome;
 use App\Core\Tenancy\TenantContext;
 use Illuminate\Contracts\View\View;
@@ -24,6 +25,7 @@ class HomeController implements StorefrontHome
         private readonly ProductCatalog $catalog,
         private readonly TenantContext $context,
         private readonly ShopModules $modules,
+        private readonly ShopSettingsService $settings,
     ) {}
 
     public function moduleKey(): string
@@ -34,6 +36,8 @@ class HomeController implements StorefrontHome
     public function render(Request $request): View
     {
         $tenant = $this->context->current();
+        $shopName = $tenant?->name ?? config('app.name');
+        $settings = $this->settings->forCurrentTenant();
 
         $blocks = HomepageBlock::query()->visible()->orderBy('position')->get()
             ->map(fn (HomepageBlock $block) => $this->prepare($block))
@@ -44,11 +48,15 @@ class HomeController implements StorefrontHome
         // are evaluated before the layout, so the composer's data has not been
         // bound yet when this view runs.
         return view('storefront::home', [
-            'shopName' => $tenant?->name ?? config('app.name'),
+            'shopName' => $shopName,
             'blocks' => $blocks,
+            // The merchant's own title and description if they wrote one
+            // (wave 3.6); otherwise the derived pair this page always used.
+            // Empty degrades to the old behaviour rather than to an empty
+            // <title>, which is worse than the automatic one it replaced.
             'seo' => new Seo(
-                title: $tenant?->name ?? config('app.name'),
-                description: 'Nakupujte v e-shopu '.($tenant?->name ?? config('app.name')).'.',
+                title: $settings->seoTitleOr($shopName),
+                description: $settings->seo_description ?: 'Nakupujte v e-shopu '.$shopName.'.',
                 canonical: Seo::canonicalFor('/'),
             ),
         ]);

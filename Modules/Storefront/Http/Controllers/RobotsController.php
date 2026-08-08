@@ -2,6 +2,7 @@
 
 namespace Modules\Storefront\Http\Controllers;
 
+use App\Core\Shop\ShopSettingsService;
 use App\Core\Tenancy\TenantContext;
 use Illuminate\Http\Response;
 
@@ -14,7 +15,10 @@ use Illuminate\Http\Response;
  */
 class RobotsController
 {
-    public function __construct(private readonly TenantContext $context) {}
+    public function __construct(
+        private readonly TenantContext $context,
+        private readonly ShopSettingsService $settings,
+    ) {}
 
     public function __invoke(): Response
     {
@@ -22,7 +26,13 @@ class RobotsController
 
         abort_if($tenant === null, 404);
 
-        $lines = $tenant->allowsStorefront()
+        // A shop that asked not to be indexed says so here as well as in the
+        // meta tag (wave 3.6). One without the other is half a refusal:
+        // a crawler that never fetches the page never reads its meta tag, and
+        // a crawler that ignores robots.txt still reads the tag.
+        $noindex = $this->settings->forCurrentTenant()->noindex;
+
+        $lines = $tenant->allowsStorefront() && ! $noindex
             ? [
                 'User-agent: *',
                 'Disallow: /admin/',

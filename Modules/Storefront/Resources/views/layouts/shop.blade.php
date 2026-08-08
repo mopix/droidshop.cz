@@ -9,7 +9,11 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
 
-    <x-storefront::seo-meta :seo="$seo" :shop-name="$shopName" />
+    <x-storefront::seo-meta
+        :seo="$seo"
+        :shop-name="$shopName"
+        :shop-noindex="$shopSettings->noindex"
+        :default-image="$shopOgImage ?? null" />
 
     <style>
         :root {

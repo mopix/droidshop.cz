@@ -1,10 +1,22 @@
-@props(['seo', 'shopName' => null])
+{{--
+    $shopNoindex and $defaultImage come from the shop's SEO settings
+    (wave 3.6), which apply to every page rather than to the one the
+    controller built its Seo for.
+
+    The two are OR-ed, never overridden: a page that is noindex on its own
+    (cart, checkout, thank-you) has to stay that way whatever the shop-wide
+    switch says.
+--}}
+@props(['seo', 'shopName' => null, 'shopNoindex' => false, 'defaultImage' => null])
+
+@php($image = $seo->image ?? $defaultImage)
+@php($robots = ($shopNoindex || $seo->noindex) ? 'noindex, follow' : $seo->robots())
 
 <title>{{ $seo->title }}</title>
 @if ($seo->description)
     <meta name="description" content="{{ $seo->description }}">
 @endif
-<meta name="robots" content="{{ $seo->robots() }}">
+<meta name="robots" content="{{ $robots }}">
 <link rel="canonical" href="{{ $seo->canonical ?? url()->current() }}">
 @if ($seo->prev)
     <link rel="prev" href="{{ $seo->prev }}">
@@ -22,15 +34,15 @@
 @if ($seo->description)
     <meta property="og:description" content="{{ $seo->description }}">
 @endif
-@if ($seo->image)
-    <meta property="og:image" content="{{ $seo->image }}">
+@if ($image)
+    <meta property="og:image" content="{{ $image }}">
 @endif
 
-<meta name="twitter:card" content="{{ $seo->image ? 'summary_large_image' : 'summary' }}">
+<meta name="twitter:card" content="{{ $image ? 'summary_large_image' : 'summary' }}">
 <meta name="twitter:title" content="{{ $seo->title }}">
 @if ($seo->description)
     <meta name="twitter:description" content="{{ $seo->description }}">
 @endif
-@if ($seo->image)
-    <meta name="twitter:image" content="{{ $seo->image }}">
+@if ($image)
+    <meta name="twitter:image" content="{{ $image }}">
 @endif

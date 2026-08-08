@@ -25,6 +25,10 @@ Route::patch('/admin/nastaveni/obchod', [ShopSettingsController::class, 'updateS
 Route::get('/admin/nastaveni/kontakty', [ShopSettingsController::class, 'editContacts'])->name('admin.contacts.edit');
 Route::patch('/admin/nastaveni/kontakty', [ShopSettingsController::class, 'updateContacts'])->name('admin.contacts.update');
 
+Route::get('/admin/nastaveni/seo', [ShopSettingsController::class, 'editSeo'])->name('admin.seo.edit');
+Route::patch('/admin/nastaveni/seo', [ShopSettingsController::class, 'updateSeo'])->name('admin.seo.update');
+Route::delete('/admin/nastaveni/seo/obrazek', [ShopSettingsController::class, 'destroyOgImage'])->name('admin.seo.image.destroy');
+
 Route::get('/admin/nastaveni/vzhled', [AppearanceController::class, 'edit'])->name('admin.appearance.edit');
 Route::post('/admin/nastaveni/vzhled', [AppearanceController::class, 'update'])->name('admin.appearance.update');
 Route::delete('/admin/nastaveni/vzhled/logo', [AppearanceController::class, 'destroyLogo'])->name('admin.appearance.logo.destroy');

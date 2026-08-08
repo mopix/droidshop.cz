@@ -3,9 +3,11 @@
 namespace App\Http\Controllers\Tenant;
 
 use App\Core\Shop\ShopSettingsService;
+use App\Core\Storage\FileStorage;
 use App\Core\Tenancy\TenantContext;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Tenant\UpdateContactsRequest;
+use App\Http\Requests\Tenant\UpdateSeoRequest;
 use App\Http\Requests\Tenant\UpdateShopRequest;
 use App\Models\ShopSettings;
 use Illuminate\Http\RedirectResponse;
@@ -26,6 +28,7 @@ class ShopSettingsController extends Controller
     public function __construct(
         private readonly TenantContext $context,
         private readonly ShopSettingsService $settings,
+        private readonly FileStorage $files,
     ) {}
 
     public function editShop(): Response
@@ -106,6 +109,59 @@ class ShopSettingsController extends Controller
         ]));
 
         return back()->with('success', 'Kontaktní údaje byly uloženy.');
+    }
+
+    public function editSeo(): Response
+    {
+        $settings = $this->settings->forCurrentTenant();
+
+        return Inertia::render('Tenant/Settings/Seo', [
+            'seo' => [
+                'seo_title' => $settings->seo_title,
+                'seo_description' => $settings->seo_description,
+                'noindex' => $settings->noindex,
+                'og_image_url' => $settings->og_image_path === null
+                    ? null
+                    : $this->files->publicUrl($settings->og_image_path),
+            ],
+            'shopName' => $this->context->current()->name,
+        ]);
+    }
+
+    public function updateSeo(UpdateSeoRequest $request): RedirectResponse
+    {
+        $data = [
+            'seo_title' => $request->validated('seo_title'),
+            'seo_description' => $request->validated('seo_description'),
+            'noindex' => $request->boolean('noindex'),
+        ];
+
+        // The stored path is server-authoritative: it is set from a real
+        // upload or left alone, never taken from the request. Same rule as
+        // homepage blocks' image_path (wave 2.3) — a client that can name the
+        // file it "uploaded" can name any file on the disk.
+        if ($request->hasFile('og_image')) {
+            $extension = $request->file('og_image')->extension();
+            $path = "seo/og-image.{$extension}";
+            $this->files->putPublic($path, file_get_contents($request->file('og_image')->getRealPath()));
+            $data['og_image_path'] = $path;
+        }
+
+        $this->settings->update($data);
+
+        return back()->with('success', 'Nastavení pro vyhledávače bylo uloženo.');
+    }
+
+    public function destroyOgImage(): RedirectResponse
+    {
+        $settings = $this->settings->forCurrentTenant();
+
+        if ($settings->og_image_path !== null) {
+            $this->files->delete($settings->og_image_path, private: false);
+            $this->settings->update(['og_image_path' => null]);
+        }
+
+        return back()->with('success', 'Obrázek byl odebrán.');
     }
 
     /**

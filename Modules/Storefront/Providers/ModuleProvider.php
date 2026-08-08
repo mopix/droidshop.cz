@@ -3,6 +3,7 @@
 namespace Modules\Storefront\Providers;
 
 use App\Core\Shop\ShopSettingsService;
+use App\Core\Storage\FileStorage;
 use App\Core\Storefront\Contracts\StorefrontHome;
 use App\Core\Tenancy\TenantContext;
 use App\Core\Theme\ThemeResolver;
@@ -59,6 +60,7 @@ class ModuleProvider extends ServiceProvider
             $tenant = app(TenantContext::class)->current();
             $shopModules = app(ShopModules::class);
             $hasCustomers = $shopModules->has('customers');
+            $shopSettings = app(ShopSettingsService::class)->forCurrentTenant();
 
             $view->with([
                 'shopName' => $tenant?->name ?? config('app.name'),
@@ -66,7 +68,10 @@ class ModuleProvider extends ServiceProvider
                 // contact box in the footer. Per tenant, not per visitor, so
                 // safe inside cached HTML (§15.6) — and every write bumps all
                 // three generations, so a change shows immediately.
-                'shopSettings' => app(ShopSettingsService::class)->forCurrentTenant(),
+                'shopSettings' => $shopSettings,
+                'shopOgImage' => $shopSettings->og_image_path === null
+                    ? null
+                    : app(FileStorage::class)->publicUrl($shopSettings->og_image_path),
                 'navCategories' => ! $shopModules->has('categories') ? collect() : Category::query()
                     ->visible()
                     ->whereNull('parent_id')
