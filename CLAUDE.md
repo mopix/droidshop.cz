@@ -174,7 +174,11 @@ Po milestone: [`docs/as-is/`](docs/as-is/) ([`.claude/rules/as-is-on-milestone.m
 
 **Vlna 3.5 uzavřena:** layout administrace. Plná šířka, levé menu ve čtyřech kategoriích (kategorie a pořadí drží jádro, manifest říká jen `group`), sbalitelné do ikon, na mobilu drawer; `/admin` má poprvé vlastní **nástěnku**; superadmin dostal totéž rozvržení, ale nechal si tmavý panel. Ikony Lucide (schváleno).
 
-**Zbývá nasazení na VPS.** Vývoj na lokále je hotový: fáze 0–2 kompletní, page cache, právní minimum, měření, E2E i administrace. Otevřené jsou jen věci vázané na server (page cache etapa 2, Caddy TLS, cron, reálné účty Stripe/Comgate/Packeta/GA4) a **právní revize draftů**.
+**Vlna 3.6 uzavřena:** nastavení obchodu pro nájemce. Čtyři obrazovky pod NASTAVENÍ (Obchod, Kontakty, SEO, Zobrazení) + fakturační profil konečně v menu; vlastní tabulka `shop_settings`; zaheslování celého storefrontu (middleware před page cache, webhooky mimo zámek). Deset admin obrazovek sjednoceno na `SettingsPage`/`SettingsGrid`/`SettingsCard`.
+
+**Vlna 3.7 uzavřena:** plátcovství DPH a čas obchodu. `tenants.vat_payer` řídil od 1.5 jen doklady — neplátce povinně vybíral sazbu, kterou nemá jak uplatnit, a jeho zákazníkům se tisklo „s DPH · bez DPH". Nově jedno místo `VatMode`: neplátce nevidí DPH v administraci produktu, na detailu, ve výpisu ani v rozpisu pokladny; plátce dostal pole **cena bez DPH** (převod na serveru, při obojím rozhoduje cena s DPH). Sazby jde spravovat na `/superadmin/dph` (platformní, používanou nelze smazat, změna nesahá na vystavené doklady). Uzavřen dluh 3.6: `ShopClock` používá nastavené pásmo a formát; `DATE` sloupce se neposouvají, strojové formáty zůstávají `Y-m-d`.
+
+**Zbývá nasazení na VPS.** Vývoj na lokále je hotový: fáze 0–2 kompletní, page cache, právní minimum, měření, E2E, administrace i nastavení obchodu. Otevřené jsou jen věci vázané na server (page cache etapa 2, Caddy TLS, cron, reálné účty Stripe/Comgate/Packeta/GA4) a **právní revize draftů**.
 
 ## Rozhodnutí
 - 2026-07-17: Produktová spec v1.1 (draft) — multi-tenant SaaS, modularita, shared DB + `tenant_id`
