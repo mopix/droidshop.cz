@@ -11,6 +11,27 @@ Pravidla: [`.claude/skills/versioning/SKILL.md`](.claude/skills/versioning/SKILL
 
 > CHANGELOG vede milníky (minor/major). Detail patchů je v `git log`.
 
+## [0.40.0] – 2026-08-08
+
+**Fáze 2 / vlna 3.5 — layout administrace.** Uzavření vlny (`docs/as-is/2026-08-08-admin-layout.md`). 10 nových E2E scénářů (celkem 32), 15 nových PHPUnit testů.
+
+### Administrace na celou šířku, menu vlevo
+`max-w-7xl` pryč. Levé menu běží přes celou výšku a je rozdělené do čtyř kategorií — PRODUKTY, OBJEDNÁVKY, MODULY, NASTAVENÍ. Nadpisy jsou tlačítka s `aria-expanded`, ne odkazy (vlastní stránku nemají), ve výchozím stavu sbalená; sekce s aktuální stránkou se otevře sama a co si uživatel rozbalí navíc, přežije přechod jinam.
+
+Pod `lg` je menu drawer s hamburgerem, na desktopu se dá sbalit na ikony. Profil a Odhlásit jsou dole v menu i v horním panelu.
+
+### Menu se dál staví z manifestů
+Manifest nově říká `group`; kategorie a jejich pořadí drží jádro, protože menu řazené podle pořadí instalace modulů by se přeskládalo při každém zapnutí. Vadná skupina padá při `modules:sync`. Vypnutý modul dál nenechá viset odkaz do 404.
+
+### `/admin` má konečně nástěnku
+Dosud přesměrovával na první položku menu, takže vlastník přistál na výpisu produktů bez ponětí, jak si e-shop stojí. Nová obrazovka ukazuje čtyři čísla za 30 dní, využití tarifu a rychlé odkazy — vše jedním agregačním dotazem.
+
+### Superadmin: stejné rozvržení, tmavý panel zůstal
+Sjednoceno je rozvržení, ne barva: záměna platformní konzole s administrací nájemce je způsob, jak pozastavit špatný e-shop.
+
+### Co odhalily testy
+Zavřený mobilní drawer zůstával v pořadí tabulátoru a odečítač ho četl (opraveno `invisible`). `Route::has()` je pravda i pro modul, který e-shop nezapnul — odkaz by vedl na 404. A axe našel zděděný nedostatečný kontrast (2,53 : 1) na stránce „Moje e-shopy", jakmile přešla pod nový layout.
+
 ## [0.39.0] – 2026-08-06
 
 **Fáze 2 / vlna 3.4 — E2E testy v prohlížeči (Playwright).** Uzavření vlny (`docs/as-is/2026-08-06-e2e-playwright.md`). 22 E2E testů, tři běhy po sobě zelené.
