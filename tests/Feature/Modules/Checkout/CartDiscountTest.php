@@ -33,7 +33,10 @@ class CartDiscountTest extends TestCase
 
         $this->artisan('modules:sync')->assertSuccessful();
 
-        $this->tenant = Tenant::factory()->withDomain('shop1.droidshop')->create(['name' => 'Shop One']);
+        // A VAT payer on purpose: since wave 3.7 a shop that is not registered
+        // gets no VAT recap at all, and the factory default is not registered.
+        $this->tenant = Tenant::factory()->withDomain('shop1.droidshop')
+            ->create(['name' => 'Shop One', 'vat_payer' => true]);
 
         foreach (['storefront', 'checkout', 'products', 'categories', 'discounts'] as $module) {
             $this->activateModule($this->tenant, $module);

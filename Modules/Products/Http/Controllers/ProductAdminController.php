@@ -3,6 +3,7 @@
 namespace Modules\Products\Http\Controllers;
 
 use App\Core\Tax\TaxRates;
+use App\Core\Tax\VatMode;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Response;
@@ -21,6 +22,7 @@ class ProductAdminController
         private readonly ProductWriter $writer,
         private readonly ProductImageService $images,
         private readonly TaxRates $rates,
+        private readonly VatMode $vat,
     ) {}
 
     public function index(Request $request): Response
@@ -73,6 +75,7 @@ class ProductAdminController
         abort_unless($request->user()->can('products.view'), 403);
 
         $canSeeCosts = $request->user()->can('products.costs');
+        $vatApplies = $this->vat->appliesVat();
 
         $product->load(['images', 'categories', 'manufacturer']);
 
@@ -85,7 +88,9 @@ class ProductAdminController
                 'short_description' => $product->short_description,
                 'description' => $product->description,
                 'price' => $product->price->amount,
-                'net_price' => $product->netPrice()->amount,
+                // Only a VAT payer is shown a net price; for anyone else the
+                // figure is meaningless and the form has no field for it.
+                'net_price' => $vatApplies ? $product->netPrice()->amount : null,
                 'sale_price' => $product->sale_price?->amount,
                 'sale_starts_at' => $product->sale_starts_at?->format('Y-m-d\TH:i'),
                 'sale_ends_at' => $product->sale_ends_at?->format('Y-m-d\TH:i'),
@@ -117,7 +122,11 @@ class ProductAdminController
                 'category_ids' => $product->categories->pluck('id')->all(),
                 'primary_category_id' => $product->primaryCategory()?->id,
             ],
-            'taxRates' => $this->rates->all()->values()->map(fn ($rate) => [
+            // Wave 3.7: a shop that is not registered for VAT gets no rate
+            // list at all — not merely a hidden field. It cannot charge tax,
+            // so it is never asked to pick a rate.
+            'vatApplies' => $vatApplies,
+            'taxRates' => ! $vatApplies ? [] : $this->rates->all()->values()->map(fn ($rate) => [
                 'id' => $rate->id,
                 'name' => $rate->name,
                 'percent' => $rate->percent(),

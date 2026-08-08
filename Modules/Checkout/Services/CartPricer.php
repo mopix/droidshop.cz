@@ -13,6 +13,7 @@ use App\Core\Shipping\Contracts\PaymentOption;
 use App\Core\Shipping\Contracts\ShippingOption;
 use App\Core\Shipping\Contracts\ShippingOptions;
 use App\Core\Tax\TaxRates;
+use App\Core\Tax\VatMode;
 use App\Models\TaxRate;
 use Modules\Checkout\Support\PricedCart;
 use Modules\Checkout\Support\PricedCartLine;
@@ -35,6 +36,7 @@ final class CartPricer
         private readonly ProductCatalog $catalog,
         private readonly ShippingOptions $shippingOptions,
         private readonly TaxRates $taxRates,
+        private readonly VatMode $vat,
         private readonly DiscountEngine $discounts,
     ) {}
 
@@ -270,6 +272,14 @@ final class CartPricer
         ?PaymentOption $payment,
         Money $paymentFee,
     ): array {
+        // A shop that is not registered for VAT shows no VAT recap at all
+        // (wave 3.7). Its products still carry a rate — the row is kept so
+        // that registering later makes sense — but none of it is charged, so
+        // printing a breakdown would state a tax the customer is not paying.
+        if (! $this->vat->appliesVat()) {
+            return [];
+        }
+
         $byPercent = $this->taxRates->all()->keyBy(fn (TaxRate $rate) => (string) $rate->percent());
 
         /** @var array<int, array{rate: TaxRate, gross: Money}> $groups keyed by rate_permille */

@@ -7,6 +7,7 @@ use App\Http\Controllers\Platform\ModuleController;
 use App\Http\Controllers\Platform\ProfileController as PlatformProfileController;
 use App\Http\Controllers\Platform\PlanController;
 use App\Http\Controllers\Platform\PlatformInvoiceDownloadController;
+use App\Http\Controllers\Platform\TaxRateController;
 use App\Http\Controllers\Platform\TenantController;
 use App\Http\Controllers\Platform\TenantModuleController;
 use App\Http\Controllers\StripeWebhookController;
@@ -58,6 +59,15 @@ Route::middleware('platform.host')->group(function () {
             ->name('platform.profile.password');
         Route::post('/superadmin/profil/zalozni-kody', [PlatformProfileController::class, 'regenerateRecoveryCodes'])
             ->name('platform.profile.recoveryCodes');
+
+        Route::get('/superadmin/dph', [TaxRateController::class, 'index'])
+            ->name('platform.tax-rates.index');
+        Route::post('/superadmin/dph', [TaxRateController::class, 'store'])
+            ->name('platform.tax-rates.store');
+        Route::patch('/superadmin/dph/{taxRate}', [TaxRateController::class, 'update'])
+            ->name('platform.tax-rates.update');
+        Route::delete('/superadmin/dph/{taxRate}', [TaxRateController::class, 'destroy'])
+            ->name('platform.tax-rates.destroy');
 
         Route::get('/superadmin/tenanti', [TenantController::class, 'index'])
             ->name('platform.tenants.index');

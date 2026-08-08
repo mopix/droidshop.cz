@@ -3,6 +3,9 @@
 namespace Modules\Products\Http\Requests;
 
 use App\Core\Limits\LimitsService;
+use App\Core\Money\Money;
+use App\Core\Tax\TaxRates;
+use App\Core\Tax\VatMode;
 use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -44,7 +47,21 @@ class StoreProductRequest extends FormRequest
             'sale_ends_at' => ['nullable', 'date', 'after:sale_starts_at'],
 
             'purchase_price' => ['nullable', 'integer', 'min:0'],
-            'tax_rate_id' => ['required', 'integer', Rule::exists('tax_rates', 'id')],
+
+            // A shop that is not registered for VAT has no rate to charge, so
+            // it is not asked for one (same rule shipping and payment fees
+            // already follow since wave 2.7). An existing rate on the row is
+            // left where it is — see prepareForValidation().
+            'tax_rate_id' => [
+                Rule::requiredIf(fn () => app(VatMode::class)->appliesVat()),
+                'nullable', 'integer', Rule::exists('tax_rates', 'id'),
+            ],
+
+            // Entering the price without VAT (wave 3.7). A convenience for
+            // wholesale price lists, not a second source of truth: the gross
+            // price is still the only figure stored, and the conversion runs
+            // here on the server, never in the browser.
+            'net_price' => ['nullable', 'integer', 'min:0'],
 
             'sku' => ['nullable', 'string', 'max:64'],
             'ean' => ['nullable', new Ean],
@@ -115,6 +132,57 @@ class StoreProductRequest extends FormRequest
             unset($data['purchase_price']);
         }
 
+        // A helper for filling the form in, never a column. The gross price is
+        // the only figure stored (rozhodnutí 2026-07-21: the catalogue price
+        // is the authority), and prepareForValidation() has already used this.
+        unset($data['net_price']);
+
         return $key === null ? $data : data_get($data, $key, $default);
+    }
+
+    /**
+     * Turns a price typed without VAT into the gross price that gets stored.
+     *
+     * On the server, never in the browser: a rate applied in JavaScript and a
+     * rate applied in PHP round the same haléř differently often enough that
+     * the merchant would watch the price they typed change on save. The
+     * browser may preview the figure; it may not decide it (same rule the
+     * variant picker follows since wave 2.4).
+     *
+     * When both fields arrive, the gross one wins. Recomputing from net on
+     * every save would walk the price by a haléř each time somebody opened
+     * the form and pressed Save without touching anything.
+     */
+    protected function prepareForValidation(): void
+    {
+        $vat = app(VatMode::class);
+
+        if (! $vat->appliesVat()) {
+            // Nothing to convert, and nothing to ask for: a shop that is not
+            // registered has no rate. A NEW product still needs one in the
+            // column, so it gets the platform default — that way registering
+            // for VAT later reads the stored prices as gross at the standard
+            // rate, which is what the shelf price becomes in law. An existing
+            // product keeps whatever it had (the key is simply absent).
+            if ($this->route('product') === null && ! $this->filled('tax_rate_id')) {
+                $this->merge(['tax_rate_id' => app(TaxRates::class)->default()->id]);
+            }
+
+            return;
+        }
+
+        if (! $this->filled('net_price') || $this->filled('price') || ! $this->filled('tax_rate_id')) {
+            return;
+        }
+
+        $rate = app(TaxRates::class)->all()->firstWhere('id', (int) $this->input('tax_rate_id'));
+
+        if ($rate === null) {
+            return; // The rule below will refuse it; guessing a rate here would not help.
+        }
+
+        $this->merge([
+            'price' => $rate->gross(new Money((int) $this->input('net_price'), config('app.currency', 'CZK')))->amount,
+        ]);
     }
 }

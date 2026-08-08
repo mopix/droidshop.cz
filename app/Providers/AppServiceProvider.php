@@ -44,6 +44,7 @@ use App\Core\Shipping\NullPaymentOptions;
 use App\Core\Shipping\NullPickupPointCatalog;
 use App\Core\Shipping\NullShipmentBook;
 use App\Core\Shipping\NullShippingOptions;
+use App\Core\Shop\ShopClock;
 use App\Core\Storage\StorageLimitCounter;
 use App\Core\Tenancy\Events\TenantStatusChanged;
 use App\Models\TenantTheme;
@@ -62,6 +63,11 @@ class AppServiceProvider extends ServiceProvider
         // for the whole request or a counter registered here would be invisible
         // to the caller that checks the limit.
         $this->app->singleton(LimitsService::class);
+
+        // Scoped, not singleton: it memoises one tenant's time zone, and a
+        // worker that survives more than one request would hand the second
+        // tenant the first one's clock.
+        $this->app->scoped(ShopClock::class);
 
         $this->app->singleton(
             MailService::class,

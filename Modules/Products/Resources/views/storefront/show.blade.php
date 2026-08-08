@@ -61,7 +61,12 @@
                 // VAT rate), so Product::rate() converts a variant's gross
                 // price to net just as well as the product's own — the
                 // conversion lives on TaxRate, never on Money itself.
-                $displayNetPrice = $product->rate()->net($displayPrice);
+                // Only a VAT payer has anything to say about VAT. A shop that
+                // is not registered used to print "s DPH · bez DPH 826 Kč" to
+                // its customers, which is a false statement about somebody
+                // else's tax status on a public page (wave 3.7).
+                $vatApplies = app(\App\Core\Tax\VatMode::class)->appliesVat();
+                $displayNetPrice = $vatApplies ? $product->rate()->net($displayPrice) : null;
                 // The contract method, not an inline recomputation: the
                 // category/search listing badge (product-card.blade.php)
                 // reads catalogIsAvailable() too, and the two must never
@@ -95,9 +100,11 @@
                     @endif
                 @endif
 
-                <span class="block text-sm text-slate-500">
-                    s DPH · bez DPH <span data-variant-net-price>{{ $displayNetPrice->format() }}</span>
-                </span>
+                @if ($vatApplies)
+                    <span class="block text-sm text-slate-500">
+                        s DPH · bez DPH <span data-variant-net-price>{{ $displayNetPrice->format() }}</span>
+                    </span>
+                @endif
 
                 @if ($lowestPrice !== null)
                     <span class="block text-sm text-slate-500" data-variant-lowest-price>

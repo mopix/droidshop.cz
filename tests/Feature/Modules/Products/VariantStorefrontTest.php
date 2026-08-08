@@ -37,7 +37,11 @@ class VariantStorefrontTest extends TestCase
         $this->context = app(TenantContext::class);
         $this->context->forget();
 
-        $this->tenant = Tenant::factory()->withDomain('shop1.droidshop')->create(['name' => 'Shop One']);
+        // A VAT payer: these assertions are about the net-price line, and since
+        // wave 3.7 a shop that is not registered does not print one. The factory
+        // default is not registered.
+        $this->tenant = Tenant::factory()->withDomain('shop1.droidshop')
+            ->create(['name' => 'Shop One', 'vat_payer' => true]);
 
         foreach (['storefront', 'products', 'categories', 'checkout'] as $module) {
             $this->activateModule($this->tenant, $module);
