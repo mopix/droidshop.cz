@@ -29,7 +29,7 @@
             "label": "Doklady",
             "route": "admin.docs.index",
             "icon": "file-text",
-            "order": 55,
+            "order": 30,
             "group": "orders"
         }
     ]

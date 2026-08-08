@@ -28,7 +28,7 @@
             "label": "Objednávky",
             "route": "admin.orders.index",
             "icon": "receipt",
-            "order": 50,
+            "order": 20,
             "group": "orders"
         }
     ]

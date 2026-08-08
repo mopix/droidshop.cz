@@ -23,7 +23,7 @@
             "label": "Feedy",
             "route": "admin.feeds.index",
             "icon": "rss",
-            "order": 60,
+            "order": 30,
             "group": "modules"
         }
     ]

@@ -25,7 +25,7 @@
             "label": "Slevy",
             "route": "admin.discounts.index",
             "icon": "tag",
-            "order": 55,
+            "order": 10,
             "group": "modules"
         }
     ]

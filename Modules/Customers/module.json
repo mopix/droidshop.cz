@@ -26,7 +26,7 @@
             "label": "Zákazníci",
             "route": "admin.customers.index",
             "icon": "users",
-            "order": 30,
+            "order": 40,
             "group": "orders"
         }
     ]

@@ -24,7 +24,7 @@
             "label": "Účetní export",
             "route": "admin.accounting.index",
             "icon": "file-spreadsheet",
-            "order": 57,
+            "order": 20,
             "group": "modules"
         }
     ]

@@ -25,7 +25,7 @@
             "label": "Homepage",
             "route": "admin.storefront.homepage.index",
             "icon": "layout",
-            "order": 40,
+            "order": 10,
             "group": "settings"
         }
     ]
