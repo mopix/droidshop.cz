@@ -5,6 +5,7 @@ use App\Http\Controllers\Tenant\AppearanceController;
 use App\Http\Controllers\Tenant\BillingProfileController;
 use App\Http\Controllers\Tenant\DomainController;
 use App\Http\Controllers\Tenant\ModuleSettingsController;
+use App\Http\Controllers\Tenant\ShopSettingsController;
 use App\Http\Controllers\Tenant\SubscriptionController;
 use App\Http\Controllers\Tenant\SubscriptionInvoiceController;
 use Illuminate\Support\Facades\Route;
@@ -17,6 +18,12 @@ Route::get('/admin', AdminHomeController::class)->name('admin.home');
 
 Route::get('/admin/nastaveni/fakturace', [BillingProfileController::class, 'edit'])->name('admin.billing.edit');
 Route::patch('/admin/nastaveni/fakturace', [BillingProfileController::class, 'update'])->name('admin.billing.update');
+
+Route::get('/admin/nastaveni/obchod', [ShopSettingsController::class, 'editShop'])->name('admin.shop.edit');
+Route::patch('/admin/nastaveni/obchod', [ShopSettingsController::class, 'updateShop'])->name('admin.shop.update');
+
+Route::get('/admin/nastaveni/kontakty', [ShopSettingsController::class, 'editContacts'])->name('admin.contacts.edit');
+Route::patch('/admin/nastaveni/kontakty', [ShopSettingsController::class, 'updateContacts'])->name('admin.contacts.update');
 
 Route::get('/admin/nastaveni/vzhled', [AppearanceController::class, 'edit'])->name('admin.appearance.edit');
 Route::post('/admin/nastaveni/vzhled', [AppearanceController::class, 'update'])->name('admin.appearance.update');

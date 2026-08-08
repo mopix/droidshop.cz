@@ -78,8 +78,13 @@ const CORE_ENTRIES: Record<string, NavItem[]> = {
     },
   ],
   settings: [
+    { label: 'Obchod', route: 'admin.shop.edit', icon: 'store' },
+    { label: 'Kontakty', route: 'admin.contacts.edit', icon: 'contact' },
     { label: 'Doména', route: 'admin.domain.edit', icon: 'globe' },
     { label: 'Vzhled', route: 'admin.appearance.edit', icon: 'palette' },
+    // Reachable until now only from the banner that nags about it — a merchant
+    // who filled it in once could not find it again.
+    { label: 'Fakturační údaje', route: 'admin.billing.edit', icon: 'credit-card' },
   ],
 }
 

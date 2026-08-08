@@ -13,6 +13,9 @@
  */
 import {
   Circle,
+  Contact,
+  CreditCard,
+  Eye,
   FileSpreadsheet,
   FileText,
   FolderTree,
@@ -24,8 +27,10 @@ import {
   Palette,
   Receipt,
   Rss,
+  Search,
   Send,
   SlidersHorizontal,
+  Store,
   Tag,
   Truck,
   Upload,
@@ -65,6 +70,11 @@ const ICONS: Record<string, Component> = {
   sliders: SlidersHorizontal,
   user: User,
   'log-out': LogOut,
+  store: Store,
+  contact: Contact,
+  search: Search,
+  eye: Eye,
+  'credit-card': CreditCard,
 }
 
 /**

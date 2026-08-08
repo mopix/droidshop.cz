@@ -61,11 +61,17 @@
 
     <header class="border-b border-slate-200 bg-white">
         <div class="mx-auto flex max-w-6xl flex-wrap items-center gap-4 px-4 py-4">
-            <a href="/" class="flex items-center">
+            <a href="/" class="flex items-center gap-3">
                 @if ($theme->logoUrl)
                     <img src="{{ $theme->logoUrl }}" alt="{{ $shopName }}" class="h-8 w-auto">
                 @else
                     <span class="text-lg font-semibold tracking-tight text-slate-900">{{ $shopName }}</span>
+                @endif
+
+                {{-- Hidden on the narrowest screens: the header there is
+                     already the logo, search and cart competing for one row. --}}
+                @if ($shopSettings->tagline)
+                    <span class="hidden text-sm text-slate-500 sm:inline">{{ $shopSettings->tagline }}</span>
                 @endif
             </a>
 
@@ -159,6 +165,50 @@
                     </li>
                 </ul>
             </nav>
+
+            {{--
+                Contact details, if the merchant filled any in and left the box
+                switched on. Nothing filled in renders nothing at all — an
+                empty "Kontakt" heading reads as a shop that lost its own
+                phone number.
+            --}}
+            @if ($shopSettings->show_footer_contact && $shopSettings->hasContactDetails())
+                <div class="mb-6 grid gap-6 sm:grid-cols-2">
+                    @if ($shopSettings->contactLines())
+                        <div>
+                            <h2 class="mb-2 font-semibold text-slate-900">Kontakt</h2>
+                            <ul class="space-y-1">
+                                @foreach ($shopSettings->contactLines() as $line)
+                                    <li>
+                                        <span class="text-slate-500">{{ $line['label'] }}:</span>
+                                        @if ($line['href'])
+                                            <a href="{{ $line['href'] }}" class="underline hover:text-slate-900">{{ $line['value'] }}</a>
+                                        @else
+                                            {{ $line['value'] }}
+                                        @endif
+                                    </li>
+                                @endforeach
+                            </ul>
+                        </div>
+                    @endif
+
+                    @if ($shopSettings->socialLinks())
+                        <div>
+                            <h2 class="mb-2 font-semibold text-slate-900">Sledujte nás</h2>
+                            <ul class="flex flex-wrap gap-x-4 gap-y-1">
+                                @foreach ($shopSettings->socialLinks() as $link)
+                                    <li>
+                                        {{-- rel="noopener" on a target-less link too: the
+                                             merchant may point these anywhere. --}}
+                                        <a href="{{ $link['url'] }}" rel="noopener nofollow"
+                                           class="underline hover:text-slate-900">{{ $link['network'] }}</a>
+                                    </li>
+                                @endforeach
+                            </ul>
+                        </div>
+                    @endif
+                </div>
+            @endif
 
             <p>&copy; {{ date('Y') }} {{ $shopName }}</p>
         </div>

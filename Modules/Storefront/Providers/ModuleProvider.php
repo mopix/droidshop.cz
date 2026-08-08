@@ -2,6 +2,7 @@
 
 namespace Modules\Storefront\Providers;
 
+use App\Core\Shop\ShopSettingsService;
 use App\Core\Storefront\Contracts\StorefrontHome;
 use App\Core\Tenancy\TenantContext;
 use App\Core\Theme\ThemeResolver;
@@ -61,6 +62,11 @@ class ModuleProvider extends ServiceProvider
 
             $view->with([
                 'shopName' => $tenant?->name ?? config('app.name'),
+                // The shop's own settings (wave 3.6): tagline in the header,
+                // contact box in the footer. Per tenant, not per visitor, so
+                // safe inside cached HTML (§15.6) — and every write bumps all
+                // three generations, so a change shows immediately.
+                'shopSettings' => app(ShopSettingsService::class)->forCurrentTenant(),
                 'navCategories' => ! $shopModules->has('categories') ? collect() : Category::query()
                     ->visible()
                     ->whereNull('parent_id')
