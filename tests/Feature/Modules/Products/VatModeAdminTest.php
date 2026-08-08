@@ -9,6 +9,8 @@ use App\Models\Tenant;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Modules\Products\Models\Product;
+use Modules\Products\Models\ProductOption;
+use Modules\Products\Models\ProductVariant;
 use Modules\Products\Services\ProductWriter;
 use Tests\Concerns\ActivatesModules;
 use Tests\TestCase;
@@ -177,6 +179,42 @@ class VatModeAdminTest extends TestCase
                 ->where('vatApplies', false)
                 ->where('product.net_price', null)
                 ->where('taxRates', []));
+    }
+
+    /**
+     * A variant never carries its own VAT rate (wave 2.4), so the conversion
+     * uses the product's — read off the bound product, not off the request,
+     * where a client could name a different one.
+     */
+    public function test_a_variant_price_can_be_entered_without_vat(): void
+    {
+        [$tenant, $owner] = $this->shop(vatPayer: true);
+        $product = $this->makeProduct($tenant);
+
+        $variantId = app(TenantContext::class)->runAs($tenant, function () use ($product) {
+            $option = ProductOption::create([
+                'product_id' => $product->id, 'name' => 'Velikost', 'position' => 0,
+            ]);
+            $value = $option->values()->create(['value' => 'M', 'position' => 0]);
+
+            $variant = ProductVariant::create([
+                'product_id' => $product->id, 'position' => 0, 'price' => 100000,
+                'stock_tracked' => false, 'stock_qty' => 0,
+            ]);
+            $variant->optionValues()->attach($value->id);
+
+            return $variant->id;
+        });
+
+        $this->actingAs($owner)->patch(
+            $this->url('/'.$product->slug.'/varianty/'.$variantId),
+            ['net_price' => 200000, 'stock_qty' => 0],
+        )->assertRedirect();
+
+        // 2 000 Kč net at 21 % is 2 420 Kč gross.
+        $this->assertSame(242000, app(TenantContext::class)->runAs(
+            $tenant, fn () => ProductVariant::find($variantId)->price->amount
+        ));
     }
 
     /**

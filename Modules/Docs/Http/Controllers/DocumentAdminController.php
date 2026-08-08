@@ -4,6 +4,7 @@ namespace Modules\Docs\Http\Controllers;
 
 use App\Core\Documents\Contracts\DocumentIssuer;
 use App\Core\Storage\FileStorage;
+use App\Core\Tax\VatMode;
 use App\Core\Tenancy\TenantContext;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -65,6 +66,9 @@ class DocumentAdminController
             // (final review, wave 2.11).
             'accountingEnabled' => app(ShopModules::class)->has('accounting')
                 && $request->user('web')->can('accounting.export'),
+            // A shop that is not registered for VAT has no VAT return to file,
+            // so the export offers it nothing but a file of zeroes (wave 3.8).
+            'vatApplies' => app(VatMode::class)->appliesVat(),
         ]);
     }
 
