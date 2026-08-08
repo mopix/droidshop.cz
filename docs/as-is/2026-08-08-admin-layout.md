@@ -107,11 +107,28 @@ Vlastník chtěl sjednotit obojí. Sjednoceno je **rozvržení**; tmavý panel s
 
 ## Technický dluh
 
-- **Přihlašovací formulář je pořád Breeze default v angličtině** („Email", „Password", „Log in", „Remember me"). Ve vlně 3.2 se počeštila jen registrace. Nesouvisí s layoutem, ale je to první obrazovka, kterou nájemce vidí.
 - **Menu se všemi sekcemi otevřenými přeteče** a roluje. Výchozí stav je sbalený, takže v běžném provozu nenastane, ale na malém displeji s otevřenými čtyřmi sekcemi se roluje.
 - **Nástěnka neukazuje graf ani srovnání s minulým obdobím** — čtyři čísla a odkazy.
-- **`AuthenticatedLayout.vue` zůstal v repu** bez jediného uživatele; smazat, až bude jisté, že ho nikdo nepotřebuje.
 - **Superadmin nemá `Profil`** v menu — platformní administrátor svůj profil nemá kde upravit (předchází této vlně).
+
+## Dodatek: počeštění (2026-08-08, hned po vlně)
+
+Dluh zapsaný výše byl na žádost vlastníka opraven ve stejný den. Devět
+obrazovek Breeze bylo v angličtině — přihlášení, zapomenuté heslo, nové
+heslo, potvrzení hesla, ověření e-mailu a celý profil (údaje, změna hesla,
+smazání účtu). Ve vlně 3.2 se počeštila jen registrace.
+
+Při tom vypadly dvě další věci ze stejné rodiny nedodělaných defaultů:
+
+- **Logo Laravelu** na přihlášení, registraci a v onboarding wizardu.
+  Nahrazeno wordmarkem platformy — první obrazovka, kterou vidí zájemce
+  o e-shop, neměla nést logo frameworku. Grafický jazyk se nemění.
+- **`AuthenticatedLayout.vue` a `ApplicationLogo.vue` smazány.** Po přechodu
+  nástěnky a profilu na `AdminLayout` je nepoužíval nikdo.
+
+`Profile/Edit.vue` a `Dashboard.vue` navíc ztratily `max-w-7xl` a `py-12` —
+zbytky staré skořápky, které by v administraci na plnou šířku obsah znovu
+zúžily.
 
 ## Pre-deploy checklist
 
