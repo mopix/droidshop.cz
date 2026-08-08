@@ -26,6 +26,9 @@ Velkoobchodní ceníky jsou bez daně. Převod dělá server přes `TaxRate`, ni
 ### Sazby DPH konečně jde spravovat
 `/superadmin/dph`. Platformní, ne per nájemce: sazba je zákon, ne volba obchodníka. Sazbu, kterou někdo používá, nelze smazat — doklad snímkuje procento, ale produkt by ukazoval na řádek, který zmizel. Změna procenta **nesahá na vystavené doklady**.
 
+### Doplněno v v0.42.2
+Cena bez DPH i u variant produktu (převod přes sazbu produktu — varianta vlastní sazbu nemá). CSV export DPH se neplátci nenabízí: bez registrace není co podat. E-maily formát data nepotřebují, žádná šablona ho netiskne; superadmin zůstává na české locale vědomě, platformní konzole není e-shop nájemce.
+
 ### Uzavřen dluh z vlny 3.6
 `ShopClock` používá nastavené časové pásmo a formát v administraci objednávek, v účtu zákazníka a ve třech PDF. Objednávka ve 23:30 UTC se v Praze konečně čte jako druhý den. `DATE` sloupce (DUZP, splatnost) se formátují, ale neposouvají — posun o den zpět není detail zobrazení, ale jiné zdaňovací období. Strojové formáty zůstávají `Y-m-d`.
 
