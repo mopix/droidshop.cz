@@ -11,6 +11,24 @@ Pravidla: [`.claude/skills/versioning/SKILL.md`](.claude/skills/versioning/SKILL
 
 > CHANGELOG vede milníky (minor/major). Detail patchů je v `git log`.
 
+## [0.42.0] – 2026-08-09
+
+**Fáze 2 / vlna 3.7 — plátcovství DPH a čas obchodu.** Uzavření vlny (`docs/as-is/2026-08-09-dph-a-cas.md`). 1 nový E2E scénář (celkem 41), 35 nových PHPUnit testů.
+
+### Neplátce DPH už o dani nikde nemluví
+`tenants.vat_payer` řídil od vlny 1.5 doklady, ale nikdy se nedostal do katalogu. Neplátce povinně vybíral sazbu, kterou nemá jak uplatnit, a jeho zákazníkům se na detailu produktu tisklo „s DPH · bez DPH 826 Kč“ — nepravdivý údaj o cizím daňovém postavení na veřejné stránce.
+
+Nově jedno místo (`VatMode`), které čte administrace, storefront i košík: neplátce nevidí sazbu ani cenu bez DPH v administraci, na detailu, ve výpisu ani v rozpisu pokladny. Uložená sazba mu zůstává, aby registrace k DPH později nechala katalog dávat smysl.
+
+### Plátce může zadat cenu bez DPH
+Velkoobchodní ceníky jsou bez daně. Převod dělá server přes `TaxRate`, nikdy JavaScript — sazba spočítaná v JS a v PHP zaokrouhlí tentýž haléř jinak dost často na to, aby nájemce viděl cenu měnit se při uložení. Když přijdou obě pole, rozhoduje cena s DPH.
+
+### Sazby DPH konečně jde spravovat
+`/superadmin/dph`. Platformní, ne per nájemce: sazba je zákon, ne volba obchodníka. Sazbu, kterou někdo používá, nelze smazat — doklad snímkuje procento, ale produkt by ukazoval na řádek, který zmizel. Změna procenta **nesahá na vystavené doklady**.
+
+### Uzavřen dluh z vlny 3.6
+`ShopClock` používá nastavené časové pásmo a formát v administraci objednávek, v účtu zákazníka a ve třech PDF. Objednávka ve 23:30 UTC se v Praze konečně čte jako druhý den. `DATE` sloupce (DUZP, splatnost) se formátují, ale neposouvají — posun o den zpět není detail zobrazení, ale jiné zdaňovací období. Strojové formáty zůstávají `Y-m-d`.
+
 ## [0.41.0] – 2026-08-08
 
 **Fáze 2 / vlna 3.6 — nastavení obchodu pro nájemce.** Uzavření vlny (`docs/as-is/2026-08-08-nastaveni-obchodu.md`). 7 nových E2E scénářů (celkem 39), 55 nových PHPUnit testů.
