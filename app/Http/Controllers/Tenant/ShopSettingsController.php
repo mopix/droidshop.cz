@@ -7,6 +7,7 @@ use App\Core\Storage\FileStorage;
 use App\Core\Tenancy\TenantContext;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Tenant\UpdateContactsRequest;
+use App\Http\Requests\Tenant\UpdateDisplayRequest;
 use App\Http\Requests\Tenant\UpdateSeoRequest;
 use App\Http\Requests\Tenant\UpdateShopRequest;
 use App\Models\ShopSettings;
@@ -150,6 +151,31 @@ class ShopSettingsController extends Controller
         $this->settings->update($data);
 
         return back()->with('success', 'Nastavení pro vyhledávače bylo uloženo.');
+    }
+
+    public function editDisplay(): Response
+    {
+        $settings = $this->settings->forCurrentTenant();
+
+        return Inertia::render('Tenant/Settings/Display', [
+            'display' => [
+                'hide_empty_categories' => $settings->hide_empty_categories,
+                'empty_search_text' => $settings->empty_search_text,
+                'show_footer_contact' => $settings->show_footer_contact,
+            ],
+            'defaultEmptySearchText' => ShopSettings::DEFAULT_EMPTY_SEARCH_TEXT,
+        ]);
+    }
+
+    public function updateDisplay(UpdateDisplayRequest $request): RedirectResponse
+    {
+        $this->settings->update([
+            'hide_empty_categories' => $request->boolean('hide_empty_categories'),
+            'empty_search_text' => $request->validated('empty_search_text'),
+            'show_footer_contact' => $request->boolean('show_footer_contact'),
+        ]);
+
+        return back()->with('success', 'Nastavení zobrazení bylo uloženo.');
     }
 
     public function destroyOgImage(): RedirectResponse

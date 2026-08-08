@@ -81,6 +81,7 @@ const CORE_ENTRIES: Record<string, NavItem[]> = {
     { label: 'Obchod', route: 'admin.shop.edit', icon: 'store' },
     { label: 'Kontakty', route: 'admin.contacts.edit', icon: 'contact' },
     { label: 'SEO', route: 'admin.seo.edit', icon: 'search' },
+    { label: 'Zobrazení', route: 'admin.display.edit', icon: 'eye' },
     { label: 'Doména', route: 'admin.domain.edit', icon: 'globe' },
     { label: 'Vzhled', route: 'admin.appearance.edit', icon: 'palette' },
     // Reachable until now only from the banner that nags about it — a merchant

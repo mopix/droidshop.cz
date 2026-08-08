@@ -10,8 +10,8 @@ use App\Core\Theme\ThemeResolver;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\View;
 use Illuminate\Support\ServiceProvider;
-use Modules\Categories\Models\Category;
 use Modules\Storefront\Http\Controllers\HomeController;
+use Modules\Storefront\Support\NavCategories;
 use Modules\Storefront\Support\ShopModules;
 
 class ModuleProvider extends ServiceProvider
@@ -72,11 +72,14 @@ class ModuleProvider extends ServiceProvider
                 'shopOgImage' => $shopSettings->og_image_path === null
                     ? null
                     : app(FileStorage::class)->publicUrl($shopSettings->og_image_path),
-                'navCategories' => ! $shopModules->has('categories') ? collect() : Category::query()
-                    ->visible()
-                    ->whereNull('parent_id')
-                    ->orderBy('position')
-                    ->get(),
+                // "Hide empty categories" (wave 3.6) only means anything with
+                // a catalogue to be empty of; a shop with the products module
+                // off keeps its whole menu.
+                'navCategories' => ! $shopModules->has('categories')
+                    ? collect()
+                    : app(NavCategories::class)->roots(
+                        $shopSettings->hide_empty_categories && $shopModules->has('products'),
+                    ),
                 // Otherwise the customer account area (login, registration,
                 // /ucet) is unreachable by navigation — nothing links to it.
                 // A shop with the module switched off shows nothing at all

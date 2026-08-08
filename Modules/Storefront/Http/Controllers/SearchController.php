@@ -5,6 +5,7 @@ namespace Modules\Storefront\Http\Controllers;
 use App\Core\Catalog\Contracts\ProductCatalog;
 use App\Core\Catalog\ProductQuery;
 use App\Core\PageCache\PageCacheKey;
+use App\Core\Shop\ShopSettingsService;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Modules\Storefront\Support\Seo;
@@ -18,7 +19,10 @@ class SearchController
     /** Below this a query matches half the catalogue and means nothing. */
     private const MIN_TERM_LENGTH = 2;
 
-    public function __construct(private readonly ProductCatalog $catalog) {}
+    public function __construct(
+        private readonly ProductCatalog $catalog,
+        private readonly ShopSettingsService $settings,
+    ) {}
 
     public function __invoke(Request $request): Response
     {
@@ -54,6 +58,11 @@ class SearchController
 
         $view = view('storefront::search', [
             'term' => $term,
+            // Passed explicitly, not read off the layout composer: a Blade
+            // child's sections are evaluated before its layout, so the
+            // composer's data is not bound yet when this view runs (the same
+            // trap $footerPages hit in wave 3.2).
+            'emptyText' => $this->settings->forCurrentTenant()->emptySearchText(),
             'tooShort' => $tooShort,
             'products' => $results,
             'seo' => new Seo(

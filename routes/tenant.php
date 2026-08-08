@@ -29,6 +29,9 @@ Route::get('/admin/nastaveni/seo', [ShopSettingsController::class, 'editSeo'])->
 Route::patch('/admin/nastaveni/seo', [ShopSettingsController::class, 'updateSeo'])->name('admin.seo.update');
 Route::delete('/admin/nastaveni/seo/obrazek', [ShopSettingsController::class, 'destroyOgImage'])->name('admin.seo.image.destroy');
 
+Route::get('/admin/nastaveni/zobrazeni', [ShopSettingsController::class, 'editDisplay'])->name('admin.display.edit');
+Route::patch('/admin/nastaveni/zobrazeni', [ShopSettingsController::class, 'updateDisplay'])->name('admin.display.update');
+
 Route::get('/admin/nastaveni/vzhled', [AppearanceController::class, 'edit'])->name('admin.appearance.edit');
 Route::post('/admin/nastaveni/vzhled', [AppearanceController::class, 'update'])->name('admin.appearance.update');
 Route::delete('/admin/nastaveni/vzhled/logo', [AppearanceController::class, 'destroyLogo'])->name('admin.appearance.logo.destroy');
