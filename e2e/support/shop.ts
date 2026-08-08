@@ -147,3 +147,20 @@ export async function firstProductSlug(page: Page): Promise<string> {
 
   return href.replace(/^.*\/produkt\//, '')
 }
+
+/**
+ * Sets the demo shop's own settings (wave 3.6), e.g. locking it behind a
+ * password.
+ *
+ * @param values JSON object, e.g. {"locked":true,"lock_password":"tajne"}
+ */
+export function setShopSettings(values: Record<string, unknown>): void {
+  const json = JSON.stringify(values).replace(/'/g, "\\'")
+
+  artisanEval(`
+    $t = App\\Models\\Tenant::whereHas('domains', fn($q) => $q->where('domain', 'obchod.${HOST}'))->firstOrFail();
+    app(App\\Core\\Tenancy\\TenantContext::class)->runAs($t, function () {
+      app(App\\Core\\Shop\\ShopSettingsService::class)->update(json_decode('${json}', true));
+    });
+  `)
+}
