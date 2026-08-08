@@ -26,7 +26,8 @@
             "label": "Kategorie",
             "route": "admin.categories.index",
             "icon": "folder-tree",
-            "order": 20
+            "order": 20,
+            "group": "products"
         }
     ]
 }

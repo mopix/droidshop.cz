@@ -26,7 +26,8 @@
             "label": "Doprava a platby",
             "route": "admin.shipping.index",
             "icon": "truck",
-            "order": 40
+            "order": 40,
+            "group": "settings"
         }
     ]
 }

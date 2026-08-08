@@ -25,7 +25,8 @@
             "label": "Expedice",
             "route": "admin.packeta.dispatch",
             "icon": "send",
-            "order": 45
+            "order": 45,
+            "group": "orders"
         }
     ]
 }

@@ -30,14 +30,16 @@
             "label": "Produkty",
             "route": "admin.products.index",
             "icon": "package",
-            "order": 10
+            "order": 10,
+            "group": "products"
         },
         {
             "area": "admin",
             "label": "Import / export",
             "route": "admin.products.import.index",
             "icon": "upload",
-            "order": 15
+            "order": 15,
+            "group": "products"
         }
     ]
 }

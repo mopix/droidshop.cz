@@ -15,7 +15,7 @@ class NavigationBuilder
     public function __construct(private readonly ModuleRegistry $registry) {}
 
     /**
-     * @return Collection<int, array{module: string, label: string, route: string, icon: ?string, order: int}>
+     * @return Collection<int, array{module: string, label: string, route: string, icon: ?string, order: int, group: string}>
      */
     public function forTenant(Tenant $tenant, string $area = 'admin'): Collection
     {
@@ -26,7 +26,44 @@ class NavigationBuilder
     }
 
     /**
-     * @return list<array{module: string, label: string, route: string, icon: ?string, order: int}>
+     * The same entries, arranged into the menu's sections.
+     *
+     * Sections come back in the kernel's fixed order (NavigationGroup), not
+     * in the order modules happen to sit on disk, and an empty one is dropped
+     * entirely — a heading with nothing under it reads as something broken.
+     *
+     * Kernel entries (Nastavení modulů, Doména, Vzhled) are NOT added here.
+     * They belong to no module, so they cannot be switched off, and mixing
+     * them in would mean this class had to know about routes that have
+     * nothing to do with the module system. The layout adds them.
+     *
+     * @return list<array{key: string, label: string, items: list<array<string, mixed>>}>
+     */
+    public function groupedForTenant(Tenant $tenant, string $area = 'admin'): array
+    {
+        $entries = $this->forTenant($tenant, $area)->groupBy('group');
+
+        $groups = [];
+
+        foreach (NavigationGroup::ordered() as $group) {
+            $items = $entries->get($group->value, collect());
+
+            if ($items->isEmpty()) {
+                continue;
+            }
+
+            $groups[] = [
+                'key' => $group->value,
+                'label' => $group->label(),
+                'items' => $items->values()->all(),
+            ];
+        }
+
+        return $groups;
+    }
+
+    /**
+     * @return list<array{module: string, label: string, route: string, icon: ?string, order: int, group: string}>
      */
     private function entriesFor(Module $module, string $area): array
     {
@@ -47,6 +84,11 @@ class NavigationBuilder
                 // Unordered entries sink to the bottom rather than jumping to
                 // the top and shoving the core menu around.
                 'order' => $entry['order'] ?? 999,
+                // A malformed group would have been rejected by
+                // ManifestValidator at modules:sync; by the time a request
+                // reads this, the value is either valid or absent.
+                'group' => NavigationGroup::tryFrom($entry['group'] ?? '')?->value
+                    ?? NavigationGroup::fallback()->value,
             ];
         }
 
