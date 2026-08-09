@@ -75,10 +75,14 @@ class ProductStorefrontController
         ], 410);
     }
 
+    /**
+     * Absolute: this is the og:image, which a social network fetches from its
+     * own servers — a root-relative URL means nothing there.
+     */
     private function seoImage(Product $product): ?string
     {
         $path = $product->seo_image_path ?: $product->mainImage()?->path;
 
-        return $path === null ? null : $this->files->publicUrl($path);
+        return $path === null ? null : $this->files->publicUrlAbsolute($path);
     }
 }

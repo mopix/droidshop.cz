@@ -103,9 +103,32 @@ class FileStorage
     /**
      * A directly web-served URL for a public file.
      */
+    /**
+     * A root-relative URL, correct on every host the shop answers on.
+     *
+     * Relative rather than absolute because a tenant may be reached on a
+     * subdomain, on its own domain, over http in development and over https in
+     * production — and the file is served from the same origin in all four
+     * cases. Anything that leaves the page (a feed, an og:image) needs
+     * publicUrlAbsolute() instead.
+     */
     public function publicUrl(string $path): string
     {
         return $this->publicDisk()->url($this->key($path));
+    }
+
+    /**
+     * The same file, addressed absolutely, for consumers that are not the page
+     * itself: comparison-shopping feeds and the og:image a social network
+     * fetches.
+     *
+     * Built from the current request, so it carries the host the visitor (or
+     * the crawler) actually used. Per tenant, not per visitor, so it is safe
+     * inside a cached page.
+     */
+    public function publicUrlAbsolute(string $path): string
+    {
+        return url($this->publicUrl($path));
     }
 
     /**

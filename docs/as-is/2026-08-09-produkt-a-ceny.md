@@ -67,7 +67,7 @@ Celá sada: 2157 PHPUnit, 43 Playwright.
 
 ## Technický dluh
 
-1. **E2E nesmí sáhnout na uložený obrázek.** Jakmile demo produkt nese obrázek, storefront si ho stáhne vedle stránky a `php artisan serve` zavře spojení dalšímu testu (`ERR_CONNECTION_CLOSED`). `PHP_CLI_SERVER_WORKERS=4` nepomohlo. **Nedohledáno do konce** — nahrání i řazení proto jede přes HTTP v PHPUnit. Týká se to i lokálního vývoje: server může spadnout po nahrání obrázku.
+1. ~~E2E nesmí sáhnout na uložený obrázek.~~ **Vyřešeno 2026-08-09 (v0.44.6).** Nebyl to pád serveru: URL obrázků se stavěla z `APP_URL`, tedy `https://`, takže Chromium otevřel TLS spojení na prostý HTTP dev server, ten ho zavřel a prohlížeč pak odmítl celý origin. `curl` to nikdy neviděl, protože jsem mu `http://` říkal sám. Veřejné URL souborů jsou nově relativní; uříznuté E2E testy (skutečné nahrání přetažením, skutečné řazení) jsou zpátky. Zároveň to byla **produkční chyba**: obrázky na vlastní doméně nájemce ukazovaly na platformní host.
 2. **Rozměry per varianta nejsou.** Stejně jako hmotnost.
 3. **Rozměry jde poslat jen u jednopoložkové zásilky.** Vícepoložková by potřebovala balicí logiku.
 4. **Cizí sazba v katalogu.** `catalogDimensionsMm()` přibylo do jádrového kontraktu; implementuje ho jen `Product`.

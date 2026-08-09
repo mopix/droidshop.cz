@@ -21,6 +21,13 @@ Tři sekce pod sebou — Prodejní cena, Nákupní cena, Akce — a v každé **
 ### Sleva jde zadat procentem
 Procento se **ukládá**: když nájemce zdraží, sleva zůstane dvacetiprocentní místo aby se tiše proměnila na dvanáctiprocentní. Zadaná částka ale vyhrává a procento zahodí — ručně napsaná částka je vlastní pokyn, a přepočítávat z procenta při každém uložení by cenu posouvalo pokaždé, kdy někdo otevře formulář a stiskne Uložit. Rozsah 1–99 %: sto procent je „zdarma", což je jiný nástroj.
 
+### Miniatura ve výpisu a oprava URL souborů (v0.44.6)
+Výpis produktů má před názvem miniaturu hlavního obrázku, která se při najetí myší i při zaostření klávesnicí zvětší.
+
+Při tom se ukázalo, že URL nahraných souborů se stavěla z `APP_URL` — tedy obrázky na vlastní doméně nájemce ukazovaly na platformní host. Nově jsou relativní; feedy a `og:image` si říkají o absolutní tvar. Tím se vysvětlila i záhada z vlny 3.8: „padání dev serveru“ v E2E byl Chromium otevírající TLS spojení na prostý HTTP server kvůli `https://` adrese obrázku. Uříznuté testy (nahrání přetažením, řazení obrázků) jsou zpátky.
+
+Axe pak ve výpisu našlo skutečnou starší vadu: zašedlé popisky stránkování měly kontrast 2,8:1.
+
 ### Sloučené cenové sloupce a živý přepočet (v0.44.3)
 Výpis dostal EAN a každá dvojice cen se složila do jednoho sloupce — čistá nahoře šedě, hrubá pod ní. Na detailu se obě poloviny hýbou spolu, jak se do nich píše. Prohlížeč ale jen ukazuje: která polovina se editovala, jde na server jako `price_source` a převod se dělá z ní, protože „to druhé pole je prázdné" už neříká, co bylo myšleno.
 
