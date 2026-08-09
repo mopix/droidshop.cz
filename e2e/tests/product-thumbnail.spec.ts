@@ -30,30 +30,68 @@ test.describe('product listing thumbnail', () => {
     `)
   })
 
-  test('the thumbnail grows on hover and on keyboard focus', async ({ page }) => {
+  test('the preview floats over the table without moving it', async ({ page }) => {
     await signInAsOwner(page)
     await page.goto(shopUrl('/admin/m/products'))
 
-    const thumb = page.locator('tbody img').first()
-    const before = await thumb.boundingBox()
+    // `:has(img)` on purpose: the product's name is a link to the same place,
+    // and it is the one without a picture in it.
+    const link = page.locator('tbody a:has(img)').first()
+    const thumb = link.locator('img').first()
+    const preview = link.locator('img').nth(1)
+    const firstRow = link.locator('xpath=ancestor::tr')
 
-    expect(before!.width).toBeGreaterThan(0)
+    const rowBefore = await firstRow.boundingBox()
+    const thumbBefore = await thumb.boundingBox()
+
+    await expect(preview).toBeHidden()
 
     await thumb.hover()
-    await expect
-      .poll(async () => (await thumb.boundingBox())!.width)
-      .toBeGreaterThan(before!.width)
+    await expect(preview).toBeVisible()
 
-    // Away again, and it goes back — a preview that sticks is a layout that
-    // never settles.
+    // The complaint this fixes: the row used to grow and shove the table
+    // around. It must not move at all.
+    const rowAfter = await firstRow.boundingBox()
+    expect(rowAfter!.height).toBe(rowBefore!.height)
+    expect((await thumb.boundingBox())!.width).toBe(thumbBefore!.width)
+
+    // And the preview is genuinely bigger than the thumbnail it came from.
+    expect((await preview.boundingBox())!.width).toBeGreaterThan(thumbBefore!.width * 2)
+
     await page.mouse.move(0, 0)
-    await expect.poll(async () => (await thumb.boundingBox())!.width).toBe(before!.width)
+    await expect(preview).toBeHidden()
 
     // The same from the keyboard: hovering is not something a keyboard does.
-    await thumb.locator('..').focus()
-    await expect
-      .poll(async () => (await thumb.boundingBox())!.width)
-      .toBeGreaterThan(before!.width)
+    await link.focus()
+    await expect(preview).toBeVisible()
+  })
+
+  /**
+   * The listing lives in a horizontally scrolling wrapper, which clips
+   * vertically as well. An absolutely positioned preview would be cut off at
+   * the table's edge; a fixed one is not, and the last row is where that shows.
+   */
+  test('the preview is not clipped by the scrolling table', async ({ page }) => {
+    await signInAsOwner(page)
+    await page.goto(shopUrl('/admin/m/products'))
+
+    const lastLink = page.locator('tbody a:has(img)').last()
+    await lastLink.locator('img').first().hover()
+
+    const preview = lastLink.locator('img').nth(1)
+    await expect(preview).toBeVisible()
+
+    const box = await preview.boundingBox()
+    const wrapper = await page.locator('table').first().locator('..').boundingBox()
+
+    // Whether it actually overflows depends on how many rows the demo has, so
+    // the binding assertion is that the browser reports it as fixed — which is
+    // what escapes the clipping.
+    expect(box!.height).toBeGreaterThan(100)
+    expect(
+      await preview.evaluate((el) => getComputedStyle(el).position),
+    ).toBe('fixed')
+    expect(wrapper).not.toBeNull()
   })
 
   test('the listing has no blocking accessibility violations', async ({ page }) => {
