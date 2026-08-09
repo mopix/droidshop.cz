@@ -19,6 +19,9 @@ type Product = {
   sale_starts_at: string | null
   sale_ends_at: string | null
   purchase_price: string | null
+  purchase_net_price: string | null
+  purchase_tax_rate_id: number | null
+  sale_percent: number | null
   tax_rate_id: number
   sku: string | null
   ean: string | null
@@ -127,6 +130,9 @@ const form = useForm({
   sale_starts_at: props.product.sale_starts_at,
   sale_ends_at: props.product.sale_ends_at,
   purchase_price: props.product.purchase_price,
+  purchase_net_price: props.product.purchase_net_price,
+  purchase_tax_rate_id: props.product.purchase_tax_rate_id,
+  sale_percent: props.product.sale_percent,
   tax_rate_id: props.product.tax_rate_id,
   sku: props.product.sku ?? '',
   ean: props.product.ean ?? '',
@@ -146,22 +152,12 @@ const form = useForm({
   seo_description: props.product.seo_description ?? '',
 })
 
-const rate = computed(
-  () => props.taxRates.find((r) => r.id === form.tax_rate_id) ?? props.taxRates[0],
-)
-
-/**
- * Gross is the field the shop edits; net is shown alongside it as a
- * convenience. The binding figure is always the server's — this is display
- * arithmetic, never the price anyone is charged.
- */
 /**
  * Reads a price the way the merchant typed it, for preview arithmetic only.
  *
- * The server has its own parser (App\Core\Money\MoneyInput) and it is the
- * one that decides what gets stored — this is display, and a disagreement
- * between the two shows up as a preview that is a haléř out, never as a wrong
- * price.
+ * The server has its own parser (App\Core\Money\MoneyInput) and it is the one
+ * that decides what gets stored — this is display, and a disagreement between
+ * the two shows up as a preview that is a haléř out, never as a wrong price.
  */
 const korunas = (value: string | number | null): number => {
   if (value === null || value === '') return 0
@@ -171,11 +167,9 @@ const korunas = (value: string | number | null): number => {
   return Number.isFinite(parsed) ? Math.round(parsed * 100) : 0
 }
 
-const netPreview = computed(() => {
-  const percent = rate.value?.percent ?? 0
-
-  return Math.round(korunas(form.price) / (1 + percent / 100))
-})
+const rate = computed(
+  () => props.taxRates.find((r) => r.id === form.tax_rate_id) ?? props.taxRates[0],
+)
 
 /**
  * A field with both a permanent hint and an error has to point at both: naming
@@ -183,6 +177,19 @@ const netPreview = computed(() => {
  */
 const describedBy = (id: string, field: keyof typeof form.errors) =>
   [`${id}-hint`, form.errors[field] ? `${id}-error` : null].filter(Boolean).join(' ')
+
+/**
+ * What the percentage works out to, for the hint beside the field. The server
+ * is what decides the stored amount.
+ */
+const salePreview = computed(() => {
+  const percent = Number(form.sale_percent)
+  const price = korunas(form.price)
+
+  return percent >= 1 && percent <= 99 && price > 0
+    ? Math.round((price * (100 - percent)) / 100)
+    : null
+})
 
 const money = (haler: number) =>
   new Intl.NumberFormat('cs-CZ', { style: 'currency', currency: 'CZK' }).format(haler / 100)
@@ -728,154 +735,226 @@ const runVariantDelete = () => {
           :id="'panel-prices'"
           role="tabpanel"
           aria-labelledby="tab-prices"
-          class="grid gap-4 sm:grid-cols-2"
+          class="space-y-6"
         >
-          <p v-if="variants.length" class="rounded-md bg-amber-50 p-3 text-sm text-amber-900 sm:col-span-2">
+          <p v-if="variants.length" class="rounded-md bg-amber-50 p-3 text-sm text-amber-900">
             Produkt má varianty — tato cena platí jen pro varianty bez vlastní ceny.
           </p>
 
-          <div>
-            <label for="p-price" class="block text-sm font-medium text-gray-700">
-              {{ vatApplies ? 'Cena s DPH (Kč)' : 'Cena (Kč)' }}
-            </label>
-            <input
-              id="p-price"
-              v-model="form.price"
-              type="text"
-              inputmode="decimal"
-              class="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-gray-900 focus:ring-gray-900"
-              aria-describedby="p-price-hint"
-              :aria-invalid="form.errors.price ? 'true' : undefined"
-              @input="form.net_price = null"
-            />
-            <p id="p-price-hint" class="mt-1 text-sm text-gray-600">
-              <template v-if="vatApplies">
-                {{ money(korunas(form.price)) }} · bez DPH přibližně {{ money(netPreview) }}
-              </template>
-              <template v-else>{{ money(korunas(form.price)) }}</template>
-            </p>
-            <p v-if="form.errors.price" class="mt-1 text-sm text-red-700">{{ form.errors.price }}</p>
-          </div>
-
           <!--
-            Entering the price without VAT (wave 3.7). Wholesale price lists
-            quote net, and retyping them through a calculator is how a haléř
-            gets lost.
-
-            The conversion is the server's: filling this in clears the gross
-            field, and the request computes it. Doing the arithmetic here would
-            round differently often enough that the merchant would watch the
-            price change on save.
+            Read in the order a merchant thinks in: net, rate, gross. The gross
+            price is still the only figure stored; the net field is a way of
+            typing it (wave 3.7) and the server does the conversion.
           -->
-          <div v-if="vatApplies">
-            <label for="p-net-price" class="block text-sm font-medium text-gray-700">
-              Cena bez DPH (Kč)
-            </label>
-            <input
-              id="p-net-price"
-              v-model="form.net_price"
-              type="text"
-              inputmode="decimal"
-              class="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-gray-900 focus:ring-gray-900"
-              aria-describedby="p-net-price-hint"
-              @input="form.price = null"
-            />
-            <p id="p-net-price-hint" class="mt-1 text-sm text-gray-600">
-              Vyplňte jedno z polí — cenu s DPH nebo bez ní. Druhé dopočítá server podle sazby.
-            </p>
-            <p v-if="form.errors.net_price" class="mt-1 text-sm text-red-700">
-              {{ form.errors.net_price }}
-            </p>
-          </div>
+          <fieldset class="rounded-md border border-gray-200 p-4">
+            <legend class="px-1 text-sm font-medium text-gray-700">Prodejní cena</legend>
 
-          <div v-if="vatApplies">
-            <label for="p-rate" class="block text-sm font-medium text-gray-700">Sazba DPH</label>
-            <select
-              id="p-rate"
-              v-model.number="form.tax_rate_id"
-              class="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-gray-900 focus:ring-gray-900"
-            >
-              <option v-for="option in taxRates" :key="option.id" :value="option.id">
-                {{ option.name }}
-              </option>
-            </select>
-          </div>
+            <div class="grid gap-4" :class="vatApplies ? 'sm:grid-cols-3' : ''">
+              <div v-if="vatApplies">
+                <label for="p-net-price" class="block text-sm font-medium text-gray-700">
+                  Cena bez DPH (Kč)
+                </label>
+                <input
+                  id="p-net-price"
+                  v-model="form.net_price"
+                  type="text"
+                  inputmode="decimal"
+                  class="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-gray-900 focus:ring-gray-900"
+                  @input="form.price = null"
+                />
+                <p v-if="form.errors.net_price" class="mt-1 text-sm text-red-700">
+                  {{ form.errors.net_price }}
+                </p>
+              </div>
 
-          <div>
-            <label for="p-sale" class="block text-sm font-medium text-gray-700">
-              Akční cena (Kč)
-            </label>
-            <input
-              id="p-sale"
-              v-model="form.sale_price"
-              type="number"
-              min="0"
-              class="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-gray-900 focus:ring-gray-900"
-              aria-describedby="p-sale-hint"
-            />
-            <p id="p-sale-hint" class="mt-1 text-sm text-gray-600">
-              Musí být nižší než běžná cena. Na e-shopu se vedle ní ukáže přeškrtnutá běžná cena
-              a povinný údaj o nejnižší ceně za posledních 30 dní.
-            </p>
-            <p v-if="form.errors.sale_price" class="mt-1 text-sm text-red-700">
-              {{ form.errors.sale_price }}
-            </p>
-          </div>
+              <div v-if="vatApplies">
+                <label for="p-rate" class="block text-sm font-medium text-gray-700">Daň (sazba)</label>
+                <select
+                  id="p-rate"
+                  v-model.number="form.tax_rate_id"
+                  class="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-gray-900 focus:ring-gray-900"
+                >
+                  <option v-for="option in taxRates" :key="option.id" :value="option.id">
+                    {{ option.name }}
+                  </option>
+                </select>
+              </div>
 
-          <div>
-            <label for="p-sale-from" class="block text-sm font-medium text-gray-700">
-              Akce od
-            </label>
-            <input
-              id="p-sale-from"
-              v-model="form.sale_starts_at"
-              type="datetime-local"
-              class="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-gray-900 focus:ring-gray-900"
-              aria-describedby="p-sale-from-hint"
-            />
-            <p id="p-sale-from-hint" class="mt-1 text-sm text-gray-600">
-              Prázdné = akce platí ihned.
-            </p>
-            <p v-if="form.errors.sale_starts_at" class="mt-1 text-sm text-red-700">
-              {{ form.errors.sale_starts_at }}
-            </p>
-          </div>
+              <div>
+                <label for="p-price" class="block text-sm font-medium text-gray-700">
+                  {{ vatApplies ? 'Cena s DPH (Kč)' : 'Cena (Kč)' }}
+                </label>
+                <input
+                  id="p-price"
+                  v-model="form.price"
+                  type="text"
+                  inputmode="decimal"
+                  class="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-gray-900 focus:ring-gray-900"
+                  aria-describedby="p-price-hint"
+                  :aria-invalid="form.errors.price ? 'true' : undefined"
+                  @input="form.net_price = null"
+                />
+                <p v-if="form.errors.price" class="mt-1 text-sm text-red-700">{{ form.errors.price }}</p>
+              </div>
+            </div>
 
-          <div>
-            <label for="p-sale-to" class="block text-sm font-medium text-gray-700">
-              Akce do
-            </label>
-            <input
-              id="p-sale-to"
-              v-model="form.sale_ends_at"
-              type="datetime-local"
-              class="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-gray-900 focus:ring-gray-900"
-              aria-describedby="p-sale-to-hint"
-            />
-            <p id="p-sale-to-hint" class="mt-1 text-sm text-gray-600">
-              Prázdné = akce běží, dokud ji neukončíte. Konec se uplatní sám, bez zásahu.
+            <p id="p-price-hint" class="mt-2 text-sm text-gray-600">
+              <template v-if="vatApplies">
+                Vyplňte cenu s DPH nebo bez ní — druhou dopočítá server podle sazby.
+                Uloženo: {{ money(korunas(form.price)) }} s DPH.
+              </template>
+              <template v-else>Uloženo: {{ money(korunas(form.price)) }}.</template>
             </p>
-            <p v-if="form.errors.sale_ends_at" class="mt-1 text-sm text-red-700">
-              {{ form.errors.sale_ends_at }}
-            </p>
-          </div>
+          </fieldset>
 
-          <div v-if="can.costs">
-            <label for="p-purchase" class="block text-sm font-medium text-gray-700">
-              Nákupní cena (Kč)
-            </label>
-            <input
-              id="p-purchase"
-              v-model="form.purchase_price"
-              type="text"
-              inputmode="decimal"
-              class="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-gray-900 focus:ring-gray-900"
-              aria-describedby="p-purchase-hint"
-            />
-            <p id="p-purchase-hint" class="mt-1 text-sm text-gray-600">
+          <fieldset v-if="can.costs" class="rounded-md border border-gray-200 p-4">
+            <legend class="px-1 text-sm font-medium text-gray-700">Nákupní cena</legend>
+
+            <div class="grid gap-4" :class="vatApplies ? 'sm:grid-cols-3' : ''">
+              <div v-if="vatApplies">
+                <label for="p-purchase-net" class="block text-sm font-medium text-gray-700">
+                  Nákupní cena bez DPH (Kč)
+                </label>
+                <input
+                  id="p-purchase-net"
+                  v-model="form.purchase_net_price"
+                  type="text"
+                  inputmode="decimal"
+                  class="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-gray-900 focus:ring-gray-900"
+                  @input="form.purchase_price = null"
+                />
+                <p v-if="form.errors.purchase_net_price" class="mt-1 text-sm text-red-700">
+                  {{ form.errors.purchase_net_price }}
+                </p>
+              </div>
+
+              <div v-if="vatApplies">
+                <label for="p-purchase-rate" class="block text-sm font-medium text-gray-700">
+                  Daň (sazba)
+                </label>
+                <select
+                  id="p-purchase-rate"
+                  v-model="form.purchase_tax_rate_id"
+                  class="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-gray-900 focus:ring-gray-900"
+                  aria-describedby="p-purchase-rate-hint"
+                >
+                  <option :value="null">Stejná jako u prodeje</option>
+                  <option v-for="option in taxRates" :key="option.id" :value="option.id">
+                    {{ option.name }}
+                  </option>
+                </select>
+                <p id="p-purchase-rate-hint" class="mt-1 text-sm text-gray-600">
+                  Dodavatel může účtovat jinou sazbu, než prodáváte vy.
+                </p>
+              </div>
+
+              <div>
+                <label for="p-purchase" class="block text-sm font-medium text-gray-700">
+                  {{ vatApplies ? 'Nákupní cena s DPH (Kč)' : 'Nákupní cena (Kč)' }}
+                </label>
+                <input
+                  id="p-purchase"
+                  v-model="form.purchase_price"
+                  type="text"
+                  inputmode="decimal"
+                  class="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-gray-900 focus:ring-gray-900"
+                  aria-describedby="p-purchase-hint"
+                  @input="form.purchase_net_price = null"
+                />
+                <p v-if="form.errors.purchase_price" class="mt-1 text-sm text-red-700">
+                  {{ form.errors.purchase_price }}
+                </p>
+              </div>
+            </div>
+
+            <p id="p-purchase-hint" class="mt-2 text-sm text-gray-600">
               Vidí jen uživatelé s právem na nákupní ceny. Na e-shopu se nezobrazuje.
             </p>
-          </div>
+          </fieldset>
+
+          <fieldset class="rounded-md border border-gray-200 p-4">
+            <legend class="px-1 text-sm font-medium text-gray-700">Akce</legend>
+
+            <div class="grid gap-4 sm:grid-cols-2">
+              <div>
+                <label for="p-sale" class="block text-sm font-medium text-gray-700">
+                  Akční cena (Kč)
+                </label>
+                <input
+                  id="p-sale"
+                  v-model="form.sale_price"
+                  type="text"
+                  inputmode="decimal"
+                  class="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-gray-900 focus:ring-gray-900"
+                  aria-describedby="p-sale-hint"
+                  @input="form.sale_percent = null"
+                />
+                <p v-if="form.errors.sale_price" class="mt-1 text-sm text-red-700">
+                  {{ form.errors.sale_price }}
+                </p>
+              </div>
+
+              <div>
+                <label for="p-sale-percent" class="block text-sm font-medium text-gray-700">
+                  …nebo sleva (%)
+                </label>
+                <input
+                  id="p-sale-percent"
+                  v-model.number="form.sale_percent"
+                  type="number"
+                  min="1"
+                  max="99"
+                  class="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-gray-900 focus:ring-gray-900"
+                  aria-describedby="p-sale-percent-hint"
+                  @input="form.sale_price = null"
+                />
+                <p id="p-sale-percent-hint" class="mt-1 text-sm text-gray-600">
+                  Uloží se procento, takže při změně ceny zůstane sleva stejně velká.
+                  <template v-if="salePreview !== null">
+                    Vyjde na {{ money(salePreview) }}.
+                  </template>
+                </p>
+                <p v-if="form.errors.sale_percent" class="mt-1 text-sm text-red-700">
+                  {{ form.errors.sale_percent }}
+                </p>
+              </div>
+
+              <div>
+                <label for="p-sale-from" class="block text-sm font-medium text-gray-700">Akce od</label>
+                <input
+                  id="p-sale-from"
+                  v-model="form.sale_starts_at"
+                  type="datetime-local"
+                  class="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-gray-900 focus:ring-gray-900"
+                />
+                <p v-if="form.errors.sale_starts_at" class="mt-1 text-sm text-red-700">
+                  {{ form.errors.sale_starts_at }}
+                </p>
+              </div>
+
+              <div>
+                <label for="p-sale-to" class="block text-sm font-medium text-gray-700">Akce do</label>
+                <input
+                  id="p-sale-to"
+                  v-model="form.sale_ends_at"
+                  type="datetime-local"
+                  class="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-gray-900 focus:ring-gray-900"
+                  aria-describedby="p-sale-to-hint"
+                />
+                <p id="p-sale-to-hint" class="mt-1 text-sm text-gray-600">
+                  Prázdné = akce běží, dokud ji neukončíte. Konec se uplatní sám, bez zásahu.
+                </p>
+                <p v-if="form.errors.sale_ends_at" class="mt-1 text-sm text-red-700">
+                  {{ form.errors.sale_ends_at }}
+                </p>
+              </div>
+            </div>
+
+            <p id="p-sale-hint" class="mt-2 text-sm text-gray-600">
+              Akční cena musí být nižší než běžná. Na e-shopu se vedle ní ukáže přeškrtnutá
+              běžná cena a povinný údaj o nejnižší ceně za posledních 30 dní.
+            </p>
+          </fieldset>
         </div>
 
         <div

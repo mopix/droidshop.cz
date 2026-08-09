@@ -103,6 +103,11 @@ class ProductAdminController
                 // Not merely hidden in the UI: a value the caller may not see
                 // never leaves the server.
                 'purchase_price' => $canSeeCosts ? MoneyInput::toInput($product->purchase_price?->amount) : null,
+                'purchase_net_price' => $canSeeCosts && $vatApplies && $product->purchase_price !== null
+                    ? MoneyInput::toInput($product->purchaseRate()->net($product->purchase_price)->amount)
+                    : null,
+                'purchase_tax_rate_id' => $canSeeCosts ? $product->purchase_tax_rate_id : null,
+                'sale_percent' => $product->sale_percent,
                 'tax_rate_id' => $product->tax_rate_id,
                 'sku' => $product->sku,
                 'ean' => $product->ean,
