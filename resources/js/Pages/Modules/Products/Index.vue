@@ -10,8 +10,10 @@ type ProductRow = {
   slug: string
   name: string
   sku: string | null
+  ean: string | null
   price: number
   purchase_price: number | null
+  purchase_net_price: number | null
   sale_price: number | null
   net_price: number | null
   tax_rate: number | null
@@ -53,15 +55,20 @@ const STATUS_LABELS: Record<string, string> = {
 const columns = computed<Column[]>(() => [
   { key: 'name', label: 'Produkt' },
   { key: 'sku', label: 'Kód' },
-  ...(props.canSeeCosts ? [{ key: 'purchase_price', label: 'Nákupní cena', align: 'right' } as Column] : []),
-  { key: 'sale_price', label: 'Akční cena', align: 'right' },
-  ...(props.vatApplies
-    ? ([
-        { key: 'net_price', label: 'Koncová cena bez DPH', align: 'right' },
-        { key: 'tax_rate', label: 'Daň (sazba)', align: 'right' },
-      ] as Column[])
+  { key: 'ean', label: 'EAN' },
+  ...(props.canSeeCosts
+    ? [{
+        key: 'purchase_price',
+        label: props.vatApplies ? 'Nákupní cena (bez/s DPH)' : 'Nákupní cena',
+        align: 'right',
+      } as Column]
     : []),
-  { key: 'price', label: props.vatApplies ? 'Koncová cena (s DPH)' : 'Koncová cena', align: 'right' },
+  { key: 'sale_price', label: 'Akční cena', align: 'right' },
+  {
+    key: 'price',
+    label: props.vatApplies ? 'Koncová cena (bez/s DPH)' : 'Koncová cena',
+    align: 'right',
+  },
   { key: 'stock', label: 'Sklad', align: 'right' },
   { key: 'status', label: 'Stav' },
 ])
@@ -71,9 +78,6 @@ const price = (haler: number) =>
 
 /** An amount that was never filled in reads as a dash, not as 0 Kč. */
 const optionalPrice = (haler: number | null): string => (haler === null ? '—' : price(haler))
-
-const percent = (value: number | null): string =>
-  value === null ? '—' : `${value.toLocaleString('cs-CZ', { maximumFractionDigits: 2 })} %`
 
 let timer: ReturnType<typeof setTimeout> | undefined
 
@@ -211,21 +215,31 @@ const createForm = useForm({
         </span>
       </template>
 
+      <template #cell-ean="{ row }">{{ (row as ProductRow).ean ?? '—' }}</template>
+
+      <!--
+        One column per price, both figures inside it: net above in grey,
+        gross below in the weight the listing already used. Two columns of
+        their own made the table wide enough to scroll for something a
+        merchant reads as a single fact.
+      -->
       <template #cell-purchase_price="{ row }">
-        {{ optionalPrice((row as ProductRow).purchase_price) }}
+        <span v-if="vatApplies && (row as ProductRow).purchase_net_price !== null" class="block text-xs text-gray-500">
+          {{ optionalPrice((row as ProductRow).purchase_net_price) }}
+        </span>
+        <span class="block">{{ optionalPrice((row as ProductRow).purchase_price) }}</span>
       </template>
 
       <template #cell-sale_price="{ row }">
         {{ optionalPrice((row as ProductRow).sale_price) }}
       </template>
 
-      <template #cell-net_price="{ row }">
-        {{ optionalPrice((row as ProductRow).net_price) }}
+      <template #cell-price="{ row }">
+        <span v-if="vatApplies" class="block text-xs text-gray-500">
+          {{ optionalPrice((row as ProductRow).net_price) }}
+        </span>
+        <span class="block">{{ price((row as ProductRow).price) }}</span>
       </template>
-
-      <template #cell-tax_rate="{ row }">{{ percent((row as ProductRow).tax_rate) }}</template>
-
-      <template #cell-price="{ row }">{{ price((row as ProductRow).price) }}</template>
 
       <template #cell-stock="{ row }">
         <span v-if="(row as ProductRow).stock_tracked">{{ (row as ProductRow).stock_qty }}</span>

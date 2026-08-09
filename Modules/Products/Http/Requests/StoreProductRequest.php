@@ -59,6 +59,12 @@ class StoreProductRequest extends FormRequest
             // gateway), and zero is not a discount at all.
             'sale_percent' => ['nullable', 'integer', 'min:1', 'max:99'],
 
+            // Which half of each price pair the merchant typed into. The form
+            // keeps both halves filled so it can show them side by side; this
+            // says which one is the instruction.
+            'price_source' => ['nullable', 'in:net,gross'],
+            'purchase_price_source' => ['nullable', 'in:net,gross'],
+
             // A shop that is not registered for VAT has no rate to charge, so
             // it is not asked for one (same rule shipping and payment fees
             // already follow since wave 2.7). An existing rate on the row is
@@ -152,7 +158,11 @@ class StoreProductRequest extends FormRequest
         // A helper for filling the form in, never a column. The gross price is
         // the only figure stored (rozhodnutí 2026-07-21: the catalogue price
         // is the authority), and prepareForValidation() has already used this.
-        unset($data['net_price'], $data['purchase_net_price']);
+        // Typing helpers and their markers, never columns.
+        unset(
+            $data['net_price'], $data['purchase_net_price'],
+            $data['price_source'], $data['purchase_price_source'],
+        );
 
         return $key === null ? $data : data_get($data, $key, $default);
     }
@@ -200,7 +210,12 @@ class StoreProductRequest extends FormRequest
             return; // The rule below will refuse it; guessing a rate here would not help.
         }
 
-        if ($this->filled('net_price') && ! $this->filled('price')) {
+        // Converted from whichever field was typed into (wave 3.11). The form
+        // now fills both halves so it can show them together, so "the other
+        // one is empty" no longer tells us which was meant — and letting the
+        // browser's arithmetic decide would make its rounding the stored
+        // figure.
+        if ($this->filled('net_price') && $this->wants('price_source', 'net')) {
             $this->merge(['price' => $rate->gross($this->money($this->input('net_price')))->amount]);
         }
 
@@ -210,7 +225,8 @@ class StoreProductRequest extends FormRequest
         $purchaseRate = app(TaxRates::class)->all()
             ->firstWhere('id', (int) ($this->input('purchase_tax_rate_id') ?: $this->input('tax_rate_id')));
 
-        if ($purchaseRate !== null && $this->filled('purchase_net_price') && ! $this->filled('purchase_price')) {
+        if ($purchaseRate !== null && $this->filled('purchase_net_price')
+            && $this->wants('purchase_price_source', 'net')) {
             $this->merge([
                 'purchase_price' => $purchaseRate->gross($this->money($this->input('purchase_net_price')))->amount,
             ]);
@@ -257,6 +273,21 @@ class StoreProductRequest extends FormRequest
         $this->merge([
             'sale_price' => (int) round($price * (100 - $percent) / 100),
         ]);
+    }
+
+    /**
+     * Whether the named half of a price pair is the one to convert from.
+     *
+     * Absent means "the gross one", which is what every caller that predates
+     * the paired fields sends — the CSV importer, a test, an integration.
+     */
+    private function wants(string $field, string $half): bool
+    {
+        $source = $this->input($field);
+
+        return $source === null || $source === ''
+            ? ($half === 'net' && ! $this->filled($field === 'price_source' ? 'price' : 'purchase_price'))
+            : $source === $half;
     }
 
     private function money(mixed $value): Money

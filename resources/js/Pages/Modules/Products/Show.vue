@@ -133,6 +133,10 @@ const form = useForm({
   purchase_net_price: props.product.purchase_net_price,
   purchase_tax_rate_id: props.product.purchase_tax_rate_id,
   sale_percent: props.product.sale_percent,
+  // Which half of each pair the merchant typed into; the server converts
+  // from that one rather than trusting the browser's arithmetic.
+  price_source: 'gross' as 'gross' | 'net',
+  purchase_price_source: 'gross' as 'gross' | 'net',
   tax_rate_id: props.product.tax_rate_id,
   sku: props.product.sku ?? '',
   ean: props.product.ean ?? '',
@@ -190,6 +194,67 @@ const salePreview = computed(() => {
     ? Math.round((price * (100 - percent)) / 100)
     : null
 })
+
+/**
+ * Keeps the two halves of a price pair in step as the merchant types.
+ *
+ * A live preview, not the decision: the field that was typed into is recorded
+ * in `price_source` and the server converts from THAT one (see
+ * StoreProductRequest). Without the marker the browser's rounding would
+ * become the stored figure, which is the one thing the arithmetic here must
+ * never do.
+ */
+const syncFromNet = (net: string | null, percent: number, into: 'price' | 'purchase_price') => {
+  const value = korunas(net)
+
+  form[into] = value > 0 ? MONEY.format(Math.round((value * (100 + percent)) / 100) / 100) : null
+}
+
+const syncFromGross = (
+  gross: string | null,
+  percent: number,
+  into: 'net_price' | 'purchase_net_price',
+) => {
+  const value = korunas(gross)
+
+  form[into] = value > 0 ? MONEY.format(Math.round((value / (100 + percent)) * 100) / 100) : null
+}
+
+/** Plain digits with a decimal comma — the shape the fields already hold. */
+const MONEY = new Intl.NumberFormat('cs-CZ', {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+  useGrouping: false,
+})
+
+/** The supplier's rate, falling back to the product's own (wave 3.9). */
+const purchasePercent = computed(() => {
+  const own = props.taxRates.find((r) => r.id === form.purchase_tax_rate_id)
+
+  return (own ?? rate.value)?.percent ?? 0
+})
+
+/** The four handlers the fields call; multi-statement inline handlers are not
+ *  valid in a template expression. */
+const onNetPriceInput = () => {
+  form.price_source = 'net'
+  syncFromNet(form.net_price, rate.value?.percent ?? 0, 'price')
+}
+
+const onGrossPriceInput = () => {
+  form.price_source = 'gross'
+  syncFromGross(form.price, rate.value?.percent ?? 0, 'net_price')
+}
+
+const onPurchaseNetInput = () => {
+  form.purchase_price_source = 'net'
+  syncFromNet(form.purchase_net_price, purchasePercent.value, 'purchase_price')
+}
+
+const onPurchaseGrossInput = () => {
+  form.purchase_price_source = 'gross'
+  syncFromGross(form.purchase_price, purchasePercent.value, 'purchase_net_price')
+}
 
 const money = (haler: number) =>
   new Intl.NumberFormat('cs-CZ', { style: 'currency', currency: 'CZK' }).format(haler / 100)
@@ -760,7 +825,7 @@ const runVariantDelete = () => {
                   type="text"
                   inputmode="decimal"
                   class="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-gray-900 focus:ring-gray-900"
-                  @input="form.price = null"
+                  @input="onNetPriceInput"
                 />
                 <p v-if="form.errors.net_price" class="mt-1 text-sm text-red-700">
                   {{ form.errors.net_price }}
@@ -772,6 +837,7 @@ const runVariantDelete = () => {
                 <select
                   id="p-rate"
                   v-model.number="form.tax_rate_id"
+                  @change="onNetPriceInput"
                   class="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-gray-900 focus:ring-gray-900"
                 >
                   <option v-for="option in taxRates" :key="option.id" :value="option.id">
@@ -792,7 +858,7 @@ const runVariantDelete = () => {
                   class="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-gray-900 focus:ring-gray-900"
                   aria-describedby="p-price-hint"
                   :aria-invalid="form.errors.price ? 'true' : undefined"
-                  @input="form.net_price = null"
+                  @input="onGrossPriceInput"
                 />
                 <p v-if="form.errors.price" class="mt-1 text-sm text-red-700">{{ form.errors.price }}</p>
               </div>
@@ -821,7 +887,7 @@ const runVariantDelete = () => {
                   type="text"
                   inputmode="decimal"
                   class="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-gray-900 focus:ring-gray-900"
-                  @input="form.purchase_price = null"
+                  @input="onPurchaseNetInput"
                 />
                 <p v-if="form.errors.purchase_net_price" class="mt-1 text-sm text-red-700">
                   {{ form.errors.purchase_net_price }}
@@ -835,6 +901,7 @@ const runVariantDelete = () => {
                 <select
                   id="p-purchase-rate"
                   v-model="form.purchase_tax_rate_id"
+                  @change="onPurchaseNetInput"
                   class="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-gray-900 focus:ring-gray-900"
                   aria-describedby="p-purchase-rate-hint"
                 >
@@ -859,7 +926,7 @@ const runVariantDelete = () => {
                   inputmode="decimal"
                   class="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-gray-900 focus:ring-gray-900"
                   aria-describedby="p-purchase-hint"
-                  @input="form.purchase_net_price = null"
+                  @input="onPurchaseGrossInput"
                 />
                 <p v-if="form.errors.purchase_price" class="mt-1 text-sm text-red-700">
                   {{ form.errors.purchase_price }}

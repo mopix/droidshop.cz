@@ -59,6 +59,7 @@ class ProductAdminController
                 'slug' => $product->slug,
                 'name' => $product->name,
                 'sku' => $product->sku,
+                'ean' => $product->ean,
                 // Haléře here on purpose: the listing only displays the price
                 // and formats it itself. Korunas are for the fields a person
                 // types into, which is the detail form below.
@@ -71,6 +72,11 @@ class ProductAdminController
                 // see does not leave the server (same rule as the detail form
                 // and the CSV export).
                 'purchase_price' => $canSeeCosts ? $product->purchase_price?->amount : null,
+                // Net of the purchase price uses the SUPPLIER's rate (wave
+                // 3.9), which may differ from the one the shop sells at.
+                'purchase_net_price' => $canSeeCosts && $vatApplies && $product->purchase_price !== null
+                    ? $product->purchaseRate()->net($product->purchase_price)->amount
+                    : null,
                 'sale_price' => $product->sale_price?->amount,
                 // Net of the SHELF price, not of Product::netPrice(), which
                 // is net of the effective one (wave 2.7). The gross column
