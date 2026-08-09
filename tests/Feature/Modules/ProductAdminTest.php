@@ -11,6 +11,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Inertia\Testing\AssertableInertia;
 use Modules\Products\Models\Product;
+use Modules\Products\Rules\Ean;
 use Modules\Products\Services\ProductWriter;
 use Tests\Concerns\ActivatesModules;
 use Tests\TestCase;
@@ -147,10 +148,30 @@ class ProductAdminTest extends TestCase
             ->assertSessionHasErrors('weight_g');
     }
 
-    public function test_an_ean_with_a_broken_checksum_is_refused(): void
+    /**
+     * Since 2026-08-10 a broken check digit no longer refuses the save: a
+     * merchant may legitimately keep an internal code in this field, and being
+     * unable to save a product because of it is worse than carrying a code
+     * only they use. The form warns, and the feeds leave it out.
+     */
+    public function test_an_ean_with_a_broken_checksum_saves_but_is_not_a_barcode(): void
     {
         $this->actingAs($this->owner)
             ->post($this->url(), $this->payload(['ean' => '1234567890123']))
+            ->assertRedirect()
+            ->assertSessionDoesntHaveErrors('ean');
+
+        $this->context->runAs($this->tenant, fn () => $this->assertDatabaseHas('products', [
+            'ean' => '1234567890123',
+        ]));
+
+        $this->assertFalse(Ean::isValid('1234567890123'));
+    }
+
+    public function test_a_code_that_is_not_digits_is_still_refused(): void
+    {
+        $this->actingAs($this->owner)
+            ->post($this->url(), $this->payload(['ean' => 'ABC-123']))
             ->assertSessionHasErrors('ean');
     }
 

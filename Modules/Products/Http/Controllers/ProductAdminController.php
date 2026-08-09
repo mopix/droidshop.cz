@@ -12,6 +12,7 @@ use Modules\Categories\Models\Category;
 use Modules\Products\Http\Requests\StoreProductRequest;
 use Modules\Products\Http\Requests\UpdateProductRequest;
 use Modules\Products\Models\Product;
+use Modules\Products\Rules\Ean;
 use Modules\Products\Services\ProductImageService;
 use Modules\Products\Services\ProductWriter;
 
@@ -60,6 +61,10 @@ class ProductAdminController
                 'name' => $product->name,
                 'sku' => $product->sku,
                 'ean' => $product->ean,
+                // Whether the stored code is a real barcode. Not a validation
+                // error any more (owner's decision, 2026-08-10) — the form
+                // says so, and the feeds leave an invalid one out.
+                'ean_valid' => $product->ean === null || Ean::isValid($product->ean),
                 // Haléře here on purpose: the listing only displays the price
                 // and formats it itself. Korunas are for the fields a person
                 // types into, which is the detail form below.
