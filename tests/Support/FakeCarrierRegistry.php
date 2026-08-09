@@ -57,7 +57,7 @@ final class FakeCarrierRegistry implements CarrierRegistry
                 return true;
             }
 
-            public function submit(OrderView $order, string $pickupPointCode, Money $codAmount, int $weightGrams): ShipmentResult
+            public function submit(OrderView $order, string $pickupPointCode, Money $codAmount, int $weightGrams, ?array $dimensionsMm = null): ShipmentResult
             {
                 throw new CarrierError('FakeCarrierRegistry does not submit shipments.');
             }

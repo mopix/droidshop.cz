@@ -193,6 +193,41 @@ class PacketaCarrierTest extends TestCase
         $this->driver()->submit($this->order(), '1001', new Money(129_00, 'CZK'), 800);
     }
 
+    /**
+     * Dimensions reach the carrier when the shop filled them in (wave 3.8) —
+     * they decide whether a parcel counts as oversized.
+     */
+    public function test_dimensions_are_sent_when_they_are_known(): void
+    {
+        Http::fake(['*' => Http::response(
+            '<response><status>ok</status><result><id>777</id><barcode>Z123</barcode></result></response>'
+        )]);
+
+        $this->driver()->submit($this->order(), '1001', new Money(129_00, 'CZK'), 800, [
+            'length' => 200, 'width' => 150, 'height' => 80,
+        ]);
+
+        Http::assertSent(fn ($request) => str_contains($request->body(), '<length>200</length>')
+            && str_contains($request->body(), '<height>80</height>'));
+    }
+
+    /**
+     * And nothing is sent when they are not. Zeroes would describe a flat
+     * parcel; this is the regression guard for every shop that will never
+     * fill the fields in.
+     */
+    public function test_no_size_element_is_sent_without_dimensions(): void
+    {
+        Http::fake(['*' => Http::response(
+            '<response><status>ok</status><result><id>777</id><barcode>Z123</barcode></result></response>'
+        )]);
+
+        $this->driver()->submit($this->order(), '1001', new Money(129_00, 'CZK'), 800);
+
+        Http::assertSent(fn ($request) => ! str_contains($request->body(), '<size>')
+            && ! str_contains($request->body(), '<length>'));
+    }
+
     public function test_a_network_failure_raises_a_carrier_error(): void
     {
         Http::fake(fn () => throw new ConnectionException('timeout'));

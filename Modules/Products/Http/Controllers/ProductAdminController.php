@@ -2,6 +2,7 @@
 
 namespace Modules\Products\Http\Controllers;
 
+use App\Core\Money\MoneyInput;
 use App\Core\Tax\TaxRates;
 use App\Core\Tax\VatMode;
 use Illuminate\Http\RedirectResponse;
@@ -55,6 +56,9 @@ class ProductAdminController
                 'slug' => $product->slug,
                 'name' => $product->name,
                 'sku' => $product->sku,
+                // Haléře here on purpose: the listing only displays the price
+                // and formats it itself. Korunas are for the fields a person
+                // types into, which is the detail form below.
                 'price' => $product->price->amount,
                 'status' => $product->status,
                 'stock_tracked' => $product->stock_tracked,
@@ -87,21 +91,26 @@ class ProductAdminController
                 'status' => $product->status,
                 'short_description' => $product->short_description,
                 'description' => $product->description,
-                'price' => $product->price->amount,
+                // Korunas, formatted for a person to read and edit (wave 3.8).
+                // The column stays in haléře; MoneyInput is the boundary.
+                'price' => MoneyInput::toInput($product->price->amount),
                 // Only a VAT payer is shown a net price; for anyone else the
                 // figure is meaningless and the form has no field for it.
-                'net_price' => $vatApplies ? $product->netPrice()->amount : null,
-                'sale_price' => $product->sale_price?->amount,
+                'net_price' => $vatApplies ? MoneyInput::toInput($product->netPrice()->amount) : null,
+                'sale_price' => MoneyInput::toInput($product->sale_price?->amount),
                 'sale_starts_at' => $product->sale_starts_at?->format('Y-m-d\TH:i'),
                 'sale_ends_at' => $product->sale_ends_at?->format('Y-m-d\TH:i'),
                 // Not merely hidden in the UI: a value the caller may not see
                 // never leaves the server.
-                'purchase_price' => $canSeeCosts ? $product->purchase_price?->amount : null,
+                'purchase_price' => $canSeeCosts ? MoneyInput::toInput($product->purchase_price?->amount) : null,
                 'tax_rate_id' => $product->tax_rate_id,
                 'sku' => $product->sku,
                 'ean' => $product->ean,
                 'manufacturer' => $product->manufacturer?->name,
                 'weight_g' => $product->weight_g,
+                'length_mm' => $product->length_mm,
+                'width_mm' => $product->width_mm,
+                'height_mm' => $product->height_mm,
                 'stock_tracked' => $product->stock_tracked,
                 'stock_qty' => $product->stock_qty,
                 'stock_policy' => $product->stock_policy,
@@ -138,11 +147,10 @@ class ProductAdminController
                 'label' => $variant->label(),
                 'sku' => $variant->sku,
                 'ean' => $variant->ean,
-                // Raw haléře, not a Money instance: the editor's number input
-                // binds straight to it, same convention as the product's own
-                // 'price' prop above.
-                'price' => $variant->price?->amount,
-                'sale_price' => $variant->sale_price?->amount,
+                // Korunas, like the product's own price fields (wave 3.8):
+                // this grid is typed into, and null still means "inherit".
+                'price' => MoneyInput::toInput($variant->price?->amount),
+                'sale_price' => MoneyInput::toInput($variant->sale_price?->amount),
                 'stock_tracked' => $variant->stock_tracked,
                 'stock_qty' => $variant->stock_qty,
                 'stock_policy' => $variant->stock_policy,

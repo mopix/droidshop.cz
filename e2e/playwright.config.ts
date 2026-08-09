@@ -98,7 +98,12 @@ export default defineConfig({
   ],
 
   webServer: {
-    command: `${SERVER_ENV} php artisan serve --host=127.0.0.1 --port=${PORT} --no-reload`,
+    // PHP_CLI_SERVER_WORKERS: the built-in server is single-process by
+    // default, so a page that fetches its own images can close the connection
+    // for whatever comes next. It did NOT fix the case that found this (see
+    // product-images.spec.ts), but more than one worker is closer to what a
+    // real server does either way.
+    command: `PHP_CLI_SERVER_WORKERS=4 ${SERVER_ENV} php artisan serve --host=127.0.0.1 --port=${PORT} --no-reload`,
     url: `http://127.0.0.1:${PORT}/up`,
     // Port 8001, not the demo's 8000: the suite must not depend on whether a
     // developer left a server running, nor kill the one they are using.

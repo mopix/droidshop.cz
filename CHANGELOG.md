@@ -11,6 +11,23 @@ Pravidla: [`.claude/skills/versioning/SKILL.md`](.claude/skills/versioning/SKILL
 
 > CHANGELOG vede milníky (minor/major). Detail patchů je v `git log`.
 
+## [0.43.0] – 2026-08-09
+
+**Fáze 2 / vlna 3.8 — koruny v administraci, rozměry produktu, obrázky.** Uzavření vlny (`docs/as-is/2026-08-09-produkt-a-ceny.md`). 2 nové E2E scénáře (celkem 43), 37 nových PHPUnit testů.
+
+### Ceny se zadávají v korunách
+Vnitřní jednotka se protlačila až do formuláře: nájemce prodávající za 1 790 Kč psal `179000`. Napříč celou administrací — produkt, varianty, akce, nákupní cena, doprava, platby, slevy, minimum objednávky. Sloupce zůstávají v haléřích.
+
+Nikdy float na float: `(int) (0.07 * 100)` je 6, ne 7. Prázdné pole není nula — nevyplněná nákupní cena znamená „nevyplněno", ne „zdarma". Sleva se převádí jen u pevné částky; u procentní je hodnota promile a korunový parser by z desetiny slevy udělal desetinásobek košíku.
+
+### Produkt má rozměry
+Milimetry, všechny tři nebo žádný. Zákazník je vidí v novém bloku **Parametry** (dosud se technické údaje daly zjistit jen z popisu), dopravce je dostane při podání — ale jen když je zásilka jeden produkt: sečíst tři krabice do jedné sady vnějších rozměrů nejde bez znalosti, jak jsou zabalené, a odhad podaný dopravci rozhoduje o tom, jestli je zásilka nadrozměrná.
+
+### Obrázky jde seřadit a přetáhnout
+Endpoint pro řazení existoval od vlny 1.2 a nikdo ho nikdy nezavolal. Tlačítka, ne tažení — pořadí musí jít změnit z klávesnice; plocha na přetažení je doplněk k tlačítku.
+
+Tlačítka Uložit a Smazat produkt se přestala kreslit nad panely obrázků a variant. Patří hlavnímu formuláři a četla se jako součást toho, co bylo pod nimi — právě proto zůstalo „Nastavit jako hlavní" přehlédnuté.
+
 ## [0.42.0] – 2026-08-09
 
 **Fáze 2 / vlna 3.7 — plátcovství DPH a čas obchodu.** Uzavření vlny (`docs/as-is/2026-08-09-dph-a-cas.md`). 1 nový E2E scénář (celkem 41), 35 nových PHPUnit testů.

@@ -2,6 +2,7 @@
 
 namespace Modules\Shipping\Http\Requests;
 
+use App\Core\Money\ConvertsMoneyInput;
 use App\Core\Tenancy\TenantContext;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -9,6 +10,8 @@ use Modules\Shipping\Models\ShippingMethod;
 
 class StoreShippingMethodRequest extends FormRequest
 {
+    use ConvertsMoneyInput;
+
     // api_password must never be flashed into the session on a validation
     // failure (e.g. a bad price alongside a valid api_password). On this
     // Laravel version a $dontFlash property here would be silently ignored —
@@ -18,6 +21,12 @@ class StoreShippingMethodRequest extends FormRequest
     public function authorize(): bool
     {
         return (bool) $this->user('web')?->can('shipping.manage');
+    }
+
+    protected function prepareForValidation(): void
+    {
+        // Korunas in, haléře out (wave 3.8).
+        $this->convertMoneyFields(['price', 'free_from']);
     }
 
     /**

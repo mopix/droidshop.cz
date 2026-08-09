@@ -194,14 +194,13 @@ const submit = () => {
 
         <div>
           <label for="pay-fee" class="block text-sm font-medium text-gray-700">
-            Příplatek s DPH (v haléřích)
+            Příplatek s DPH (Kč)
           </label>
           <input
             id="pay-fee"
-            v-model.number="form.fee"
-            type="number"
-            min="0"
-            step="1"
+            v-model="form.fee"
+            type="text"
+            inputmode="decimal"
             required
             class="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-gray-900 focus:ring-gray-900"
             aria-describedby="pay-fee-hint"

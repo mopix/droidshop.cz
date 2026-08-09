@@ -13,17 +13,20 @@ type Product = {
   status: string
   short_description: string | null
   description: string | null
-  price: number
-  net_price: number | null
-  sale_price: number | null
+  price: string
+  net_price: string | null
+  sale_price: string | null
   sale_starts_at: string | null
   sale_ends_at: string | null
-  purchase_price: number | null
+  purchase_price: string | null
   tax_rate_id: number
   sku: string | null
   ean: string | null
   manufacturer: string | null
   weight_g: number
+  length_mm: number | null
+  width_mm: number | null
+  height_mm: number | null
   stock_tracked: boolean
   stock_qty: number
   stock_policy: string
@@ -42,15 +45,15 @@ type Product = {
 type ProductOptionValue = { id: number; value: string; position: number }
 type ProductOption = { id: number; name: string; position: number; values: ProductOptionValue[] }
 
-// Raw haléře-or-null, not a Money instance: same convention as the product's
+// Korunas-or-null as a string, same convention as the product's
 // own 'price' prop, which the matrix's price column sits right next to.
 type ProductVariant = {
   id: number
   label: string
   sku: string | null
   ean: string | null
-  price: number | null
-  sale_price: number | null
+  price: string | null
+  sale_price: string | null
   stock_tracked: boolean
   stock_qty: number
   stock_policy: string
@@ -67,6 +70,9 @@ const props = defineProps<{
   can: { edit: boolean; costs: boolean }
 }>()
 
+/** Tabs whose fields belong to the main product form. */
+const FORM_TABS = ['basic', 'prices', 'stock', 'seo']
+
 const TABS = [
   { key: 'basic', label: 'Základní' },
   { key: 'prices', label: 'Ceny' },
@@ -77,6 +83,8 @@ const TABS = [
 ] as const
 
 const tab = ref<(typeof TABS)[number]['key']>('basic')
+
+const formTab = computed(() => FORM_TABS.includes(tab.value))
 
 /**
  * Arrow keys move between tabs, Home/End jump to the ends (ARIA APG).
@@ -124,6 +132,9 @@ const form = useForm({
   ean: props.product.ean ?? '',
   manufacturer: props.product.manufacturer ?? '',
   weight_g: props.product.weight_g,
+  length_mm: props.product.length_mm,
+  width_mm: props.product.width_mm,
+  height_mm: props.product.height_mm,
   stock_tracked: props.product.stock_tracked,
   stock_qty: props.product.stock_qty,
   stock_policy: props.product.stock_policy,
@@ -144,10 +155,26 @@ const rate = computed(
  * convenience. The binding figure is always the server's — this is display
  * arithmetic, never the price anyone is charged.
  */
+/**
+ * Reads a price the way the merchant typed it, for preview arithmetic only.
+ *
+ * The server has its own parser (App\Core\Money\MoneyInput) and it is the
+ * one that decides what gets stored — this is display, and a disagreement
+ * between the two shows up as a preview that is a haléř out, never as a wrong
+ * price.
+ */
+const korunas = (value: string | number | null): number => {
+  if (value === null || value === '') return 0
+
+  const parsed = Number(String(value).replace(/[\s\u00A0\u202F]/g, '').replace(',', '.'))
+
+  return Number.isFinite(parsed) ? Math.round(parsed * 100) : 0
+}
+
 const netPreview = computed(() => {
   const percent = rate.value?.percent ?? 0
 
-  return Math.round(form.price / (1 + percent / 100))
+  return Math.round(korunas(form.price) / (1 + percent / 100))
 })
 
 /**
@@ -171,6 +198,30 @@ const confirmDelete = () =>
 
 const uploads = ref<File[] | null>(null)
 
+/** Whether a file is currently being dragged over the drop area. */
+const dragging = ref(false)
+
+/**
+ * Files dropped onto the panel (wave 3.8).
+ *
+ * A convenience beside the file input, never instead of it: dropping is not
+ * something a keyboard can do (WCAG 2.1.1), which is the same reason image
+ * and category order is moved with buttons rather than by dragging
+ * (rozhodnutí 2026-07-20).
+ */
+const onDrop = (event: DragEvent) => {
+  dragging.value = false
+
+  const files = Array.from(event.dataTransfer?.files ?? []).filter((file) =>
+    file.type.startsWith('image/'),
+  )
+
+  if (files.length) {
+    uploads.value = files
+    uploadImages()
+  }
+}
+
 const uploadImages = () => {
   if (!uploads.value?.length) return
 
@@ -192,6 +243,27 @@ const removeImage = (image: ProductImage) =>
   router.delete(route('admin.products.images.destroy', [props.product.slug, image.id]), {
     preserveScroll: true,
   })
+
+/**
+ * Moves an image one place in the gallery.
+ *
+ * The endpoint has existed since wave 1.2 and nothing ever called it, so the
+ * order was whatever the upload order happened to be.
+ */
+const moveImage = (index: number, direction: -1 | 1) => {
+  const ids = props.product.images.map((image) => image.id)
+  const target = index + direction
+
+  if (target < 0 || target >= ids.length) return
+
+  ;[ids[index], ids[target]] = [ids[target], ids[index]]
+
+  router.post(
+    route('admin.products.images.reorder', props.product.slug),
+    { ids },
+    { preserveScroll: true },
+  )
+}
 
 // --- Variant matrix (options, values, variants) ---------------------------
 
@@ -664,14 +736,13 @@ const runVariantDelete = () => {
 
           <div>
             <label for="p-price" class="block text-sm font-medium text-gray-700">
-              {{ vatApplies ? 'Cena s DPH (v haléřích)' : 'Cena (v haléřích)' }}
+              {{ vatApplies ? 'Cena s DPH (Kč)' : 'Cena (Kč)' }}
             </label>
             <input
               id="p-price"
-              v-model.number="form.price"
-              type="number"
-              min="0"
-              step="1"
+              v-model="form.price"
+              type="text"
+              inputmode="decimal"
               class="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-gray-900 focus:ring-gray-900"
               aria-describedby="p-price-hint"
               :aria-invalid="form.errors.price ? 'true' : undefined"
@@ -679,9 +750,9 @@ const runVariantDelete = () => {
             />
             <p id="p-price-hint" class="mt-1 text-sm text-gray-600">
               <template v-if="vatApplies">
-                {{ money(form.price) }} · bez DPH přibližně {{ money(netPreview) }}
+                {{ money(korunas(form.price)) }} · bez DPH přibližně {{ money(netPreview) }}
               </template>
-              <template v-else>{{ money(form.price) }}</template>
+              <template v-else>{{ money(korunas(form.price)) }}</template>
             </p>
             <p v-if="form.errors.price" class="mt-1 text-sm text-red-700">{{ form.errors.price }}</p>
           </div>
@@ -698,14 +769,13 @@ const runVariantDelete = () => {
           -->
           <div v-if="vatApplies">
             <label for="p-net-price" class="block text-sm font-medium text-gray-700">
-              Cena bez DPH (v haléřích)
+              Cena bez DPH (Kč)
             </label>
             <input
               id="p-net-price"
-              v-model.number="form.net_price"
-              type="number"
-              min="0"
-              step="1"
+              v-model="form.net_price"
+              type="text"
+              inputmode="decimal"
               class="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-gray-900 focus:ring-gray-900"
               aria-describedby="p-net-price-hint"
               @input="form.price = null"
@@ -733,11 +803,11 @@ const runVariantDelete = () => {
 
           <div>
             <label for="p-sale" class="block text-sm font-medium text-gray-700">
-              Akční cena (haléře)
+              Akční cena (Kč)
             </label>
             <input
               id="p-sale"
-              v-model.number="form.sale_price"
+              v-model="form.sale_price"
               type="number"
               min="0"
               class="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-gray-900 focus:ring-gray-900"
@@ -792,13 +862,13 @@ const runVariantDelete = () => {
 
           <div v-if="can.costs">
             <label for="p-purchase" class="block text-sm font-medium text-gray-700">
-              Nákupní cena
+              Nákupní cena (Kč)
             </label>
             <input
               id="p-purchase"
-              v-model.number="form.purchase_price"
-              type="number"
-              min="0"
+              v-model="form.purchase_price"
+              type="text"
+              inputmode="decimal"
               class="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-gray-900 focus:ring-gray-900"
               aria-describedby="p-purchase-hint"
             />
@@ -889,6 +959,68 @@ const runVariantDelete = () => {
               {{ form.errors.weight_g }}
             </p>
           </div>
+
+          <!--
+            Dimensions (wave 3.8). Millimetres, because that is what a carrier
+            API takes; the product page shows them in centimetres.
+          -->
+          <fieldset>
+            <legend class="block text-sm font-medium text-gray-700">Rozměry (mm)</legend>
+            <p id="p-dimensions-hint" class="mt-1 text-sm text-gray-600">
+              Nepovinné. Vyplňte všechny tři, nebo žádný — zákazník je uvidí v parametrech a
+              dopravce je dostane při podání zásilky.
+            </p>
+
+            <div class="mt-2 grid gap-4 sm:grid-cols-3">
+              <div>
+                <label for="p-length" class="block text-sm text-gray-700">Délka</label>
+                <input
+                  id="p-length"
+                  v-model.number="form.length_mm"
+                  type="number"
+                  min="1"
+                  max="2000"
+                  aria-describedby="p-dimensions-hint"
+                  class="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-gray-900 focus:ring-gray-900"
+                />
+                <p v-if="form.errors.length_mm" class="mt-1 text-sm text-red-700">
+                  {{ form.errors.length_mm }}
+                </p>
+              </div>
+
+              <div>
+                <label for="p-width" class="block text-sm text-gray-700">Šířka</label>
+                <input
+                  id="p-width"
+                  v-model.number="form.width_mm"
+                  type="number"
+                  min="1"
+                  max="2000"
+                  aria-describedby="p-dimensions-hint"
+                  class="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-gray-900 focus:ring-gray-900"
+                />
+                <p v-if="form.errors.width_mm" class="mt-1 text-sm text-red-700">
+                  {{ form.errors.width_mm }}
+                </p>
+              </div>
+
+              <div>
+                <label for="p-height" class="block text-sm text-gray-700">Výška</label>
+                <input
+                  id="p-height"
+                  v-model.number="form.height_mm"
+                  type="number"
+                  min="1"
+                  max="2000"
+                  aria-describedby="p-dimensions-hint"
+                  class="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-gray-900 focus:ring-gray-900"
+                />
+                <p v-if="form.errors.height_mm" class="mt-1 text-sm text-red-700">
+                  {{ form.errors.height_mm }}
+                </p>
+              </div>
+            </div>
+          </fieldset>
         </div>
 
         <div
@@ -933,7 +1065,16 @@ const runVariantDelete = () => {
           </div>
         </div>
 
-        <div class="mt-6 flex flex-wrap items-center gap-3 border-t border-gray-200 pt-4">
+        <!--
+          Only on the tabs this form actually saves. The images and variants
+          panels are separate forms of their own, and a Save button floating
+          above them looked like it belonged to what was underneath — which is
+          why the "set as main image" control went unnoticed (wave 3.8).
+        -->
+        <div
+          v-show="formTab"
+          class="mt-6 flex flex-wrap items-center gap-3 border-t border-gray-200 pt-4"
+        >
           <button
             v-if="can.edit"
             type="submit"
@@ -992,13 +1133,31 @@ const runVariantDelete = () => {
           </button>
         </div>
 
+        <!--
+          A place to drop files, beside the button and never instead of it:
+          dropping is not something a keyboard can do (WCAG 2.1.1).
+          aria-hidden because it duplicates the input above — a screen reader
+          gains nothing from being told about a target it cannot use.
+        -->
+        <div
+          v-if="can.edit"
+          aria-hidden="true"
+          class="mb-6 rounded-lg border-2 border-dashed p-6 text-center text-sm transition-colors"
+          :class="dragging ? 'border-gray-900 bg-gray-50 text-gray-900' : 'border-gray-300 text-gray-600'"
+          @dragover.prevent="dragging = true"
+          @dragleave.prevent="dragging = false"
+          @drop.prevent="onDrop"
+        >
+          Přetáhněte sem obrázky, nebo je vyberte tlačítkem výše.
+        </div>
+
         <p v-if="product.images.length === 0" class="py-6 text-gray-600">
           Produkt zatím nemá obrázky.
         </p>
 
         <ul v-else class="grid gap-4 sm:grid-cols-3 lg:grid-cols-4">
           <li
-            v-for="image in product.images"
+            v-for="(image, index) in product.images"
             :key="image.id"
             class="rounded-md border border-gray-200 p-2"
           >
@@ -1016,6 +1175,24 @@ const runVariantDelete = () => {
             </p>
 
             <div v-if="can.edit" class="mt-2 flex flex-wrap gap-2">
+              <!-- Buttons, not dragging: the order has to be changeable from
+                   a keyboard (rozhodnutí 2026-07-20). -->
+              <button
+                type="button"
+                :disabled="index === 0"
+                class="rounded-md border border-gray-300 px-2 py-1 text-xs font-medium text-gray-800 hover:bg-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-900 disabled:cursor-not-allowed disabled:text-gray-400"
+                @click="moveImage(index, -1)"
+              >
+                ←<span class="sr-only"> Posunout obrázek {{ index + 1 }} dopředu</span>
+              </button>
+              <button
+                type="button"
+                :disabled="index === product.images.length - 1"
+                class="rounded-md border border-gray-300 px-2 py-1 text-xs font-medium text-gray-800 hover:bg-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-900 disabled:cursor-not-allowed disabled:text-gray-400"
+                @click="moveImage(index, 1)"
+              >
+                →<span class="sr-only"> Posunout obrázek {{ index + 1 }} dozadu</span>
+              </button>
               <button
                 v-if="!image.is_main"
                 type="button"
@@ -1182,7 +1359,7 @@ const runVariantDelete = () => {
             <thead>
               <tr class="text-gray-500">
                 <th scope="col" class="py-2 pr-2 font-medium">Kombinace</th>
-                <th scope="col" class="px-2 py-2 font-medium">Cena (haléře)</th>
+                <th scope="col" class="px-2 py-2 font-medium">Cena (Kč)</th>
                 <th v-if="vatApplies" scope="col" class="px-2 py-2 font-medium">Bez DPH</th>
                 <th scope="col" class="px-2 py-2 font-medium">Akční cena</th>
                 <th scope="col" class="px-2 py-2 font-medium">SKU</th>
@@ -1198,14 +1375,13 @@ const runVariantDelete = () => {
 
                 <td class="px-2 py-2">
                   <label :for="`variant-price-${variant.id}`" class="sr-only">
-                    Cena varianty {{ variant.label }} v haléřích
+                    Cena varianty {{ variant.label }} v korunách
                   </label>
                   <input
                     :id="`variant-price-${variant.id}`"
-                    v-model.number="variant.price"
-                    type="number"
-                    min="0"
-                    step="1"
+                    v-model="variant.price"
+                    type="text"
+                    inputmode="decimal"
                     placeholder="dědí"
                     :disabled="!can.edit"
                     class="w-28 rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-900 focus:ring-gray-900 disabled:bg-gray-100"
@@ -1215,14 +1391,13 @@ const runVariantDelete = () => {
 
                 <td v-if="vatApplies" class="px-2 py-2">
                   <label :for="`variant-net-price-${variant.id}`" class="sr-only">
-                    Cena varianty {{ variant.label }} bez DPH v haléřích
+                    Cena varianty {{ variant.label }} bez DPH v korunách
                   </label>
                   <input
                     :id="`variant-net-price-${variant.id}`"
-                    v-model.number="variant.net_price"
-                    type="number"
-                    min="0"
-                    step="1"
+                    v-model="variant.net_price"
+                    type="text"
+                    inputmode="decimal"
                     :placeholder="variant.price === null ? 'dědí' : String(netOf(variant.price))"
                     :disabled="!can.edit"
                     class="w-28 rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-900 focus:ring-gray-900 disabled:bg-gray-100"
@@ -1232,13 +1407,13 @@ const runVariantDelete = () => {
 
                 <td class="px-2 py-2">
                   <label :for="`variant-sale-${variant.id}`" class="sr-only">
-                    Akční cena varianty {{ variant.label }} v haléřích
+                    Akční cena varianty {{ variant.label }} v korunách
                   </label>
                   <input
                     :id="`variant-sale-${variant.id}`"
-                    v-model.number="variant.sale_price"
-                    type="number"
-                    min="0"
+                    v-model="variant.sale_price"
+                    type="text"
+                    inputmode="decimal"
                     step="1"
                     placeholder="bez akce"
                     :disabled="!can.edit"

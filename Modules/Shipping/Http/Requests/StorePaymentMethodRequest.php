@@ -2,6 +2,7 @@
 
 namespace Modules\Shipping\Http\Requests;
 
+use App\Core\Money\ConvertsMoneyInput;
 use App\Core\Tenancy\TenantContext;
 use Closure;
 use Illuminate\Foundation\Http\FormRequest;
@@ -10,6 +11,8 @@ use Modules\Shipping\Models\PaymentMethod;
 
 class StorePaymentMethodRequest extends FormRequest
 {
+    use ConvertsMoneyInput;
+
     // account and secret must never be flashed into the session on a
     // validation failure (e.g. a bad fee alongside a valid secret). On this
     // Laravel version a $dontFlash property here would be silently ignored —
@@ -19,6 +22,12 @@ class StorePaymentMethodRequest extends FormRequest
     public function authorize(): bool
     {
         return (bool) $this->user('web')?->can('shipping.manage');
+    }
+
+    protected function prepareForValidation(): void
+    {
+        // Korunas in, haléře out (wave 3.8).
+        $this->convertMoneyFields(['fee']);
     }
 
     /**

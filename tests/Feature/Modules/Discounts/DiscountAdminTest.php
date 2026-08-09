@@ -299,7 +299,9 @@ class DiscountAdminTest extends TestCase
             ->post('http://shop1.droidshop/admin/m/discounts', [
                 'name' => 'Velká pevná sleva',
                 'type' => 'fixed',
-                'value' => 500000,
+                // 5 000 Kč — the ceiling is on haléře, and since wave 3.8 the
+                // form takes korunas.
+                'value' => '5000',
                 'scope' => 'cart',
             ])
             ->assertRedirect()

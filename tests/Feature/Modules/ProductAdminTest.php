@@ -75,7 +75,9 @@ class ProductAdminTest extends TestCase
     {
         return [
             'name' => 'Notebook Acme 14',
-            'price' => 24_990_00,
+            // The form takes korunas since wave 3.8; make() above goes through
+            // ProductWriter, which is not a form and still takes haléře.
+            'price' => '24990',
             'tax_rate_id' => $this->rateId(),
             'status' => Product::STATUS_DRAFT,
             'stock_policy' => Product::STOCK_POLICY_SOLD_OUT,
@@ -183,7 +185,7 @@ class ProductAdminTest extends TestCase
         $this->actingAs($this->owner)
             ->get($this->url('/'.$product->slug))
             ->assertInertia(fn (AssertableInertia $page) => $page
-                ->where('product.purchase_price', 15_000_00)
+                ->where('product.purchase_price', '15000,00')
                 ->where('can.costs', true)
             );
     }
@@ -201,7 +203,7 @@ class ProductAdminTest extends TestCase
         ]);
 
         $this->actingAs($staff)
-            ->patch($this->url('/'.$product->slug), $this->payload(['purchase_price' => 1]))
+            ->patch($this->url('/'.$product->slug), $this->payload(['purchase_price' => '0,01']))
             ->assertRedirect();
 
         $this->context->runAs($this->tenant, fn () => $this->assertDatabaseHas('products', [

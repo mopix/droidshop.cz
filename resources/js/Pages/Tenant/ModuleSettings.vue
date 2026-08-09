@@ -7,7 +7,7 @@ import SettingsCard from '@/Components/Settings/SettingsCard.vue'
 type Field = {
   key: string
   label: string
-  type: 'boolean' | 'select' | 'textarea' | 'number' | 'text' | 'password'
+  type: 'boolean' | 'select' | 'textarea' | 'number' | 'money' | 'text' | 'password'
   help: string | null
   options: Record<string, string>
   secret: boolean
@@ -55,6 +55,8 @@ function inputTypeFor(field: Field): string {
   if (field.type === 'password') return 'password'
   if (field.type === 'number') return 'number'
 
+  // Money is typed as text: a decimal comma is not valid in a number input,
+  // and a comma is what a person here writes (wave 3.8).
   return 'text'
 }
 
@@ -134,6 +136,7 @@ function submit() {
               :id="field.key"
               v-model="form.values[field.key]"
               :type="inputTypeFor(field)"
+              :inputmode="field.type === 'money' ? 'decimal' : undefined"
               class="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-gray-900 focus:ring-gray-900"
               :aria-invalid="errorFor(field.key) ? 'true' : undefined"
               :aria-describedby="describedBy(field)"

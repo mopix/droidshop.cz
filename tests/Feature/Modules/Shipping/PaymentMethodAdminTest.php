@@ -89,10 +89,13 @@ class PaymentMethodAdminTest extends TestCase
         return $staff;
     }
 
-    public function test_a_method_is_created_with_the_fee_as_submitted_haleire(): void
+    /**
+     * The form takes korunas since wave 3.8; the column stays in haléře.
+     */
+    public function test_a_fee_typed_in_korunas_is_stored_in_haleire(): void
     {
         $this->actingAs($this->owner)
-            ->post($this->url('/zpusoby-platby'), $this->payload(['fee' => 2900]))
+            ->post($this->url('/zpusoby-platby'), $this->payload(['fee' => '29']))
             ->assertRedirect();
 
         $this->context->runAs($this->tenant, fn () => $this->assertDatabaseHas('payment_methods', [

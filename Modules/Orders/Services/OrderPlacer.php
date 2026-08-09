@@ -475,6 +475,9 @@ class OrderPlacer implements OrderPlacement
                 // the later shipment-submission task reads it to hand the
                 // carrier a weight without a second catalogue round trip.
                 'weight_grams' => $product->catalogWeightGrams() * $quantity,
+                // Read from the catalogue like everything else on this line;
+                // used only when the whole order is this one unit (wave 3.8).
+                'dimensions_mm' => $product->catalogDimensionsMm(),
             ];
         }
 
@@ -686,7 +689,28 @@ class OrderPlacer implements OrderPlacement
             // (rozhodnutí wave 2.5, task-8 brief extension).
             'provider' => $carrier->key(),
             'weight_grams' => $weightGrams,
+            // Only when the parcel IS one product (wave 3.8). Summing three
+            // boxes into one set of outer dimensions is arithmetic nobody can
+            // do without knowing how they are packed, and a guess handed to a
+            // carrier is worse than saying nothing: it decides whether the
+            // parcel counts as oversized.
+            'dimensions_mm' => $this->singleItemDimensions($lines),
         ];
+    }
+
+    /**
+     * The dimensions to hand a carrier, or null when they cannot be known.
+     *
+     * @param  list<array<string, mixed>>  $lines
+     * @return array{length: int, width: int, height: int}|null
+     */
+    private function singleItemDimensions(array $lines): ?array
+    {
+        if (count($lines) !== 1 || (int) $lines[0]['quantity'] !== 1) {
+            return null;
+        }
+
+        return $lines[0]['dimensions_mm'] ?? null;
     }
 
     /**
