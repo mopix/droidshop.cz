@@ -68,6 +68,7 @@ class Product extends Model implements CatalogProduct
             'stock_tracked' => 'boolean',
             'stock_qty' => 'integer',
             'weight_g' => 'integer',
+            'sale_percent' => 'integer',
         ];
     }
 
@@ -184,6 +185,19 @@ class Product extends Model implements CatalogProduct
     public function rate(): TaxRate
     {
         return app(TaxRates::class)->findById($this->tax_rate_id);
+    }
+
+    /**
+     * The rate the supplier charges (wave 3.9).
+     *
+     * Falls back to the product's own: most shops buy and sell at the same
+     * rate, and an empty field means "the usual one", not "no VAT".
+     */
+    public function purchaseRate(): TaxRate
+    {
+        return $this->purchase_tax_rate_id === null
+            ? $this->rate()
+            : app(TaxRates::class)->findById($this->purchase_tax_rate_id);
     }
 
     /**
