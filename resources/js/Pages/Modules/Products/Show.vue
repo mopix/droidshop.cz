@@ -24,6 +24,9 @@ type Product = {
   ean: string | null
   manufacturer: string | null
   weight_g: number
+  length_mm: number | null
+  width_mm: number | null
+  height_mm: number | null
   stock_tracked: boolean
   stock_qty: number
   stock_policy: string
@@ -124,6 +127,9 @@ const form = useForm({
   ean: props.product.ean ?? '',
   manufacturer: props.product.manufacturer ?? '',
   weight_g: props.product.weight_g,
+  length_mm: props.product.length_mm,
+  width_mm: props.product.width_mm,
+  height_mm: props.product.height_mm,
   stock_tracked: props.product.stock_tracked,
   stock_qty: props.product.stock_qty,
   stock_policy: props.product.stock_policy,
@@ -903,6 +909,68 @@ const runVariantDelete = () => {
               {{ form.errors.weight_g }}
             </p>
           </div>
+
+          <!--
+            Dimensions (wave 3.8). Millimetres, because that is what a carrier
+            API takes; the product page shows them in centimetres.
+          -->
+          <fieldset>
+            <legend class="block text-sm font-medium text-gray-700">Rozměry (mm)</legend>
+            <p id="p-dimensions-hint" class="mt-1 text-sm text-gray-600">
+              Nepovinné. Vyplňte všechny tři, nebo žádný — zákazník je uvidí v parametrech a
+              dopravce je dostane při podání zásilky.
+            </p>
+
+            <div class="mt-2 grid gap-4 sm:grid-cols-3">
+              <div>
+                <label for="p-length" class="block text-sm text-gray-700">Délka</label>
+                <input
+                  id="p-length"
+                  v-model.number="form.length_mm"
+                  type="number"
+                  min="1"
+                  max="2000"
+                  aria-describedby="p-dimensions-hint"
+                  class="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-gray-900 focus:ring-gray-900"
+                />
+                <p v-if="form.errors.length_mm" class="mt-1 text-sm text-red-700">
+                  {{ form.errors.length_mm }}
+                </p>
+              </div>
+
+              <div>
+                <label for="p-width" class="block text-sm text-gray-700">Šířka</label>
+                <input
+                  id="p-width"
+                  v-model.number="form.width_mm"
+                  type="number"
+                  min="1"
+                  max="2000"
+                  aria-describedby="p-dimensions-hint"
+                  class="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-gray-900 focus:ring-gray-900"
+                />
+                <p v-if="form.errors.width_mm" class="mt-1 text-sm text-red-700">
+                  {{ form.errors.width_mm }}
+                </p>
+              </div>
+
+              <div>
+                <label for="p-height" class="block text-sm text-gray-700">Výška</label>
+                <input
+                  id="p-height"
+                  v-model.number="form.height_mm"
+                  type="number"
+                  min="1"
+                  max="2000"
+                  aria-describedby="p-dimensions-hint"
+                  class="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-gray-900 focus:ring-gray-900"
+                />
+                <p v-if="form.errors.height_mm" class="mt-1 text-sm text-red-700">
+                  {{ form.errors.height_mm }}
+                </p>
+              </div>
+            </div>
+          </fieldset>
         </div>
 
         <div

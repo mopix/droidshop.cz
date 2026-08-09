@@ -156,6 +156,10 @@ final class ShipmentSubmitter
                 $pickupPointCode,
                 $shipment->cod_amount,
                 (int) $shipment->weight_grams,
+                // Snapshotted at placement (wave 3.8), like the weight: a
+                // later edit to the product must not redescribe a parcel
+                // that has already been placed.
+                $this->dimensionsFrom($order),
             );
         } catch (CarrierError $e) {
             // The write is best-effort here: this request's own outcome is
@@ -359,6 +363,18 @@ final class ShipmentSubmitter
      * Connection::prepareBindings()'s special cases (DateTimeInterface,
      * bool), so a Money object would bind as an unusable value.
      */
+    /**
+     * @return array{length: int, width: int, height: int}|null
+     */
+    private function dimensionsFrom(OrderView $order): ?array
+    {
+        $point = $order->orderShippingSnapshot()['pickup_point'] ?? null;
+
+        return is_array($point) && is_array($point['dimensions_mm'] ?? null)
+            ? $point['dimensions_mm']
+            : null;
+    }
+
     private function refreshCodAmount(Shipment $shipment, OrderView $order): Shipment
     {
         $codAmount = $this->codAmount($order);

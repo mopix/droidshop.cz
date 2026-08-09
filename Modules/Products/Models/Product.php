@@ -154,6 +154,33 @@ class Product extends Model implements CatalogProduct
         $query->where('status', self::STATUS_ACTIVE);
     }
 
+    /**
+     * Whether the product carries a full set of dimensions (wave 3.8).
+     *
+     * All three or none: a parcel described by its length alone tells the
+     * carrier nothing, and a half-filled row on the product page reads as a
+     * mistake rather than as missing data.
+     */
+    public function hasDimensions(): bool
+    {
+        return $this->length_mm !== null && $this->width_mm !== null && $this->height_mm !== null;
+    }
+
+    /**
+     * "20 × 15 × 8 cm" — millimetres are how it is stored, centimetres are how
+     * a person reads a parcel.
+     */
+    public function dimensionsLabel(): ?string
+    {
+        if (! $this->hasDimensions()) {
+            return null;
+        }
+
+        $cm = fn (int $mm): string => rtrim(rtrim(number_format($mm / 10, 1, ',', ' '), '0'), ',');
+
+        return $cm($this->length_mm).' × '.$cm($this->width_mm).' × '.$cm($this->height_mm).' cm';
+    }
+
     public function rate(): TaxRate
     {
         return app(TaxRates::class)->findById($this->tax_rate_id);
@@ -296,6 +323,16 @@ class Product extends Model implements CatalogProduct
             : $rates->default();
 
         return $rate->percent();
+    }
+
+    /**
+     * @return array{length: int, width: int, height: int}|null
+     */
+    public function catalogDimensionsMm(): ?array
+    {
+        return $this->hasDimensions()
+            ? ['length' => (int) $this->length_mm, 'width' => (int) $this->width_mm, 'height' => (int) $this->height_mm]
+            : null;
     }
 
     public function catalogWeightGrams(): int

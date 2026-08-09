@@ -48,11 +48,25 @@ final class PacketaCarrier implements Carrier
         return true;
     }
 
-    public function submit(OrderView $order, string $pickupPointCode, Money $codAmount, int $weightGrams): ShipmentResult
-    {
+    public function submit(
+        OrderView $order,
+        string $pickupPointCode,
+        Money $codAmount,
+        int $weightGrams,
+        ?array $dimensionsMm = null,
+    ): ShipmentResult {
         $billing = $order->orderBilling();
 
         [$firstName, $lastName] = $this->splitName((string) ($billing['name'] ?? ''));
+
+        // Packeta takes dimensions in millimetres, and only as a complete
+        // set. Omitted entirely when the shop never filled them in — sending
+        // zeroes would describe a flat parcel (wave 3.8).
+        $dimensions = $dimensionsMm === null ? [] : ['size' => [
+            'length' => $dimensionsMm['length'],
+            'width' => $dimensionsMm['width'],
+            'height' => $dimensionsMm['height'],
+        ]];
 
         return $this->client->createPacket([
             'number' => $order->orderNumber(),
@@ -66,6 +80,7 @@ final class PacketaCarrier implements Carrier
             'currency' => $order->orderCurrency(),
             'weight' => round($weightGrams / 1000, 3),
             'eshop' => $this->eshop,
+            ...$dimensions,
         ]);
     }
 

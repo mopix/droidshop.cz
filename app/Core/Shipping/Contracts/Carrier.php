@@ -35,7 +35,18 @@ interface Carrier
      *
      * @throws CarrierError
      */
-    public function submit(OrderView $order, string $pickupPointCode, Money $codAmount, int $weightGrams): ShipmentResult;
+    /**
+     * @param  array{length: int, width: int, height: int}|null  $dimensionsMm
+     *                                                                          outer size in millimetres, when the shop filled it in and the parcel
+     *                                                                          is a single product (wave 3.8)
+     */
+    public function submit(
+        OrderView $order,
+        string $pickupPointCode,
+        Money $codAmount,
+        int $weightGrams,
+        ?array $dimensionsMm = null,
+    ): ShipmentResult;
 
     /**
      * A print-ready PDF for our own shipment ids (not the carrier's packet

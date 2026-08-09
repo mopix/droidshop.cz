@@ -71,6 +71,12 @@ class StoreProductRequest extends FormRequest
             'manufacturer' => ['nullable', 'string', 'max:191'],
             'weight_g' => ['required', 'integer', 'min:0', 'max:200000'],
 
+            // Millimetres, nullable. The ceiling is two metres: anything
+            // beyond that is a typo, not a parcel any of our carriers takes.
+            'length_mm' => ['nullable', 'integer', 'min:1', 'max:2000'],
+            'width_mm' => ['nullable', 'integer', 'min:1', 'max:2000'],
+            'height_mm' => ['nullable', 'integer', 'min:1', 'max:2000'],
+
             'stock_tracked' => ['boolean'],
             'stock_qty' => ['integer'],
             'stock_policy' => ['required', Rule::in([

@@ -71,17 +71,31 @@ final class PacketaClient
      */
     private function buildPacketXml(array $attributes): string
     {
-        $body = '<packetAttributes>';
+        return '<packetAttributes>'.$this->elements($attributes).'</packetAttributes>';
+    }
+
+    /**
+     * One nesting level is enough: Packeta's `size` is the only grouped
+     * attribute we send (wave 3.8), and a general recursive serialiser would
+     * be machinery for a case that does not exist.
+     *
+     * @param  array<string, scalar|array<string, scalar>|null>  $attributes
+     */
+    private function elements(array $attributes): string
+    {
+        $body = '';
 
         foreach ($attributes as $key => $value) {
-            if ($value === null || $value === '') {
+            if ($value === null || $value === '' || $value === []) {
                 continue;
             }
 
-            $body .= '<'.$key.'>'.htmlspecialchars((string) $value, ENT_XML1).'</'.$key.'>';
+            $body .= is_array($value)
+                ? '<'.$key.'>'.$this->elements($value).'</'.$key.'>'
+                : '<'.$key.'>'.htmlspecialchars((string) $value, ENT_XML1).'</'.$key.'>';
         }
 
-        return $body.'</packetAttributes>';
+        return $body;
     }
 
     private function request(string $method, string $body): SimpleXMLElement

@@ -58,6 +58,17 @@ interface CatalogProduct
 
     public function catalogWeightGrams(): int;
 
+    /**
+     * The parcel's outer size in millimetres, or null when the shop never
+     * filled it in (wave 3.8).
+     *
+     * All three or nothing: a carrier told only the length knows no more than
+     * one told nothing.
+     *
+     * @return array{length: int, width: int, height: int}|null
+     */
+    public function catalogDimensionsMm(): ?array;
+
     public function catalogShortDescription(): ?string;
 
     /**

@@ -166,6 +166,36 @@
         </div>
     </div>
 
+    {{--
+        Parameters (wave 3.8). Until now a customer could only learn a
+        product's size if the merchant happened to write it into the
+        description. Rendered only when there is something to render — a table
+        of dashes says less than no table.
+
+        Per product, not per visitor, so this is safe inside a cached page.
+    --}}
+    @if ($product->hasDimensions() || $product->weight_g > 0)
+        <section class="mt-14 border-t border-slate-100 pt-10" aria-labelledby="nadpis-parametry">
+            <h2 id="nadpis-parametry" class="text-lg font-semibold text-slate-900">Parametry</h2>
+
+            <dl class="mt-4 max-w-md divide-y divide-slate-100 text-sm">
+                @if ($product->hasDimensions())
+                    <div class="flex justify-between gap-4 py-2">
+                        <dt class="text-slate-500">Rozměry (d × š × v)</dt>
+                        <dd class="text-slate-900">{{ $product->dimensionsLabel() }}</dd>
+                    </div>
+                @endif
+
+                @if ($product->weight_g > 0)
+                    <div class="flex justify-between gap-4 py-2">
+                        <dt class="text-slate-500">Hmotnost</dt>
+                        <dd class="text-slate-900">{{ number_format($product->weight_g / 1000, 2, ',', ' ') }} kg</dd>
+                    </div>
+                @endif
+            </dl>
+        </section>
+    @endif
+
     @if ($product->description)
         <section class="prose-shop mt-14 border-t border-slate-100 pt-10" aria-labelledby="nadpis-popis">
             <h2 id="nadpis-popis" class="text-lg font-semibold text-slate-900">Popis</h2>
