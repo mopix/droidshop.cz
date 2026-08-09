@@ -6,6 +6,7 @@ use App\Core\Storage\FileStorage;
 use Modules\Products\Models\Product;
 use Modules\Products\Models\ProductImage;
 use Modules\Products\Models\ProductVariant;
+use Modules\Products\Rules\Ean;
 
 /**
  * The catalogue as feed items.
@@ -19,6 +20,19 @@ use Modules\Products\Models\ProductVariant;
  */
 class FeedItemBuilder
 {
+    /**
+     * A code that is not a real barcode is left out entirely.
+     *
+     * Since wave 3.12 the admin lets a merchant keep an internal code in the
+     * EAN field, which is theirs to do. Sending it to a comparison engine is
+     * not: that is matched on, so a made-up number either fails to pair or —
+     * worse — pairs the product with somebody else's listing.
+     */
+    private function validEan(?string $ean): ?string
+    {
+        return Ean::isValid($ean) ? $ean : null;
+    }
+
     /**
      * Catalogue image URLs are root-relative, because that is what a page
      * needs (wave 3.11). A feed is read by somebody else's server, so it needs
@@ -74,7 +88,7 @@ class FeedItemBuilder
             priceVat: $product->catalogPrice(),
             manufacturer: $product->manufacturer?->name,
             categoryText: $categoryText,
-            ean: $product->ean,
+            ean: $this->validEan($product->ean),
             sku: $product->sku,
             deliveryDays: $product->catalogIsAvailable() ? 0 : $deliveryDays,
             itemGroupId: null,
@@ -107,7 +121,7 @@ class FeedItemBuilder
             priceVat: $variant->catalogVariantPrice(),
             manufacturer: $product->manufacturer?->name,
             categoryText: $categoryText,
-            ean: $variant->ean,
+            ean: $this->validEan($variant->ean),
             sku: $variant->sku,
             deliveryDays: $variant->catalogVariantIsAvailable() ? 0 : $deliveryDays,
             itemGroupId: (string) $product->id,

@@ -70,6 +70,26 @@ class FeedItemBuilderTest extends TestCase
         $this->assertSame('ACME-1', $items[0]->sku);
     }
 
+    /**
+     * Since wave 3.12 a merchant may keep an internal code in the EAN field —
+     * the admin only warns. A comparison engine matches on this, so a made-up
+     * number either fails to pair or pairs the product with somebody else's
+     * listing; the feed leaves it out rather than sending it.
+     */
+    public function test_a_real_barcode_goes_into_the_feed_and_a_made_up_one_does_not(): void
+    {
+        $this->product(['ean' => '8594001234561']);
+
+        $this->assertSame('8594001234561', $this->items()[0]->ean);
+    }
+
+    public function test_an_invalid_code_is_left_out(): void
+    {
+        $this->product(['ean' => '1234567890123']);
+
+        $this->assertNull($this->items()[0]->ean);
+    }
+
     public function test_a_draft_and_a_hidden_product_stay_out(): void
     {
         $this->product(['status' => Product::STATUS_DRAFT, 'sku' => 'D-1', 'slug' => 'draft']);

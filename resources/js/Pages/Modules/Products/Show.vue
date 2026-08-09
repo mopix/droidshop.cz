@@ -256,6 +256,79 @@ const onPurchaseGrossInput = () => {
   syncFromGross(form.purchase_price, purchasePercent.value, 'purchase_net_price')
 }
 
+/**
+ * The check digit that would make what has been typed a real barcode, or null
+ * when the length is not one a barcode has.
+ *
+ * The same arithmetic as Modules\Products\Rules\Ean — GS1's, weights
+ * alternating 3 and 1 from the check digit backwards. Duplicated here on
+ * purpose: this only ever offers a suggestion, and the server is what decides
+ * whether the stored code is a real one.
+ */
+const checkDigitFor = (prefix: string): number | null => {
+  if (!/^\d{7}$|^\d{12}$|^\d{13}$/.test(prefix)) return null
+
+  const sum = prefix
+    .split('')
+    .reverse()
+    .reduce((total, digit, index) => total + Number(digit) * (index % 2 === 0 ? 3 : 1), 0)
+
+  return (10 - (sum % 10)) % 10
+}
+
+const eanIsBarcode = computed(() => {
+  const ean = (form.ean ?? '').trim()
+
+  if (!/^\d{8}$|^\d{13}$|^\d{14}$/.test(ean)) return false
+
+  return checkDigitFor(ean.slice(0, -1)) === Number(ean.slice(-1))
+})
+
+/**
+ * Offered only for 7 or 12 digits — the lengths where a check digit is
+ * genuinely missing.
+ *
+ * NOT for 13: a full EAN-13 with a wrong last digit is also a valid GTIN-14
+ * prefix, so offering to append a digit there would turn a typo into a
+ * different, longer code without saying so.
+ */
+const eanSuggestion = computed(() => {
+  const ean = (form.ean ?? '').trim()
+
+  return /^\d{7}$|^\d{12}$/.test(ean) ? checkDigitFor(ean) : null
+})
+
+/** What the last digit ought to be, for a code that has one and got it wrong. */
+const eanExpectedDigit = computed(() => {
+  const ean = (form.ean ?? '').trim()
+
+  return /^\d{8}$|^\d{13}$|^\d{14}$/.test(ean) ? checkDigitFor(ean.slice(0, -1)) : null
+})
+
+const eanNote = computed(() => {
+  const ean = (form.ean ?? '').trim()
+
+  if (ean === '' || eanIsBarcode.value) return ''
+
+  if (eanSuggestion.value !== null) {
+    return 'Chybí kontrolní číslice.'
+  }
+
+  const note = 'Tohle není platný EAN — uloží se, ale do feedů pro Heureku a Zboží.cz se neodešle.'
+
+  return eanExpectedDigit.value === null
+    ? note
+    : `${note} Poslední číslice by měla být ${eanExpectedDigit.value}.`
+})
+
+const eanDescribedBy = computed(() => {
+  const parts: string[] = []
+  if (eanNote.value) parts.push('p-ean-note')
+  if (form.errors.ean) parts.push('p-ean-error')
+
+  return parts.length ? parts.join(' ') : undefined
+})
+
 const money = (haler: number) =>
   new Intl.NumberFormat('cs-CZ', { style: 'currency', currency: 'CZK' }).format(haler / 100)
 
@@ -687,10 +760,36 @@ const runVariantDelete = () => {
               inputmode="numeric"
               class="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-gray-900 focus:ring-gray-900"
               :aria-invalid="form.errors.ean ? 'true' : undefined"
-              :aria-describedby="form.errors.ean ? 'p-ean-error' : undefined"
+              :aria-describedby="eanDescribedBy"
             />
             <p v-if="form.errors.ean" id="p-ean-error" class="mt-1 text-sm text-red-700">
               {{ form.errors.ean }}
+            </p>
+
+            <!--
+              A warning, not an error: an invalid code saves. The last digit
+              of a barcode is computed from the ones before it, so a made-up
+              number almost never passes — and a merchant may legitimately
+              keep an internal code here.
+
+              role="status", not "alert": it appears as somebody types, and an
+              assertive announcement on every keystroke is unusable.
+            -->
+            <p
+              v-if="eanNote"
+              id="p-ean-note"
+              role="status"
+              class="mt-1 text-sm text-amber-800"
+            >
+              {{ eanNote }}
+              <button
+                v-if="eanSuggestion !== null"
+                type="button"
+                class="font-medium underline hover:no-underline"
+                @click="form.ean = form.ean + String(eanSuggestion)"
+              >
+                Doplnit {{ eanSuggestion }}
+              </button>
             </p>
           </div>
 

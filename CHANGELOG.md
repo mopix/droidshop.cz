@@ -21,6 +21,11 @@ Tři sekce pod sebou — Prodejní cena, Nákupní cena, Akce — a v každé **
 ### Sleva jde zadat procentem
 Procento se **ukládá**: když nájemce zdraží, sleva zůstane dvacetiprocentní místo aby se tiše proměnila na dvanáctiprocentní. Zadaná částka ale vyhrává a procento zahodí — ručně napsaná částka je vlastní pokyn, a přepočítávat z procenta při každém uložení by cenu posouvalo pokaždé, kdy někdo otevře formulář a stiskne Uložit. Rozsah 1–99 %: sto procent je „zdarma", což je jiný nástroj.
 
+### EAN varuje místo blokování (v0.44.9)
+Poslední číslice čárového kódu se dopočítává z těch předchozích, takže vymyšlené číslo skoro nikdy neprojde — a produkt se kvůli tomu nedal uložit. Nově pole odmítne jen to, co čárový kód být nemůže (písmena, víc než čtrnáct číslic); zbytek se uloží a formulář rovnou při psaní řekne, jestli je kód platný: u 7 nebo 12 číslic nabídne chybějící kontrolní číslici, u plné délky pojmenuje tu správnou.
+
+Do feedů pro Heureku a Zboží.cz neplatný kód **neodejde**. Právě tam totiž škodí: porovnávač na něj páruje, takže vymyšlené číslo se buď nespáruje, nebo přilepí produkt k cizí nabídce.
+
 ### Miniatura ve výpisu a oprava URL souborů (v0.44.6)
 Výpis produktů má před názvem miniaturu hlavního obrázku, která se při najetí myší i při zaostření klávesnicí zvětší.
 
