@@ -70,6 +70,9 @@ const props = defineProps<{
   can: { edit: boolean; costs: boolean }
 }>()
 
+/** Tabs whose fields belong to the main product form. */
+const FORM_TABS = ['basic', 'prices', 'stock', 'seo']
+
 const TABS = [
   { key: 'basic', label: 'Základní' },
   { key: 'prices', label: 'Ceny' },
@@ -80,6 +83,8 @@ const TABS = [
 ] as const
 
 const tab = ref<(typeof TABS)[number]['key']>('basic')
+
+const formTab = computed(() => FORM_TABS.includes(tab.value))
 
 /**
  * Arrow keys move between tabs, Home/End jump to the ends (ARIA APG).
@@ -193,6 +198,30 @@ const confirmDelete = () =>
 
 const uploads = ref<File[] | null>(null)
 
+/** Whether a file is currently being dragged over the drop area. */
+const dragging = ref(false)
+
+/**
+ * Files dropped onto the panel (wave 3.8).
+ *
+ * A convenience beside the file input, never instead of it: dropping is not
+ * something a keyboard can do (WCAG 2.1.1), which is the same reason image
+ * and category order is moved with buttons rather than by dragging
+ * (rozhodnutí 2026-07-20).
+ */
+const onDrop = (event: DragEvent) => {
+  dragging.value = false
+
+  const files = Array.from(event.dataTransfer?.files ?? []).filter((file) =>
+    file.type.startsWith('image/'),
+  )
+
+  if (files.length) {
+    uploads.value = files
+    uploadImages()
+  }
+}
+
 const uploadImages = () => {
   if (!uploads.value?.length) return
 
@@ -214,6 +243,27 @@ const removeImage = (image: ProductImage) =>
   router.delete(route('admin.products.images.destroy', [props.product.slug, image.id]), {
     preserveScroll: true,
   })
+
+/**
+ * Moves an image one place in the gallery.
+ *
+ * The endpoint has existed since wave 1.2 and nothing ever called it, so the
+ * order was whatever the upload order happened to be.
+ */
+const moveImage = (index: number, direction: -1 | 1) => {
+  const ids = props.product.images.map((image) => image.id)
+  const target = index + direction
+
+  if (target < 0 || target >= ids.length) return
+
+  ;[ids[index], ids[target]] = [ids[target], ids[index]]
+
+  router.post(
+    route('admin.products.images.reorder', props.product.slug),
+    { ids },
+    { preserveScroll: true },
+  )
+}
 
 // --- Variant matrix (options, values, variants) ---------------------------
 
@@ -1015,7 +1065,16 @@ const runVariantDelete = () => {
           </div>
         </div>
 
-        <div class="mt-6 flex flex-wrap items-center gap-3 border-t border-gray-200 pt-4">
+        <!--
+          Only on the tabs this form actually saves. The images and variants
+          panels are separate forms of their own, and a Save button floating
+          above them looked like it belonged to what was underneath — which is
+          why the "set as main image" control went unnoticed (wave 3.8).
+        -->
+        <div
+          v-show="formTab"
+          class="mt-6 flex flex-wrap items-center gap-3 border-t border-gray-200 pt-4"
+        >
           <button
             v-if="can.edit"
             type="submit"
@@ -1074,13 +1133,31 @@ const runVariantDelete = () => {
           </button>
         </div>
 
+        <!--
+          A place to drop files, beside the button and never instead of it:
+          dropping is not something a keyboard can do (WCAG 2.1.1).
+          aria-hidden because it duplicates the input above — a screen reader
+          gains nothing from being told about a target it cannot use.
+        -->
+        <div
+          v-if="can.edit"
+          aria-hidden="true"
+          class="mb-6 rounded-lg border-2 border-dashed p-6 text-center text-sm transition-colors"
+          :class="dragging ? 'border-gray-900 bg-gray-50 text-gray-900' : 'border-gray-300 text-gray-600'"
+          @dragover.prevent="dragging = true"
+          @dragleave.prevent="dragging = false"
+          @drop.prevent="onDrop"
+        >
+          Přetáhněte sem obrázky, nebo je vyberte tlačítkem výše.
+        </div>
+
         <p v-if="product.images.length === 0" class="py-6 text-gray-600">
           Produkt zatím nemá obrázky.
         </p>
 
         <ul v-else class="grid gap-4 sm:grid-cols-3 lg:grid-cols-4">
           <li
-            v-for="image in product.images"
+            v-for="(image, index) in product.images"
             :key="image.id"
             class="rounded-md border border-gray-200 p-2"
           >
@@ -1098,6 +1175,24 @@ const runVariantDelete = () => {
             </p>
 
             <div v-if="can.edit" class="mt-2 flex flex-wrap gap-2">
+              <!-- Buttons, not dragging: the order has to be changeable from
+                   a keyboard (rozhodnutí 2026-07-20). -->
+              <button
+                type="button"
+                :disabled="index === 0"
+                class="rounded-md border border-gray-300 px-2 py-1 text-xs font-medium text-gray-800 hover:bg-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-900 disabled:cursor-not-allowed disabled:text-gray-400"
+                @click="moveImage(index, -1)"
+              >
+                ←<span class="sr-only"> Posunout obrázek {{ index + 1 }} dopředu</span>
+              </button>
+              <button
+                type="button"
+                :disabled="index === product.images.length - 1"
+                class="rounded-md border border-gray-300 px-2 py-1 text-xs font-medium text-gray-800 hover:bg-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-900 disabled:cursor-not-allowed disabled:text-gray-400"
+                @click="moveImage(index, 1)"
+              >
+                →<span class="sr-only"> Posunout obrázek {{ index + 1 }} dozadu</span>
+              </button>
               <button
                 v-if="!image.is_main"
                 type="button"
