@@ -8,7 +8,10 @@ use App\Models\Domain;
 use App\Models\Tenant;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 use Modules\Products\Models\Product;
+use Modules\Products\Services\ProductImageService;
 use Modules\Products\Services\ProductWriter;
 use Tests\Concerns\ActivatesModules;
 use Tests\TestCase;
@@ -157,6 +160,53 @@ class ProductListingColumnsTest extends TestCase
             ->assertInertia(fn ($page) => $page
                 ->where('canSeeCosts', false)
                 ->where('products.data.0.purchase_price', null));
+    }
+
+    /**
+     * The thumbnail is the image the storefront leads with, not merely the
+     * first one uploaded — the listing is where a merchant checks that the
+     * right photo is the main one.
+     */
+    public function test_the_thumbnail_is_the_main_image(): void
+    {
+        $this->shop(vatPayer: true);
+        Storage::fake('tenant_public');
+
+        $product = $this->product();
+
+        [$first, $second] = app(TenantContext::class)->runAs($this->tenant, function () use ($product) {
+            $service = app(ProductImageService::class);
+
+            return [
+                $service->add($product, UploadedFile::fake()->image('prvni.png', 400, 400)),
+                $service->add($product, UploadedFile::fake()->image('druhy.png', 400, 400)),
+            ];
+        });
+
+        // The first upload takes the main slot; hand it to the second.
+        app(TenantContext::class)->runAs(
+            $this->tenant,
+            fn () => app(ProductImageService::class)->makeMain($second),
+        );
+
+        $this->actingAs($this->owner)
+            ->get($this->url())
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->where('products.data.0.image', fn (?string $url) => $url !== null
+                    && str_contains($url, basename($second->path))
+                    && ! str_contains($url, basename($first->path))));
+    }
+
+    public function test_a_product_without_images_has_no_thumbnail(): void
+    {
+        $this->shop(vatPayer: true);
+        $this->product();
+
+        $this->actingAs($this->owner)
+            ->get($this->url())
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page->where('products.data.0.image', null));
     }
 
     /**

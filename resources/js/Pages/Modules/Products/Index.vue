@@ -53,6 +53,7 @@ const STATUS_LABELS: Record<string, string> = {
  * tax.
  */
 const columns = computed<Column[]>(() => [
+  { key: 'image', label: '' },
   { key: 'name', label: 'Produkt' },
   { key: 'sku', label: 'Kód' },
   { key: 'ean', label: 'EAN' },
@@ -213,6 +214,21 @@ const createForm = useForm({
         <span v-if="(row as ProductRow).categories.length" class="block text-xs text-gray-700">
           {{ (row as ProductRow).categories.join(', ') }}
         </span>
+      </template>
+
+      <!--
+        Decorative: the product's name sits in the very next cell, so a screen
+        reader announcing the photo as well would read every row twice.
+        A product without one gets an empty box rather than a broken image.
+      -->
+      <template #cell-image="{ row }">
+        <img
+          v-if="(row as ProductRow).image"
+          :src="(row as ProductRow).image!"
+          alt=""
+          class="h-10 w-10 rounded border border-gray-200 bg-white object-cover"
+        />
+        <span v-else class="block h-10 w-10 rounded border border-dashed border-gray-200" aria-hidden="true" />
       </template>
 
       <template #cell-ean="{ row }">{{ (row as ProductRow).ean ?? '—' }}</template>
