@@ -36,6 +36,9 @@ class ProductAdminController
             'category' => ['nullable', 'integer'],
         ]);
 
+        $canSeeCosts = $request->user()->can('products.costs');
+        $vatApplies = $this->vat->appliesVat();
+
         $products = Product::query()
             // Eager loaded: the listing shows a thumbnail and a category per
             // row, and lazy loading those is a query per row.
@@ -59,7 +62,22 @@ class ProductAdminController
                 // Haléře here on purpose: the listing only displays the price
                 // and formats it itself. Korunas are for the fields a person
                 // types into, which is the detail form below.
+                //
+                // The shelf price, not the effective one: the sale has a
+                // column of its own, and two columns showing the same figure
+                // would hide what the discount was taken from (wave 3.10).
                 'price' => $product->price->amount,
+                // Never merely hidden in the UI: a value the caller may not
+                // see does not leave the server (same rule as the detail form
+                // and the CSV export).
+                'purchase_price' => $canSeeCosts ? $product->purchase_price?->amount : null,
+                'sale_price' => $product->sale_price?->amount,
+                // Net of the SHELF price, not of Product::netPrice(), which
+                // is net of the effective one (wave 2.7). The gross column
+                // beside it shows the shelf price, and two columns that
+                // disagree about which price they describe are worse than one.
+                'net_price' => $vatApplies ? $product->rate()->net($product->price)->amount : null,
+                'tax_rate' => $vatApplies ? $product->rate()->percent() : null,
                 'status' => $product->status,
                 'stock_tracked' => $product->stock_tracked,
                 'stock_qty' => $product->stock_qty,
@@ -71,6 +89,9 @@ class ProductAdminController
             'products' => $products,
             'filters' => $filters,
             'categories' => $this->categoryOptions(),
+            // Which price columns the listing may draw (wave 3.10).
+            'canSeeCosts' => $canSeeCosts,
+            'vatApplies' => $vatApplies,
         ]);
     }
 

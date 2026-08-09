@@ -11,6 +11,10 @@ type ProductRow = {
   name: string
   sku: string | null
   price: number
+  purchase_price: number | null
+  sale_price: number | null
+  net_price: number | null
+  tax_rate: number | null
   status: string
   stock_tracked: boolean
   stock_qty: number
@@ -22,6 +26,8 @@ const props = defineProps<{
   products: { data: ProductRow[]; links: PaginationLink[]; meta?: PaginationMeta }
   filters: { search?: string; status?: string; category?: number }
   categories: { id: number; name: string; depth: number }[]
+  canSeeCosts: boolean
+  vatApplies: boolean
 }>()
 
 const search = ref(props.filters.search ?? '')
@@ -33,16 +39,41 @@ const STATUS_LABELS: Record<string, string> = {
   hidden: 'Skrytý',
 }
 
-const columns: Column[] = [
+/**
+ * The price columns, in the order the figures are read (wave 3.10).
+ *
+ * The purchase price is a permission, not a preference: the server does not
+ * send it to somebody without `products.costs`, and the column is dropped so
+ * the listing does not become a back door to the margin.
+ *
+ * The VAT columns follow the same rule as everywhere else since wave 3.7 — a
+ * shop that is not registered is shown a single final price and nothing about
+ * tax.
+ */
+const columns = computed<Column[]>(() => [
   { key: 'name', label: 'Produkt' },
   { key: 'sku', label: 'Kód' },
-  { key: 'price', label: 'Cena s DPH', align: 'right' },
+  ...(props.canSeeCosts ? [{ key: 'purchase_price', label: 'Nákupní cena', align: 'right' } as Column] : []),
+  { key: 'sale_price', label: 'Akční cena', align: 'right' },
+  ...(props.vatApplies
+    ? ([
+        { key: 'net_price', label: 'Koncová cena bez DPH', align: 'right' },
+        { key: 'tax_rate', label: 'Daň (sazba)', align: 'right' },
+      ] as Column[])
+    : []),
+  { key: 'price', label: props.vatApplies ? 'Koncová cena (s DPH)' : 'Koncová cena', align: 'right' },
   { key: 'stock', label: 'Sklad', align: 'right' },
   { key: 'status', label: 'Stav' },
-]
+])
 
 const price = (haler: number) =>
   new Intl.NumberFormat('cs-CZ', { style: 'currency', currency: 'CZK' }).format(haler / 100)
+
+/** An amount that was never filled in reads as a dash, not as 0 Kč. */
+const optionalPrice = (haler: number | null): string => (haler === null ? '—' : price(haler))
+
+const percent = (value: number | null): string =>
+  value === null ? '—' : `${value.toLocaleString('cs-CZ', { maximumFractionDigits: 2 })} %`
 
 let timer: ReturnType<typeof setTimeout> | undefined
 
@@ -179,6 +210,20 @@ const createForm = useForm({
           {{ (row as ProductRow).categories.join(', ') }}
         </span>
       </template>
+
+      <template #cell-purchase_price="{ row }">
+        {{ optionalPrice((row as ProductRow).purchase_price) }}
+      </template>
+
+      <template #cell-sale_price="{ row }">
+        {{ optionalPrice((row as ProductRow).sale_price) }}
+      </template>
+
+      <template #cell-net_price="{ row }">
+        {{ optionalPrice((row as ProductRow).net_price) }}
+      </template>
+
+      <template #cell-tax_rate="{ row }">{{ percent((row as ProductRow).tax_rate) }}</template>
 
       <template #cell-price="{ row }">{{ price((row as ProductRow).price) }}</template>
 
