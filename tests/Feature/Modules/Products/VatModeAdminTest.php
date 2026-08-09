@@ -152,6 +152,7 @@ class VatModeAdminTest extends TestCase
             ->assertInertia(fn ($page) => $page
                 ->where('vatApplies', true)
                 ->where('product.net_price', '1000,00')
+                ->where('product.sale_percent', null)
                 ->has('taxRates', 3));
     }
 

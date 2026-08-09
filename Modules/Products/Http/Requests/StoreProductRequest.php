@@ -7,6 +7,7 @@ use App\Core\Money\ConvertsMoneyInput;
 use App\Core\Money\Money;
 use App\Core\Tax\TaxRates;
 use App\Core\Tax\VatMode;
+use App\Models\TaxRate;
 use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -50,6 +51,13 @@ class StoreProductRequest extends FormRequest
             'sale_ends_at' => ['nullable', 'date', 'after:sale_starts_at'],
 
             'purchase_price' => ['nullable', 'integer', 'min:0'],
+            'purchase_net_price' => ['nullable', 'integer', 'min:0'],
+            'purchase_tax_rate_id' => ['nullable', 'integer', Rule::exists('tax_rates', 'id')],
+
+            // 1–99. A hundred per cent is "free", which is a different tool
+            // (the discount engine settles a zero-koruna order without a
+            // gateway), and zero is not a discount at all.
+            'sale_percent' => ['nullable', 'integer', 'min:1', 'max:99'],
 
             // A shop that is not registered for VAT has no rate to charge, so
             // it is not asked for one (same rule shipping and payment fees
@@ -144,7 +152,7 @@ class StoreProductRequest extends FormRequest
         // A helper for filling the form in, never a column. The gross price is
         // the only figure stored (rozhodnutí 2026-07-21: the catalogue price
         // is the authority), and prepareForValidation() has already used this.
-        unset($data['net_price']);
+        unset($data['net_price'], $data['purchase_net_price']);
 
         return $key === null ? $data : data_get($data, $key, $default);
     }
@@ -166,7 +174,9 @@ class StoreProductRequest extends FormRequest
     {
         // Korunas in, haléře out — before any rule runs, so `lt:price` and the
         // VAT conversion below both compare like with like (wave 3.8).
-        $this->convertMoneyFields(['price', 'net_price', 'sale_price', 'purchase_price']);
+        $this->convertMoneyFields([
+            'price', 'net_price', 'sale_price', 'purchase_price', 'purchase_net_price',
+        ]);
 
         $vat = app(VatMode::class);
 
@@ -184,18 +194,73 @@ class StoreProductRequest extends FormRequest
             return;
         }
 
-        if (! $this->filled('net_price') || $this->filled('price') || ! $this->filled('tax_rate_id')) {
-            return;
-        }
-
         $rate = app(TaxRates::class)->all()->firstWhere('id', (int) $this->input('tax_rate_id'));
 
         if ($rate === null) {
             return; // The rule below will refuse it; guessing a rate here would not help.
         }
 
+        if ($this->filled('net_price') && ! $this->filled('price')) {
+            $this->merge(['price' => $rate->gross($this->money($this->input('net_price')))->amount]);
+        }
+
+        // The purchase price gets the same treatment with the supplier's own
+        // rate (wave 3.9) — using the selling rate here would report a margin
+        // that is quietly wrong.
+        $purchaseRate = app(TaxRates::class)->all()
+            ->firstWhere('id', (int) ($this->input('purchase_tax_rate_id') ?: $this->input('tax_rate_id')));
+
+        if ($purchaseRate !== null && $this->filled('purchase_net_price') && ! $this->filled('purchase_price')) {
+            $this->merge([
+                'purchase_price' => $purchaseRate->gross($this->money($this->input('purchase_net_price')))->amount,
+            ]);
+        }
+
+        $this->applySalePercent($rate);
+    }
+
+    /**
+     * Turns a discount typed as a percentage into the amount that gets stored
+     * (wave 3.9).
+     *
+     * The amount wins when both arrive: recomputing from the percentage on
+     * every save would walk the sale price each time somebody opened the form
+     * and pressed Save without touching anything — the same rule the net
+     * price already follows.
+     *
+     * When only the percentage arrives, it is applied to the price this very
+     * request is setting, not to the one already stored: raising the shelf
+     * price and keeping "20 % off" has to mean twenty per cent off the NEW
+     * price, which is the whole reason the percentage is stored at all.
+     */
+    private function applySalePercent(TaxRate $rate): void
+    {
+        $percent = $this->input('sale_percent');
+
+        if ($percent === null || $percent === '' || $this->filled('sale_price')) {
+            // An amount typed by hand is its own instruction, so the
+            // percentage that produced some earlier amount is no longer true.
+            if ($this->filled('sale_price')) {
+                $this->merge(['sale_percent' => null]);
+            }
+
+            return;
+        }
+
+        $price = (int) $this->input('price');
+        $percent = (int) $percent;
+
+        if ($price <= 0 || $percent < 1 || $percent > 99) {
+            return; // The rules refuse it; computing from a bad input would hide that.
+        }
+
         $this->merge([
-            'price' => $rate->gross(new Money((int) $this->input('net_price'), config('app.currency', 'CZK')))->amount,
+            'sale_price' => (int) round($price * (100 - $percent) / 100),
         ]);
+    }
+
+    private function money(mixed $value): Money
+    {
+        return new Money((int) $value, config('app.currency', 'CZK'));
     }
 }

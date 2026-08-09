@@ -11,6 +11,19 @@ Pravidla: [`.claude/skills/versioning/SKILL.md`](.claude/skills/versioning/SKILL
 
 > CHANGELOG vede milníky (minor/major). Detail patchů je v `git log`.
 
+## [0.44.0] – 2026-08-09
+
+**Fáze 2 / vlna 3.9 — záložka Ceny na kartě produktu.** Uzavření vlny (`docs/as-is/2026-08-09-zalozka-ceny.md`). 3 nové E2E scénáře (celkem 46), 7 nových PHPUnit testů.
+
+### Ceny v pořadí, v jakém se o nich přemýšlí
+Tři sekce pod sebou — Prodejní cena, Nákupní cena, Akce — a v každé **bez DPH → daň (sazba) → s DPH**. Neplátce DPH vidí v každé sekci jediné pole s částkou.
+
+### Sleva jde zadat procentem
+Procento se **ukládá**: když nájemce zdraží, sleva zůstane dvacetiprocentní místo aby se tiše proměnila na dvanáctiprocentní. Zadaná částka ale vyhrává a procento zahodí — ručně napsaná částka je vlastní pokyn, a přepočítávat z procenta při každém uložení by cenu posouvalo pokaždé, kdy někdo otevře formulář a stiskne Uložit. Rozsah 1–99 %: sto procent je „zdarma", což je jiný nástroj.
+
+### Nákupní cena má vlastní sazbu
+S volbou „Stejná jako u prodeje". Dodavatel může účtovat jinou sazbu, než nájemce prodává, a přepočet prodejní sazbou hlásí marži, která je tiše špatně.
+
 ## [0.43.0] – 2026-08-09
 
 **Fáze 2 / vlna 3.8 — koruny v administraci, rozměry produktu, obrázky.** Uzavření vlny (`docs/as-is/2026-08-09-produkt-a-ceny.md`). 2 nové E2E scénáře (celkem 43), 37 nových PHPUnit testů.
