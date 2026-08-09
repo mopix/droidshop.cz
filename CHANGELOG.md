@@ -21,6 +21,9 @@ Tři sekce pod sebou — Prodejní cena, Nákupní cena, Akce — a v každé **
 ### Sleva jde zadat procentem
 Procento se **ukládá**: když nájemce zdraží, sleva zůstane dvacetiprocentní místo aby se tiše proměnila na dvanáctiprocentní. Zadaná částka ale vyhrává a procento zahodí — ručně napsaná částka je vlastní pokyn, a přepočítávat z procenta při každém uložení by cenu posouvalo pokaždé, kdy někdo otevře formulář a stiskne Uložit. Rozsah 1–99 %: sto procent je „zdarma", což je jiný nástroj.
 
+### Výpis produktů má cenové sloupce
+`/admin/m/products` nesl jediný údaj „Cena s DPH", který neplátci tvrdil něco nepravdivého a nikomu neřekl, za kolik se produkt nakupuje ani za kolik se právě prodává v akci. Plátce teď čte Nákupní cena · Akční cena · Koncová cena bez DPH · Daň (sazba) · Koncová cena (s DPH), neplátce tytéž sloupce bez daňových. Nevyplněná částka je pomlčka, ne 0 Kč. Nákupní cena bez práva `products.costs` vůbec neopustí server.
+
 ### Nákupní cena má vlastní sazbu
 S volbou „Stejná jako u prodeje". Dodavatel může účtovat jinou sazbu, než nájemce prodává, a přepočet prodejní sazbou hlásí marži, která je tiše špatně.
 

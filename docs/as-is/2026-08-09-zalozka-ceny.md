@@ -52,6 +52,23 @@ Celá sada: 2164 PHPUnit, 46 Playwright.
 
 **Co našel prohlížeč a co ne.** Při odstraňování mrtvého náhledu ceny bez DPH jsem smazal i dvě funkce, které šablona pořád používá. Stránka se rozpadla na `korunas is not a function` a pak tiskla `NaN Kč` — obojí odhalila až prohlížečová sada, ne čtení diffu ani PHPUnit. Kdyby tahle vlna neměla e2e, šlo by to na produkci.
 
+## Dodatek 2026-08-09 (v0.44.1) — výpis produktů
+
+Stejná logika dotažená do výpisu `/admin/m/products`, který dosud nesl jediný sloupec „Cena s DPH":
+
+| Nájemce | Sloupce |
+|---|---|
+| Plátce | Nákupní cena · Akční cena · Koncová cena bez DPH · Daň (sazba) · Koncová cena (s DPH) |
+| Neplátce | Nákupní cena · Akční cena · Koncová cena |
+
+**Koncová cena je pultová, ne efektivní** (rozhodnutí vlastníka). Akce má vlastní sloupec, takže dva sloupce s týmž číslem by zakryly, z čeho se sleva počítá.
+
+**Sloupec bez DPH počítá z pultové ceny, ne přes `Product::netPrice()`** — ta vrací čistou cenu z *efektivní* částky (vlna 2.7), takže by si sousední sloupce odporovaly v tom, kterou cenu vlastně popisují.
+
+**Nákupní cena je oprávnění, ne skrytý sloupec.** Bez `products.costs` hodnota vůbec neopustí server, takže se z výpisu nedá udělat zadní vrátka k marži. Nevyplněná částka se zobrazuje jako pomlčka, ne jako 0 Kč.
+
+Testy: `tests/Feature/Modules/Products/ProductListingColumnsTest.php` (6 testů včetně regrese na N+1 a na neplátce).
+
 ## Technický dluh
 
 1. **Procento se přepočte jen při uložení formuláře.** Změna ceny přes CSV import nebo přes variantu akční cenu nepřepočítá — import procento neposílá, takže zůstane u částky, která z něj kdysi vyšla.
