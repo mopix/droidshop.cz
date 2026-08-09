@@ -1,5 +1,7 @@
 # Vlna 3.8 — koruny v administraci, rozměry produktu, obrázky — implementační plán
 
+> **Stav: hotovo (2026-08-09, v0.43.0).** As-is: [`docs/as-is/2026-08-09-produkt-a-ceny.md`](../../as-is/2026-08-09-produkt-a-ceny.md).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Nájemce zadává ceny v korunách jako všude jinde, produkt má rozměry, které něco dělají, a obrázky jde seřadit.
@@ -26,7 +28,7 @@
 - Create: `app/Core/Money/MoneyInput.php`
 - Test: `tests/Unit/MoneyInputTest.php`
 
-- [ ] **Step 1: Napiš padající testy**
+- [x] **Step 1: Napiš padající testy**
 
 1. `1790` → 179000, `1790,50` → 179050, `1790.50` → 179050.
 2. Mezery a nedělitelné mezery uvnitř čísla se ignorují (`1 790,50` — přesně to, co vrátí kopírování z tabulky).
@@ -35,9 +37,9 @@
 5. Nečíselný vstup → chyba.
 6. **Žádný float se nedostane do výsledku** — `0,07` je přesně 7, ne 6 (klasická past `(int)(0.07*100)`).
 
-- [ ] **Step 2: Implementuj.** Statická třída vedle `Money`, protože je to vstupní parsování, ne aritmetika hodnoty.
-- [ ] **Step 3: Ověř** — `php artisan test tests/Unit --compact`
-- [ ] **Step 4: Commit** — `feat(money): parse a price typed in korunas`
+- [x] **Step 2: Implementuj.** Statická třída vedle `Money`, protože je to vstupní parsování, ne aritmetika hodnoty.
+- [x] **Step 3: Ověř** — `php artisan test tests/Unit --compact`
+- [x] **Step 4: Commit** — `feat(money): parse a price typed in korunas`
 
 ---
 
@@ -47,7 +49,7 @@
 - Modify: `Modules/Products/Http/Requests/{StoreProductRequest,UpdateProductVariantRequest}.php`, `Modules/Shipping/Http/Requests/{StoreShippingMethodRequest,StorePaymentMethodRequest}.php`, `Modules/Discounts/Http/Requests/*.php`, odpovídající Vue obrazovky
 - Test: `tests/Feature/Modules/Products/PriceInKorunasTest.php`
 
-- [ ] **Step 1: Napiš padající testy**
+- [x] **Step 1: Napiš padající testy**
 
 1. Produkt uložený s `1790,50` má v databázi 179050.
 2. Totéž pro akční cenu, nákupní cenu, cenu varianty.
@@ -56,9 +58,9 @@
 5. Prázdná nákupní cena zůstane prázdná, ne 0 Kč.
 6. **Cena bez DPH z vlny 3.7 přijímá koruny taky** a stále platí, že při obojím rozhoduje cena s DPH.
 
-- [ ] **Step 2: Implementuj.** Převod v `prepareForValidation()`; validační pravidla se mění z `integer` na `MoneyInput`-ověřený vstup.
-- [ ] **Step 3: Ověř + `npm run build`**
-- [ ] **Step 4: Commit** — `feat(admin): let prices be typed in korunas, not haléře`
+- [x] **Step 2: Implementuj.** Převod v `prepareForValidation()`; validační pravidla se mění z `integer` na `MoneyInput`-ověřený vstup.
+- [x] **Step 3: Ověř + `npm run build`**
+- [x] **Step 4: Commit** — `feat(admin): let prices be typed in korunas, not haléře`
 
 ---
 
@@ -69,7 +71,7 @@
 - Modify: `Modules/Products/Models/Product.php`, `StoreProductRequest`, `ProductAdminController`, `Show.vue`, `storefront/show.blade.php`, `Modules/Packeta/Services/ShipmentSubmitter.php`
 - Test: `tests/Feature/Modules/Products/ProductDimensionsTest.php`
 
-- [ ] **Step 1: Napiš padající testy**
+- [x] **Step 1: Napiš padající testy**
 
 1. Rozměry jde uložit a nechat prázdné.
 2. Záporný nebo nesmyslně velký rozměr se odmítne.
@@ -78,8 +80,8 @@
 5. Zásilkovna dostane rozměry, když jsou vyplněné.
 6. **Podání funguje beze změny, když vyplněné nejsou** — regresní test, aby volitelné pole nerozbilo existující cestu.
 
-- [ ] **Step 2: Implementuj.**
-- [ ] **Step 3: Ověř + commit** — `feat(products): give a product dimensions that reach the customer and the carrier`
+- [x] **Step 2: Implementuj.**
+- [x] **Step 3: Ověř + commit** — `feat(products): give a product dimensions that reach the customer and the carrier`
 
 ---
 
@@ -89,7 +91,7 @@
 - Modify: `resources/js/Pages/Modules/Products/Show.vue`
 - Test: `tests/Feature/Modules/Products/ProductImageOrderTest.php`, `e2e/tests/product-images.spec.ts`
 
-- [ ] **Step 1: Napiš padající testy**
+- [x] **Step 1: Napiš padající testy**
 
 1. Přesun obrázku tlačítkem změní pořadí a **projeví se na storefrontu** (galerie i hlavní obrázek v katalogu).
 2. Krajní obrázek nejde posunout za hranici.
@@ -97,16 +99,16 @@
 4. E2E: přetažení souboru na plochu ho nahraje.
 5. E2E: Uložit/Smazat se **nekreslí** na záložce Obrázky.
 
-- [ ] **Step 2: Implementuj.** Tlačítka nahoru/dolů (vzor kategorie), plocha na přetažení jako doplněk, přesun tlačítek Uložit/Smazat do panelů, kde formulář ukládá.
-- [ ] **Step 3: Ověř + `npm run build` + commit** — `feat(products): let images be reordered and dropped in`
+- [x] **Step 2: Implementuj.** Tlačítka nahoru/dolů (vzor kategorie), plocha na přetažení jako doplněk, přesun tlačítek Uložit/Smazat do panelů, kde formulář ukládá.
+- [x] **Step 3: Ověř + `npm run build` + commit** — `feat(products): let images be reordered and dropped in`
 
 ---
 
 ### Task 5: Uzavření
 
-- [ ] **Step 1:** PHPUnit po adresářích, `npm run e2e`.
-- [ ] **Step 2: Ruční průchod na demu** — zadat cenu v korunách, nahrát dva obrázky přetažením, přeskládat je, zkontrolovat storefront.
-- [ ] **Step 3:** as-is, STATUS, CLAUDE.md, `VERSION` → `0.43.0`, CHANGELOG, merge.
+- [x] **Step 1:** PHPUnit po adresářích, `npm run e2e`.
+- [x] **Step 2: Ruční průchod na demu** — zadat cenu v korunách, nahrát dva obrázky přetažením, přeskládat je, zkontrolovat storefront.
+- [x] **Step 3:** as-is, STATUS, CLAUDE.md, `VERSION` → `0.43.0`, CHANGELOG, merge.
 
 ---
 
