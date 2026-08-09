@@ -72,6 +72,23 @@ test.describe('product prices tab', () => {
     await expect(page.locator('#p-sale-percent')).toBeVisible()
   })
 
+  /**
+   * The pair moves together as it is typed. The browser only previews — the
+   * field that was typed into is what the server converts from — but a pair
+   * that does not move is the thing a merchant notices.
+   */
+  test('the two halves of a price stay in step while typing', async ({ page }) => {
+    await signInAsOwner(page)
+    await page.goto(shopUrl(`/admin/m/products/${slug}`))
+    await page.getByRole('tab', { name: 'Ceny' }).click()
+
+    await page.locator('#p-net-price').fill('1000')
+    await expect(page.locator('#p-price')).toHaveValue('1210,00')
+
+    await page.locator('#p-price').fill('2420')
+    await expect(page.locator('#p-net-price')).toHaveValue('2000,00')
+  })
+
   test('typing a percentage previews the amount it works out to', async ({ page }) => {
     await signInAsOwner(page)
     await page.goto(shopUrl(`/admin/m/products/${slug}`))

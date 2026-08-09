@@ -69,6 +69,16 @@ Stejná logika dotažená do výpisu `/admin/m/products`, který dosud nesl jedi
 
 Testy: `tests/Feature/Modules/Products/ProductListingColumnsTest.php` (6 testů včetně regrese na N+1 a na neplátce).
 
+## Dodatek 2026-08-09 (v0.44.3) — sloučené sloupce a živý přepočet
+
+**Výpis** dostal EAN a každá cenová dvojice se složila do jednoho sloupce: čistá cena nahoře šedě, hrubá pod ní. Dva samostatné sloupce dělaly z tabulky něco, co se muselo rolovat, kvůli údaji, který nájemce čte jako jeden fakt. Neplátce vidí u každé ceny jedinou částku.
+
+**Na detailu se obě poloviny páru hýbou spolu**, jak se do nich píše, a přepnutí sazby přepočítá hrubou cenu z čisté vedle ní.
+
+**Prohlížeč ale jen ukazuje.** Která polovina se editovala, jde na server jako `price_source` / `purchase_price_source` a převod se dělá **z ní**. Do téhle vlny stačilo, že druhé pole zůstalo prázdné — jenže teď jsou vyplněná obě, takže „to druhé je prázdné" už neříká, co bylo myšleno, a nechat rozhodnout prohlížeč by znamenalo, že se ukládá jeho zaokrouhlení. Chybějící značka dál znamená „hrubá cena", což je to, co posílá CSV import i každý starší volající.
+
+Testy: 4 nové v `PriceTabTest` (editovaná polovina rozhoduje, chybějící značka, nákupní pár) a e2e scénář, že se dvojice hýbe.
+
 ## Technický dluh
 
 1. **Procento se přepočte jen při uložení formuláře.** Změna ceny přes CSV import nebo přes variantu akční cenu nepřepočítá — import procento neposílá, takže zůstane u částky, která z něj kdysi vyšla.

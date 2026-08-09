@@ -73,6 +73,58 @@ class PriceTabTest extends TestCase
         return $this->product();
     }
 
+    /**
+     * The form now keeps both halves of a pair filled so it can show them
+     * side by side, so "the other one is empty" no longer says which was
+     * meant. The marker does (wave 3.11).
+     */
+    public function test_the_edited_half_of_the_pair_decides(): void
+    {
+        // Both filled, and the browser's gross is deliberately wrong: the
+        // server must recompute from the net, because that is what was typed.
+        $product = $this->create([
+            'net_price' => '1000',
+            'price' => '999',
+            'price_source' => 'net',
+        ]);
+
+        $this->assertSame(121000, $product->price->amount);
+    }
+
+    public function test_the_gross_half_decides_when_it_was_the_one_typed(): void
+    {
+        $product = $this->create([
+            'net_price' => '1000',
+            'price' => '999',
+            'price_source' => 'gross',
+        ]);
+
+        $this->assertSame(99900, $product->price->amount);
+    }
+
+    /**
+     * Nothing that predates the paired fields sends a marker — the CSV
+     * importer, an integration, an older test — and all of them send a gross
+     * price. Absent must keep meaning what it meant.
+     */
+    public function test_without_a_marker_the_gross_price_still_wins(): void
+    {
+        $product = $this->create(['net_price' => '1000', 'price' => '999']);
+
+        $this->assertSame(99900, $product->price->amount);
+    }
+
+    public function test_the_purchase_pair_follows_the_same_rule(): void
+    {
+        $product = $this->create([
+            'purchase_net_price' => '500',
+            'purchase_price' => '499',
+            'purchase_price_source' => 'net',
+        ]);
+
+        $this->assertSame(60500, $product->purchase_price->amount);
+    }
+
     public function test_a_percentage_becomes_a_sale_price(): void
     {
         $product = $this->create(['sale_percent' => 20]);

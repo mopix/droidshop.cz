@@ -77,7 +77,11 @@ class ProductListingColumnsTest extends TestCase
                 // JSON turns 21.0 into 21; the assertion follows the wire, not PHP.
                 ->where('products.data.0.tax_rate', 21)
                 ->where('products.data.0.sale_price', 99000)
-                ->where('products.data.0.purchase_price', 60000));
+                ->where('products.data.0.purchase_price', 60000)
+                // Both halves of the purchase pair, so the cell can show them
+                // stacked (wave 3.11).
+                ->where('products.data.0.purchase_net_price', 49587)
+                ->where('products.data.0.ean', null));
     }
 
     /**
