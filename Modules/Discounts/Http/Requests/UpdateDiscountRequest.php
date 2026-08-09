@@ -2,6 +2,7 @@
 
 namespace Modules\Discounts\Http\Requests;
 
+use App\Core\Money\ConvertsMoneyInput;
 use App\Core\Tenancy\TenantContext;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -14,6 +15,8 @@ use Modules\Discounts\Models\Discount;
  */
 class UpdateDiscountRequest extends FormRequest
 {
+    use ConvertsMoneyInput;
+
     public function authorize(): bool
     {
         return (bool) $this->user('web')?->can('discounts.manage');
@@ -78,6 +81,18 @@ class UpdateDiscountRequest extends FormRequest
 
     protected function prepareForValidation(): void
     {
+        // Korunas in, haléře out (wave 3.8) — but only for the fields that
+        // ARE money. `value` is money only for a fixed-amount discount; for a
+        // percentage it is per mille (10 % is 100), and running that through a
+        // koruna parser would turn a tenth off into ten times the basket.
+        $moneyFields = ['min_cart_total'];
+
+        if ($this->input('type') === Discount::TYPE_FIXED) {
+            $moneyFields[] = 'value';
+        }
+
+        $this->convertMoneyFields($moneyFields);
+
         $code = $this->input('code');
 
         if ($code !== null) {

@@ -386,14 +386,13 @@ const submit = () => {
 
         <div v-else-if="isFixed">
           <label for="d-value-fixed" class="block text-sm font-medium text-gray-700">
-            Částka slevy s DPH (v haléřích)
+            Částka slevy s DPH (Kč)
           </label>
           <input
             id="d-value-fixed"
-            v-model.number="form.value"
-            type="number"
-            min="0"
-            step="1"
+            v-model="form.value"
+            type="text"
+            inputmode="decimal"
             required
             class="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-gray-900 focus:ring-gray-900"
             :aria-describedby="describedBy('d-value-fixed-hint', form.errors.value && 'd-value-error')"
@@ -542,14 +541,13 @@ const submit = () => {
 
         <div>
           <label for="d-min-cart" class="block text-sm font-medium text-gray-700">
-            Minimální hodnota košíku (v haléřích)
+            Minimální hodnota košíku (Kč)
           </label>
           <input
             id="d-min-cart"
-            v-model.number="form.min_cart_total"
-            type="number"
-            min="0"
-            step="1"
+            v-model="form.min_cart_total"
+            type="text"
+            inputmode="decimal"
             class="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-gray-900 focus:ring-gray-900"
             :aria-describedby="describedBy('d-min-cart-hint', form.errors.min_cart_total && 'd-min-cart-error')"
             :aria-invalid="form.errors.min_cart_total ? 'true' : undefined"

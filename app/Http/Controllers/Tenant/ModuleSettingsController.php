@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Tenant;
 
 use App\Core\Modules\Manifest;
 use App\Core\Modules\ModuleRegistry;
+use App\Core\Money\MoneyInput;
 use App\Core\Services\AuditLog;
 use App\Core\Settings\SettingsField;
 use App\Core\Settings\SettingsSchema;
@@ -70,7 +71,7 @@ class ModuleSettingsController extends Controller
                 'options' => $field->options,
                 'secret' => $field->secret,
             ], $schema->fields()),
-            'values' => $this->maskSecrets($schema, $this->settings->all($model->key)),
+            'values' => $this->asInput($schema, $this->maskSecrets($schema, $this->settings->all($model->key))),
         ]);
     }
 
@@ -101,6 +102,8 @@ class ModuleSettingsController extends Controller
     {
         [$model] = $this->authorizeModule($module);
 
+        // Already in haléře: UpdateModuleSettingsRequest converts before the
+        // schema's own integer rule runs.
         $values = $request->validated('values');
 
         $this->settings->setMany($model->key, $values);
@@ -120,6 +123,27 @@ class ModuleSettingsController extends Controller
      *
      * @return array{0: Module, 1: SettingsSchema}
      */
+    /**
+     * Money fields go out as korunas and come back as haléře (wave 3.8).
+     *
+     * The stored value stays in minor units — a setting like the minimum
+     * order total is compared against a cart total, which is haléře. Only
+     * what the merchant types changes.
+     *
+     * @param  array<string, mixed>  $values
+     * @return array<string, mixed>
+     */
+    private function asInput(SettingsSchema $schema, array $values): array
+    {
+        foreach ($schema->fields() as $field) {
+            if ($field->type === 'money' && array_key_exists($field->key, $values)) {
+                $values[$field->key] = MoneyInput::toInput((int) $values[$field->key]);
+            }
+        }
+
+        return $values;
+    }
+
     private function authorizeModule(string $module): array
     {
         $tenant = $this->context->current();

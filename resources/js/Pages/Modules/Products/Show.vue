@@ -13,12 +13,12 @@ type Product = {
   status: string
   short_description: string | null
   description: string | null
-  price: number
-  net_price: number | null
-  sale_price: number | null
+  price: string
+  net_price: string | null
+  sale_price: string | null
   sale_starts_at: string | null
   sale_ends_at: string | null
-  purchase_price: number | null
+  purchase_price: string | null
   tax_rate_id: number
   sku: string | null
   ean: string | null
@@ -42,15 +42,15 @@ type Product = {
 type ProductOptionValue = { id: number; value: string; position: number }
 type ProductOption = { id: number; name: string; position: number; values: ProductOptionValue[] }
 
-// Raw haléře-or-null, not a Money instance: same convention as the product's
+// Korunas-or-null as a string, same convention as the product's
 // own 'price' prop, which the matrix's price column sits right next to.
 type ProductVariant = {
   id: number
   label: string
   sku: string | null
   ean: string | null
-  price: number | null
-  sale_price: number | null
+  price: string | null
+  sale_price: string | null
   stock_tracked: boolean
   stock_qty: number
   stock_policy: string
@@ -144,10 +144,26 @@ const rate = computed(
  * convenience. The binding figure is always the server's — this is display
  * arithmetic, never the price anyone is charged.
  */
+/**
+ * Reads a price the way the merchant typed it, for preview arithmetic only.
+ *
+ * The server has its own parser (App\Core\Money\MoneyInput) and it is the
+ * one that decides what gets stored — this is display, and a disagreement
+ * between the two shows up as a preview that is a haléř out, never as a wrong
+ * price.
+ */
+const korunas = (value: string | number | null): number => {
+  if (value === null || value === '') return 0
+
+  const parsed = Number(String(value).replace(/[\s\u00A0\u202F]/g, '').replace(',', '.'))
+
+  return Number.isFinite(parsed) ? Math.round(parsed * 100) : 0
+}
+
 const netPreview = computed(() => {
   const percent = rate.value?.percent ?? 0
 
-  return Math.round(form.price / (1 + percent / 100))
+  return Math.round(korunas(form.price) / (1 + percent / 100))
 })
 
 /**
@@ -664,14 +680,13 @@ const runVariantDelete = () => {
 
           <div>
             <label for="p-price" class="block text-sm font-medium text-gray-700">
-              {{ vatApplies ? 'Cena s DPH (v haléřích)' : 'Cena (v haléřích)' }}
+              {{ vatApplies ? 'Cena s DPH (Kč)' : 'Cena (Kč)' }}
             </label>
             <input
               id="p-price"
-              v-model.number="form.price"
-              type="number"
-              min="0"
-              step="1"
+              v-model="form.price"
+              type="text"
+              inputmode="decimal"
               class="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-gray-900 focus:ring-gray-900"
               aria-describedby="p-price-hint"
               :aria-invalid="form.errors.price ? 'true' : undefined"
@@ -679,9 +694,9 @@ const runVariantDelete = () => {
             />
             <p id="p-price-hint" class="mt-1 text-sm text-gray-600">
               <template v-if="vatApplies">
-                {{ money(form.price) }} · bez DPH přibližně {{ money(netPreview) }}
+                {{ money(korunas(form.price)) }} · bez DPH přibližně {{ money(netPreview) }}
               </template>
-              <template v-else>{{ money(form.price) }}</template>
+              <template v-else>{{ money(korunas(form.price)) }}</template>
             </p>
             <p v-if="form.errors.price" class="mt-1 text-sm text-red-700">{{ form.errors.price }}</p>
           </div>
@@ -698,14 +713,13 @@ const runVariantDelete = () => {
           -->
           <div v-if="vatApplies">
             <label for="p-net-price" class="block text-sm font-medium text-gray-700">
-              Cena bez DPH (v haléřích)
+              Cena bez DPH (Kč)
             </label>
             <input
               id="p-net-price"
-              v-model.number="form.net_price"
-              type="number"
-              min="0"
-              step="1"
+              v-model="form.net_price"
+              type="text"
+              inputmode="decimal"
               class="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-gray-900 focus:ring-gray-900"
               aria-describedby="p-net-price-hint"
               @input="form.price = null"
@@ -733,11 +747,11 @@ const runVariantDelete = () => {
 
           <div>
             <label for="p-sale" class="block text-sm font-medium text-gray-700">
-              Akční cena (haléře)
+              Akční cena (Kč)
             </label>
             <input
               id="p-sale"
-              v-model.number="form.sale_price"
+              v-model="form.sale_price"
               type="number"
               min="0"
               class="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-gray-900 focus:ring-gray-900"
@@ -792,13 +806,13 @@ const runVariantDelete = () => {
 
           <div v-if="can.costs">
             <label for="p-purchase" class="block text-sm font-medium text-gray-700">
-              Nákupní cena
+              Nákupní cena (Kč)
             </label>
             <input
               id="p-purchase"
-              v-model.number="form.purchase_price"
-              type="number"
-              min="0"
+              v-model="form.purchase_price"
+              type="text"
+              inputmode="decimal"
               class="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-gray-900 focus:ring-gray-900"
               aria-describedby="p-purchase-hint"
             />
@@ -1182,7 +1196,7 @@ const runVariantDelete = () => {
             <thead>
               <tr class="text-gray-500">
                 <th scope="col" class="py-2 pr-2 font-medium">Kombinace</th>
-                <th scope="col" class="px-2 py-2 font-medium">Cena (haléře)</th>
+                <th scope="col" class="px-2 py-2 font-medium">Cena (Kč)</th>
                 <th v-if="vatApplies" scope="col" class="px-2 py-2 font-medium">Bez DPH</th>
                 <th scope="col" class="px-2 py-2 font-medium">Akční cena</th>
                 <th scope="col" class="px-2 py-2 font-medium">SKU</th>
@@ -1198,14 +1212,13 @@ const runVariantDelete = () => {
 
                 <td class="px-2 py-2">
                   <label :for="`variant-price-${variant.id}`" class="sr-only">
-                    Cena varianty {{ variant.label }} v haléřích
+                    Cena varianty {{ variant.label }} v korunách
                   </label>
                   <input
                     :id="`variant-price-${variant.id}`"
-                    v-model.number="variant.price"
-                    type="number"
-                    min="0"
-                    step="1"
+                    v-model="variant.price"
+                    type="text"
+                    inputmode="decimal"
                     placeholder="dědí"
                     :disabled="!can.edit"
                     class="w-28 rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-900 focus:ring-gray-900 disabled:bg-gray-100"
@@ -1215,14 +1228,13 @@ const runVariantDelete = () => {
 
                 <td v-if="vatApplies" class="px-2 py-2">
                   <label :for="`variant-net-price-${variant.id}`" class="sr-only">
-                    Cena varianty {{ variant.label }} bez DPH v haléřích
+                    Cena varianty {{ variant.label }} bez DPH v korunách
                   </label>
                   <input
                     :id="`variant-net-price-${variant.id}`"
-                    v-model.number="variant.net_price"
-                    type="number"
-                    min="0"
-                    step="1"
+                    v-model="variant.net_price"
+                    type="text"
+                    inputmode="decimal"
                     :placeholder="variant.price === null ? 'dědí' : String(netOf(variant.price))"
                     :disabled="!can.edit"
                     class="w-28 rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-900 focus:ring-gray-900 disabled:bg-gray-100"
@@ -1232,13 +1244,13 @@ const runVariantDelete = () => {
 
                 <td class="px-2 py-2">
                   <label :for="`variant-sale-${variant.id}`" class="sr-only">
-                    Akční cena varianty {{ variant.label }} v haléřích
+                    Akční cena varianty {{ variant.label }} v korunách
                   </label>
                   <input
                     :id="`variant-sale-${variant.id}`"
-                    v-model.number="variant.sale_price"
-                    type="number"
-                    min="0"
+                    v-model="variant.sale_price"
+                    type="text"
+                    inputmode="decimal"
                     step="1"
                     placeholder="bez akce"
                     :disabled="!can.edit"

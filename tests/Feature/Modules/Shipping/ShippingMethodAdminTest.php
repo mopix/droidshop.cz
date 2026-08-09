@@ -108,10 +108,13 @@ class ShippingMethodAdminTest extends TestCase
             );
     }
 
-    public function test_a_method_is_created_with_the_price_as_submitted_haleire(): void
+    /**
+     * The form takes korunas since wave 3.8; the column stays in haléře.
+     */
+    public function test_a_price_typed_in_korunas_is_stored_in_haleire(): void
     {
         $this->actingAs($this->owner)
-            ->post($this->url('/zpusoby-dopravy'), $this->payload(['price' => 12345]))
+            ->post($this->url('/zpusoby-dopravy'), $this->payload(['price' => '123,45']))
             ->assertRedirect();
 
         $this->context->runAs($this->tenant, fn () => $this->assertDatabaseHas('shipping_methods', [
@@ -125,7 +128,7 @@ class ShippingMethodAdminTest extends TestCase
         $method = $this->make($this->tenant);
 
         $this->actingAs($this->owner)
-            ->put($this->url('/zpusoby-dopravy/'.$method->id), $this->payload(['name' => 'Nový název', 'price' => 8000]))
+            ->put($this->url('/zpusoby-dopravy/'.$method->id), $this->payload(['name' => 'Nový název', 'price' => '80']))
             ->assertRedirect();
 
         $this->context->runAs($this->tenant, fn () => $this->assertDatabaseHas('shipping_methods', [

@@ -56,7 +56,8 @@ class VatModeAdminTest extends TestCase
         return array_merge([
             'name' => 'Kladivo',
             'status' => Product::STATUS_ACTIVE,
-            'price' => 121000,
+            // Korunas since wave 3.8; 1 210 Kč is 121 000 haléřů.
+            'price' => '1210',
             'weight_g' => 500,
             'stock_policy' => Product::STOCK_POLICY_SOLD_OUT,
         ], $overrides);
@@ -86,7 +87,7 @@ class VatModeAdminTest extends TestCase
 
         $this->actingAs($owner)->post($this->url(), $this->payload([
             'price' => null,
-            'net_price' => 100000,
+            'net_price' => '1000',
             'tax_rate_id' => $standard->id,
         ]))->assertRedirect();
 
@@ -118,8 +119,8 @@ class VatModeAdminTest extends TestCase
         [$tenant, $owner] = $this->shop(vatPayer: true);
 
         $this->actingAs($owner)->post($this->url(), $this->payload([
-            'price' => 99900,
-            'net_price' => 100000,
+            'price' => '999',
+            'net_price' => '1000',
             'tax_rate_id' => app(TaxRates::class)->find('standard')->id,
         ]))->assertRedirect();
 
@@ -150,7 +151,7 @@ class VatModeAdminTest extends TestCase
             ->assertOk()
             ->assertInertia(fn ($page) => $page
                 ->where('vatApplies', true)
-                ->where('product.net_price', 100000)
+                ->where('product.net_price', '1000,00')
                 ->has('taxRates', 3));
     }
 
@@ -208,7 +209,7 @@ class VatModeAdminTest extends TestCase
 
         $this->actingAs($owner)->patch(
             $this->url('/'.$product->slug.'/varianty/'.$variantId),
-            ['net_price' => 200000, 'stock_qty' => 0],
+            ['net_price' => '2000', 'stock_qty' => 0],
         )->assertRedirect();
 
         // 2 000 Kč net at 21 % is 2 420 Kč gross.
@@ -230,7 +231,7 @@ class VatModeAdminTest extends TestCase
 
         $this->actingAs($owner)->patch($this->url('/'.$product->slug), $this->payload([
             'name' => 'Kladivo velké',
-            'price' => 150000,
+            'price' => '1500',
         ]))->assertRedirect();
 
         $this->assertSame($reduced->id, $product->fresh()->tax_rate_id);

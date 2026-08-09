@@ -73,7 +73,9 @@ class SaleAdminTest extends TestCase
     {
         return [
             'name' => 'Notebook Acme 14',
-            'price' => 100_000,
+            // The form takes korunas since wave 3.8; ProductWriter (used by
+            // make() above) still takes haléře, because it is not a form.
+            'price' => '1000',
             'tax_rate_id' => $this->rateId(),
             'status' => Product::STATUS_DRAFT,
             'stock_policy' => Product::STOCK_POLICY_SOLD_OUT,
@@ -88,7 +90,7 @@ class SaleAdminTest extends TestCase
 
         $this->actingAs($this->owner)
             ->patch($this->url('/'.$product->slug), $this->payload([
-                'sale_price' => 79_900,
+                'sale_price' => '799',
                 'sale_starts_at' => '2026-08-01 00:00:00',
                 'sale_ends_at' => '2026-08-08 00:00:00',
             ]))
@@ -106,7 +108,7 @@ class SaleAdminTest extends TestCase
         $product = $this->make();
 
         $this->actingAs($this->owner)
-            ->patch($this->url('/'.$product->slug), $this->payload(['sale_price' => 150_000]))
+            ->patch($this->url('/'.$product->slug), $this->payload(['sale_price' => '1500']))
             ->assertSessionHasErrors('sale_price');
     }
 
@@ -116,7 +118,7 @@ class SaleAdminTest extends TestCase
 
         $this->actingAs($this->owner)
             ->patch($this->url('/'.$product->slug), $this->payload([
-                'sale_price' => 79_900,
+                'sale_price' => '799',
                 'sale_starts_at' => '2026-08-08 00:00:00',
                 'sale_ends_at' => '2026-08-01 00:00:00',
             ]))

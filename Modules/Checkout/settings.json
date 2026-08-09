@@ -1,10 +1,10 @@
 {
     "min_order_total": {
         "rules": "integer|min:0|max:100000000",
-        "label": "Minimální hodnota objednávky (v haléřích)",
-        "type": "number",
+        "label": "Minimální hodnota objednávky (Kč)",
+        "type": "money",
         "default": 0,
-        "help": "Počítá se ze zboží po slevě, bez dopravy a platby. 0 = bez omezení. 100000 = 1 000 Kč."
+        "help": "Počítá se ze zboží po slevě, bez dopravy a platby. 0 = bez omezení."
     },
     "guest_checkout": {
         "rules": "boolean",

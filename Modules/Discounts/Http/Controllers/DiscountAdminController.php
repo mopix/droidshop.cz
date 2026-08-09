@@ -3,6 +3,7 @@
 namespace Modules\Discounts\Http\Controllers;
 
 use App\Core\Modules\ModuleRegistry;
+use App\Core\Money\MoneyInput;
 use App\Core\Tenancy\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -81,6 +82,15 @@ class DiscountAdminController
         $discount->load('targets');
 
         $presented = $this->present($discount, withTargets: true);
+
+        // Korunas for the two fields a person types money into (wave 3.8).
+        // Only here, not in present(): the listing formats these itself and
+        // reads `value` as per mille for a percentage discount.
+        $presented['min_cart_total'] = MoneyInput::toInput($discount->min_cart_total);
+
+        if ($discount->type === Discount::TYPE_FIXED) {
+            $presented['value'] = MoneyInput::toInput($discount->value);
+        }
 
         return inertia('Modules/Discounts/Form', [
             'discount' => $presented,

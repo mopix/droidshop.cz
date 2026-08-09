@@ -2,6 +2,7 @@
 
 namespace Modules\Products\Http\Requests;
 
+use App\Core\Money\ConvertsMoneyInput;
 use App\Core\Money\Money;
 use App\Core\Tax\VatMode;
 use Illuminate\Foundation\Http\FormRequest;
@@ -9,6 +10,8 @@ use Modules\Products\Models\Product;
 
 class UpdateProductVariantRequest extends FormRequest
 {
+    use ConvertsMoneyInput;
+
     public function authorize(): bool
     {
         return $this->user()?->can('products.edit') ?? false;
@@ -67,6 +70,8 @@ class UpdateProductVariantRequest extends FormRequest
      */
     protected function prepareForValidation(): void
     {
+        $this->convertMoneyFields(['price', 'net_price', 'sale_price']);
+
         if (! app(VatMode::class)->appliesVat()) {
             return;
         }

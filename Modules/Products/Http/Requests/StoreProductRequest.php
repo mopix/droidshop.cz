@@ -3,6 +3,7 @@
 namespace Modules\Products\Http\Requests;
 
 use App\Core\Limits\LimitsService;
+use App\Core\Money\ConvertsMoneyInput;
 use App\Core\Money\Money;
 use App\Core\Tax\TaxRates;
 use App\Core\Tax\VatMode;
@@ -15,6 +16,8 @@ use Modules\Products\Rules\Ean;
 
 class StoreProductRequest extends FormRequest
 {
+    use ConvertsMoneyInput;
+
     public function authorize(): bool
     {
         return $this->user()->can('products.edit');
@@ -155,6 +158,10 @@ class StoreProductRequest extends FormRequest
      */
     protected function prepareForValidation(): void
     {
+        // Korunas in, haléře out — before any rule runs, so `lt:price` and the
+        // VAT conversion below both compare like with like (wave 3.8).
+        $this->convertMoneyFields(['price', 'net_price', 'sale_price', 'purchase_price']);
+
         $vat = app(VatMode::class);
 
         if (! $vat->appliesVat()) {

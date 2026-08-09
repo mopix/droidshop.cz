@@ -2,6 +2,7 @@
 
 namespace Modules\Shipping\Http\Controllers;
 
+use App\Core\Money\MoneyInput;
 use App\Core\Tax\TaxRates;
 use App\Models\TaxRate;
 use Illuminate\Http\RedirectResponse;
@@ -97,8 +98,10 @@ class ShippingMethodAdminController
             'provider' => $method->provider,
             'name' => $method->name,
             'description' => $method->description,
-            'price' => $method->price->amount,
-            'free_from' => $method->free_from?->amount,
+            // Korunas: these feed the edit form, which a person types into
+            // (wave 3.8). The columns stay in haléře.
+            'price' => MoneyInput::toInput($method->price->amount),
+            'free_from' => MoneyInput::toInput($method->free_from?->amount),
             'max_weight_g' => $method->max_weight_g,
             'tax_rate_id' => $method->tax_rate_id,
             'is_active' => $method->is_active,
@@ -133,7 +136,7 @@ class ShippingMethodAdminController
             'provider' => $method->provider,
             'name' => $method->name,
             'description' => $method->description,
-            'fee' => $method->fee->amount,
+            'fee' => MoneyInput::toInput($method->fee->amount),
             'tax_rate_id' => $method->tax_rate_id,
             'is_active' => $method->is_active,
             'position' => $method->position,

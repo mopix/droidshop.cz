@@ -43,7 +43,7 @@ const PROVIDER_PICKUP = 'pickup'
 const PROVIDER_FLAT = 'flat'
 const PROVIDER_PACKETA = 'packeta'
 
-// The shop enters money in haléře, exactly as the product card does; the
+// The shop enters money in korunas, exactly as the product card does (wave 3.8); the
 // integer travels to the server untouched and never becomes a float.
 const build = () => ({
   provider: props.method?.provider ?? PROVIDER_FLAT,
@@ -210,14 +210,13 @@ const submit = () => {
 
         <div>
           <label for="s-price" class="block text-sm font-medium text-gray-700">
-            Cena s DPH (v haléřích)
+            Cena s DPH (Kč)
           </label>
           <input
             id="s-price"
-            v-model.number="form.price"
-            type="number"
-            min="0"
-            step="1"
+            v-model="form.price"
+            type="text"
+            inputmode="decimal"
             required
             class="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-gray-900 focus:ring-gray-900"
             aria-describedby="s-price-hint"
@@ -246,14 +245,13 @@ const submit = () => {
 
         <div>
           <label for="s-free-from" class="block text-sm font-medium text-gray-700">
-            Doprava zdarma od (v haléřích)
+            Doprava zdarma od (Kč)
           </label>
           <input
             id="s-free-from"
-            v-model.number="form.free_from"
-            type="number"
-            min="0"
-            step="1"
+            v-model="form.free_from"
+            type="text"
+            inputmode="decimal"
             class="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-gray-900 focus:ring-gray-900"
             aria-describedby="s-free-from-hint"
           />
