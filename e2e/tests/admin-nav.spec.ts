@@ -40,6 +40,19 @@ test.describe('admin navigation', () => {
    * Arriving on a page whose own menu entry is hidden is disorienting, and it
    * is the one section the visitor demonstrably wants open.
    */
+  /**
+   * Discounts moved from MODULY to PRODUKTY (owner's decision, 2026-08-10):
+   * it is a thing done to the catalogue, not a module setting.
+   */
+  test('discounts sit under Produkty', async ({ page }) => {
+    enableModule('discounts')
+
+    await page.goto(shopUrl('/dashboard'))
+    await page.getByRole('button', { name: 'Produkty', exact: true }).click()
+
+    await expect(page.getByRole('link', { name: 'Slevy' })).toBeVisible()
+  })
+
   test('the section holding the current page opens by itself', async ({ page }) => {
     await page.goto(shopUrl('/admin/m/products'))
 

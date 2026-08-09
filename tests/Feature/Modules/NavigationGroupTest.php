@@ -83,7 +83,10 @@ class NavigationGroupTest extends TestCase
      */
     public function test_sections_come_back_in_the_kernels_order(): void
     {
-        foreach (['products', 'orders', 'discounts', 'pages'] as $module) {
+        // `feeds` fills MODULY, not `discounts`: discounts moved to PRODUKTY
+        // in wave 3.12 (owner's decision — it is something done to the
+        // catalogue, not a module setting).
+        foreach (['products', 'orders', 'feeds', 'pages'] as $module) {
             $this->activateModule($this->tenant, $module);
         }
 

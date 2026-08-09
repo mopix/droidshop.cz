@@ -26,7 +26,7 @@
             "route": "admin.discounts.index",
             "icon": "tag",
             "order": 10,
-            "group": "modules"
+            "group": "products"
         }
     ]
 }

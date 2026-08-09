@@ -21,6 +21,7 @@ Route::get('/import/{import}/protokol', [ProductImportController::class, 'report
 
 Route::get('/{product}', [ProductAdminController::class, 'show'])->name('show');
 Route::patch('/{product}', [ProductAdminController::class, 'update'])->name('update');
+Route::patch('/{product}/stav', [ProductAdminController::class, 'updateStatus'])->name('status.update');
 Route::delete('/{product}', [ProductAdminController::class, 'destroy'])->name('destroy');
 
 Route::post('/{product}/obrazky', [ProductImageAdminController::class, 'store'])->name('images.store');
