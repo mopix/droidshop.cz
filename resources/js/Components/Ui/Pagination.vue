@@ -59,10 +59,15 @@ const hasNavigation = computed(() => props.links.filter((link) => link.url !== n
     <nav v-if="hasNavigation" aria-label="Stránkování">
       <ul class="flex flex-wrap items-center gap-1">
         <li v-for="(link, index) in links" :key="index">
-          <!-- Disabled links (no url) must not be focusable or clickable. -->
+          <!-- Disabled links (no url) must not be focusable or clickable.
+               gray-600, not gray-400: this is a <span>, so it is plain text
+               rather than an inactive control, and the contrast exemption for
+               disabled components does not apply to it. gray-400 on the
+               admin's gray-100 background is 2.8:1 and gray-500 is 4.4:1 — both
+               short of 4.5:1 (found by axe, wave 3.11). -->
           <span
             v-if="link.url === null"
-            class="inline-block rounded-md px-3 py-2 text-sm text-gray-400"
+            class="inline-block rounded-md px-3 py-2 text-sm text-gray-600"
             :aria-hidden="isEllipsis(link.label) ? 'true' : undefined"
           >
             {{ labelFor(link.label) }}

@@ -50,17 +50,6 @@ test.describe('product images', () => {
     await expect(page.getByRole('button', { name: 'Uložit', exact: true })).toBeVisible()
   })
 
-  /**
-   * The drop area reacts to a file being dragged over it.
-   *
-   * Deliberately NOT a real upload: a successful image upload kills
-   * `php artisan serve` outright, and every spec that ran afterwards got
-   * ERR_CONNECTION_CLOSED. That is a real bug in the dev server rather than
-   * in this feature — the upload path itself is covered by
-   * ProductImageOrderTest, which exercises it over HTTP without a browser —
-   * but a suite that takes the server down with it hides every other failure,
-   * so the browser stops at the edge of the upload.
-   */
   test('the drop area reacts to a dragged file', async ({ page }) => {
     const zone = page.locator('#panel-images [class*="border-dashed"]')
 
@@ -75,6 +64,57 @@ test.describe('product images', () => {
     })
 
     await expect(zone).toHaveClass(/border-gray-900/)
+  })
+
+  /**
+   * The whole point of the drop area: a file let go over it uploads. Possible
+   * again since wave 3.11 — see the note above.
+   */
+  test('a dropped file is uploaded', async ({ page }) => {
+    const before = await page.locator('#panel-images li').count()
+
+    await page.evaluate(() => {
+      const png = Uint8Array.from(
+        atob(
+          'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+        ),
+        (c) => c.charCodeAt(0),
+      )
+      const transfer = new DataTransfer()
+      transfer.items.add(new File([png], 'pretazeny.png', { type: 'image/png' }))
+
+      document
+        .querySelector('#panel-images [class*="border-dashed"]')!
+        .dispatchEvent(new DragEvent('drop', { dataTransfer: transfer, bubbles: true }))
+    })
+
+    await expect(page.locator('#panel-images li')).toHaveCount(before + 1)
+  })
+
+  /**
+   * Buttons, not dragging: the order has to be changeable from a keyboard.
+   */
+  test('images can be reordered with the buttons', async ({ page }) => {
+    const items = page.locator('#panel-images li')
+
+    while ((await items.count()) < 2) {
+      const before = await items.count()
+
+      await page.setInputFiles('#p-images', {
+        name: `poradi-${before}.png`,
+        mimeType: 'image/png',
+        buffer: Buffer.from(
+          'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+          'base64',
+        ),
+      })
+      await page.getByRole('button', { name: 'Nahrát' }).click()
+      await expect(items).toHaveCount(before + 1)
+    }
+
+    await items.nth(1).getByRole('button', { name: /Posunout obrázek 2 dopředu/ }).click()
+
+    await expect(page.getByText('Pořadí obrázků bylo uloženo.')).toBeVisible()
   })
 
 })

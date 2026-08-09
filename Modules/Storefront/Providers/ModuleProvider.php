@@ -71,7 +71,7 @@ class ModuleProvider extends ServiceProvider
                 'shopSettings' => $shopSettings,
                 'shopOgImage' => $shopSettings->og_image_path === null
                     ? null
-                    : app(FileStorage::class)->publicUrl($shopSettings->og_image_path),
+                    : app(FileStorage::class)->publicUrlAbsolute($shopSettings->og_image_path),
                 // "Hide empty categories" (wave 3.6) only means anything with
                 // a catalogue to be empty of; a shop with the products module
                 // off keeps its whole menu.

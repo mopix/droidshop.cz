@@ -220,14 +220,34 @@ const createForm = useForm({
         Decorative: the product's name sits in the very next cell, so a screen
         reader announcing the photo as well would read every row twice.
         A product without one gets an empty box rather than a broken image.
+
+        It grows in place on hover, and on keyboard focus too — which is why
+        it is a link rather than a bare image: hovering is not something a
+        keyboard does, and an enlargement only a mouse can reach is an
+        enlargement half the users never get (WCAG 2.1.1). The link goes where
+        the row's own link goes.
+
+        Grown in flow rather than floated over the table: the listing sits in
+        an `overflow-x-auto` wrapper, which clips vertically as well, so an
+        overlay would be cut off on the first and last rows.
       -->
       <template #cell-image="{ row }">
-        <img
+        <Link
           v-if="(row as ProductRow).image"
-          :src="(row as ProductRow).image!"
-          alt=""
-          class="h-10 w-10 rounded border border-gray-200 bg-white object-cover"
-        />
+          :href="route('admin.products.show', (row as ProductRow).slug)"
+          class="group inline-block rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-900"
+        >
+          <img
+            :src="(row as ProductRow).image!"
+            alt=""
+            class="h-10 w-10 rounded border border-gray-200 bg-white object-cover transition-all duration-150 group-hover:h-24 group-hover:w-24 group-focus-visible:h-24 group-focus-visible:w-24"
+          />
+          <!-- A link with no text has no name at all; the image is
+               deliberately decorative, so the name goes here. It repeats the
+               next cell's link, which is what an image-plus-title pair does
+               everywhere. -->
+          <span class="sr-only">{{ (row as ProductRow).name }}</span>
+        </Link>
         <span v-else class="block h-10 w-10 rounded border border-dashed border-gray-200" aria-hidden="true" />
       </template>
 

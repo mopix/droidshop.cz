@@ -19,6 +19,16 @@ use Modules\Products\Models\ProductVariant;
  */
 class FeedItemBuilder
 {
+    /**
+     * Catalogue image URLs are root-relative, because that is what a page
+     * needs (wave 3.11). A feed is read by somebody else's server, so it needs
+     * the whole address.
+     */
+    private function absolute(?string $url): ?string
+    {
+        return $url === null || str_starts_with($url, 'http') ? $url : url($url);
+    }
+
     private const DESCRIPTION_LIMIT = 2000;
 
     public function __construct(
@@ -59,7 +69,7 @@ class FeedItemBuilder
             name: $product->name,
             description: $this->description($product),
             url: url($product->url()),
-            imageUrl: $product->catalogImageUrl(),
+            imageUrl: $this->absolute($product->catalogImageUrl()),
             alternativeImageUrls: $this->alternativeImages($product),
             priceVat: $product->catalogPrice(),
             manufacturer: $product->manufacturer?->name,
@@ -92,7 +102,7 @@ class FeedItemBuilder
             name: trim($product->name.' '.$variant->catalogVariantLabel()),
             description: $this->description($product),
             url: url($product->url()),
-            imageUrl: $product->catalogImageUrl(),
+            imageUrl: $this->absolute($product->catalogImageUrl()),
             alternativeImageUrls: $this->alternativeImages($product),
             priceVat: $variant->catalogVariantPrice(),
             manufacturer: $product->manufacturer?->name,
@@ -135,7 +145,9 @@ class FeedItemBuilder
 
         return $product->images
             ->reject(fn (ProductImage $image) => $main !== null && $image->id === $main->id)
-            ->map(fn (ProductImage $image) => $this->storage->publicUrl($image->path))
+            // Absolute: a comparison-shopping engine fetches these from its
+            // own servers, where a root-relative URL means nothing.
+            ->map(fn (ProductImage $image) => $this->storage->publicUrlAbsolute($image->path))
             ->values()
             ->all();
     }

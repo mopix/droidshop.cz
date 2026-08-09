@@ -57,7 +57,15 @@ return [
         'tenant_public' => [
             'driver' => 'local',
             'root' => storage_path('app/tenant-public'),
-            'url' => env('APP_URL').'/media',
+            // Root-relative on purpose (wave 3.11): the file is served from
+            // public/media on whatever host the request came in on, and a
+            // tenant's own domain is not APP_URL. Built from APP_URL, every
+            // image on a custom domain pointed at the platform host — and in
+            // the test suite at an https:// URL that the plain HTTP dev server
+            // answered by closing the connection, which is what made five
+            // unrelated specs fail. Absolute URLs (feeds, og:image) go through
+            // FileStorage::publicUrlAbsolute().
+            'url' => '/media',
             'visibility' => 'public',
             'throw' => true,
         ],
