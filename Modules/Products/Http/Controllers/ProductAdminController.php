@@ -87,7 +87,13 @@ class ProductAdminController
                 'status' => $product->status,
                 'stock_tracked' => $product->stock_tracked,
                 'stock_qty' => $product->stock_qty,
-                'image' => $product->images->first()?->path,
+                // The image the storefront leads with, not merely the first
+                // one uploaded: the listing is where a merchant checks that
+                // the right photo is the main one. Sent as a URL, because a
+                // raw storage path is not something the browser can render.
+                'image' => $product->mainImage() === null
+                    ? null
+                    : $this->images->url($product->mainImage()),
                 'categories' => $product->categories->pluck('name')->all(),
             ]);
 
