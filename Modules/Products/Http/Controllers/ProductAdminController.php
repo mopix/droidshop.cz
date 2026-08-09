@@ -7,6 +7,7 @@ use App\Core\Tax\TaxRates;
 use App\Core\Tax\VatMode;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Inertia\Response;
 use Modules\Categories\Models\Category;
 use Modules\Products\Http\Requests\StoreProductRequest;
@@ -99,7 +100,11 @@ class ProductAdminController
                 'image' => $product->mainImage() === null
                     ? null
                     : $this->images->url($product->mainImage()),
-                'categories' => $product->categories->pluck('name')->all(),
+                'short_description' => $product->short_description,
+                'categories' => $product->categories->map(fn ($category) => [
+                    'id' => $category->id,
+                    'name' => $category->name,
+                ])->values()->all(),
             ]);
 
         return inertia('Modules/Products/Index', [
@@ -232,6 +237,32 @@ class ProductAdminController
         );
 
         return back()->with('success', 'Produkt byl uložen.');
+    }
+
+    /**
+     * Changing a product's status straight from the listing (wave 3.12).
+     *
+     * Its own endpoint rather than the full update: the listing has none of
+     * the other fields, and sending a half-filled product through
+     * StoreProductRequest would blank whatever it did not carry.
+     */
+    public function updateStatus(Request $request, Product $product): RedirectResponse
+    {
+        abort_unless($request->user()->can('products.edit'), 403);
+
+        $data = $request->validate([
+            'status' => ['required', Rule::in([
+                Product::STATUS_DRAFT,
+                Product::STATUS_ACTIVE,
+                Product::STATUS_HIDDEN,
+            ])],
+        ]);
+
+        // Through the writer, like every other write: it is what keeps the
+        // search column and the price history in step.
+        $this->writer->update($product, ['status' => $data['status']]);
+
+        return back()->with('success', 'Stav produktu byl změněn.');
     }
 
     public function destroy(Request $request, Product $product): RedirectResponse

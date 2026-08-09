@@ -15,6 +15,15 @@ const props = withDefaults(
     caption: string
     /** Row property used as :key; falls back to the array index. */
     rowKey?: string
+    /**
+     * Extra classes for a row, decided by the caller.
+     *
+     * Tinting a row by its state is the caller's business, not the table's —
+     * and it has to be tinting only: colour on its own carries no meaning to
+     * somebody who cannot see it (WCAG 1.4.1), so whatever a tint says must
+     * also be readable in a cell.
+     */
+    rowClass?: (row: Row, index: number) => string
   }>(),
   { rowKey: 'id' },
 )
@@ -56,7 +65,12 @@ const keyFor = (row: Row, index: number) => row[props.rowKey] ?? index
         </tr>
 
         <template v-else>
-          <tr v-for="(row, index) in rows" :key="keyFor(row, index)" class="hover:bg-gray-50">
+          <tr
+            v-for="(row, index) in rows"
+            :key="keyFor(row, index)"
+            class="hover:bg-gray-50"
+            :class="rowClass?.(row, index)"
+          >
             <td
               v-for="column in columns"
               :key="column.key"

@@ -3,6 +3,8 @@ import { computed, ref, watch } from 'vue'
 import { Link, router, useForm } from '@inertiajs/vue3'
 import AdminLayout from '@/Layouts/AdminLayout.vue'
 import DataTable, { type Column } from '@/Components/Ui/DataTable.vue'
+import ConfirmDialog from '@/Components/Ui/ConfirmDialog.vue'
+import { Pencil, Trash2 } from 'lucide-vue-next'
 import Pagination, { type PaginationLink, type PaginationMeta } from '@/Components/Ui/Pagination.vue'
 
 type ProductRow = {
@@ -21,7 +23,8 @@ type ProductRow = {
   stock_tracked: boolean
   stock_qty: number
   image: string | null
-  categories: string[]
+  short_description: string | null
+  categories: { id: number; name: string }[]
 }
 
 const props = defineProps<{
@@ -71,8 +74,47 @@ const columns = computed<Column[]>(() => [
     align: 'right',
   },
   { key: 'stock', label: 'Sklad', align: 'right' },
+  { key: 'product_categories', label: 'Kategorie' },
   { key: 'status', label: 'Stav' },
+  { key: 'actions', label: 'Akce', align: 'right' },
 ])
+
+/**
+ * A tint per status, subtle enough to scan by and never the only sign of it —
+ * the Stav column says the same thing in words, which is what a tint on its
+ * own cannot do (WCAG 1.4.1).
+ */
+const ROW_TINTS: Record<string, string> = {
+  draft: 'bg-blue-50/60',
+  active: 'bg-green-50/60',
+  hidden: 'bg-red-50/60',
+}
+
+const rowClass = (row: Record<string, any>) => ROW_TINTS[row.status as string] ?? ''
+
+/**
+ * Saving the status straight from the listing.
+ *
+ * `preserveScroll`, because the listing is long and a merchant changing five
+ * products in a row should not be thrown back to the top each time.
+ */
+const setStatus = (row: ProductRow, status: string) =>
+  router.patch(
+    route('admin.products.status.update', row.slug),
+    { status },
+    { preserveScroll: true, preserveState: true },
+  )
+
+const deleting = ref<ProductRow | null>(null)
+
+const confirmDelete = () => {
+  const row = deleting.value
+  deleting.value = null
+
+  if (row) {
+    router.delete(route('admin.products.destroy', row.slug), { preserveScroll: true })
+  }
+}
 
 const price = (haler: number) =>
   new Intl.NumberFormat('cs-CZ', { style: 'currency', currency: 'CZK' }).format(haler / 100)
@@ -201,7 +243,12 @@ const createForm = useForm({
       {{ resultMessage }}
     </p>
 
-    <DataTable :columns="columns" :rows="products.data" caption="Seznam produktů e-shopu">
+    <DataTable
+      :columns="columns"
+      :rows="products.data"
+      :row-class="rowClass"
+      caption="Seznam produktů e-shopu"
+    >
       <template #empty>Zatím tu není žádný produkt.</template>
 
       <template #cell-name="{ row }">
@@ -211,8 +258,11 @@ const createForm = useForm({
         >
           {{ (row as ProductRow).name }}
         </Link>
-        <span v-if="(row as ProductRow).categories.length" class="block text-xs text-gray-700">
-          {{ (row as ProductRow).categories.join(', ') }}
+        <!-- The short description, not the categories: those have a column of
+             their own now, and this is the line that tells two similar
+             products apart. -->
+        <span v-if="(row as ProductRow).short_description" class="mt-0.5 block text-xs text-gray-700">
+          {{ (row as ProductRow).short_description }}
         </span>
       </template>
 
@@ -294,9 +344,66 @@ const createForm = useForm({
         <span v-else class="text-gray-700">nesleduje se</span>
       </template>
 
-      <template #cell-status="{ row }">{{ STATUS_LABELS[(row as ProductRow).status] }}</template>
+      <template #cell-product_categories="{ row }">
+        <span v-if="!(row as ProductRow).categories.length" class="text-gray-700">—</span>
+        <span
+          v-for="category in (row as ProductRow).categories"
+          :key="category.id"
+          class="mb-1 mr-1 inline-block rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-800"
+        >
+          {{ category.name }}
+        </span>
+      </template>
+
+      <!-- Changed here and saved at once: a status is the one field a merchant
+           flips while scanning the list, and making them open the product for
+           it is three clicks for a one-word change. -->
+      <template #cell-status="{ row }">
+        <label :for="`status-${(row as ProductRow).id}`" class="sr-only">
+          Stav produktu {{ (row as ProductRow).name }}
+        </label>
+        <select
+          :id="`status-${(row as ProductRow).id}`"
+          :value="(row as ProductRow).status"
+          class="rounded-md border-gray-300 py-1 text-sm shadow-sm focus:border-gray-900 focus:ring-gray-900"
+          @change="setStatus(row as ProductRow, ($event.target as HTMLSelectElement).value)"
+        >
+          <option v-for="(label, value) in STATUS_LABELS" :key="value" :value="value">
+            {{ label }}
+          </option>
+        </select>
+      </template>
+
+      <template #cell-actions="{ row }">
+        <Link
+          :href="route('admin.products.show', (row as ProductRow).slug)"
+          class="inline-flex rounded-md p-1.5 text-gray-700 hover:bg-gray-100 hover:text-gray-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-900"
+        >
+          <Pencil class="h-4 w-4" aria-hidden="true" />
+          <span class="sr-only">Upravit {{ (row as ProductRow).name }}</span>
+        </Link>
+
+        <button
+          type="button"
+          class="ml-1 inline-flex rounded-md p-1.5 text-red-700 hover:bg-red-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-700"
+          @click="deleting = row as ProductRow"
+        >
+          <Trash2 class="h-4 w-4" aria-hidden="true" />
+          <span class="sr-only">Smazat {{ (row as ProductRow).name }}</span>
+        </button>
+      </template>
     </DataTable>
 
     <Pagination :links="products.links" :meta="products.meta" />
+
+    <ConfirmDialog
+      :show="deleting !== null"
+      title="Smazat produkt"
+      :message="`Produkt ${deleting?.name ?? ''} se přesune do koše. Objednávky, které ho obsahují, zůstanou beze změny.`"
+      confirm-label="Smazat"
+      danger
+      @cancel="deleting = null"
+      @confirm="confirmDelete"
+    />
   </AdminLayout>
 </template>
