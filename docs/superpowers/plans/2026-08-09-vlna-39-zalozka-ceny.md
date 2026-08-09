@@ -1,5 +1,7 @@
 # Vlna 3.9 — záložka Ceny na kartě produktu — implementační plán
 
+> **Stav: hotovo (2026-08-09, v0.44.0).** As-is: [`docs/as-is/2026-08-09-zalozka-ceny.md`](../../as-is/2026-08-09-zalozka-ceny.md).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Nájemce vidí ceny ve stejném pořadí, v jakém o nich přemýšlí — bez DPH, sazba, s DPH — a to třikrát: prodejní, nákupní, akční. Slevu může zadat procentem.
@@ -26,7 +28,7 @@
 - Modify: `Modules/Products/Models/Product.php`, `Modules/Products/Http/Requests/StoreProductRequest.php`
 - Test: `tests/Feature/Modules/Products/PriceTabTest.php`
 
-- [ ] **Step 1: Napiš padající testy**
+- [x] **Step 1: Napiš padající testy**
 
 1. Zadané procento uloží akční cenu: 1 000 Kč a 20 % → 800 Kč.
 2. **Změna pultové ceny přepočítá akční cenu**, protože procento je uložené. To je celý důvod, proč se ukládá.
@@ -36,9 +38,9 @@
 6. Prázdná nákupní sazba dědí sazbu produktu.
 7. **Zápis prochází `ProductWriter`**, takže se zapíše i do historie ceny (regrese na vlnu 2.7).
 
-- [ ] **Step 2: Implementuj.** Přepočet v `prepareForValidation()` za `MoneyInput`, aby `lt:price` dál porovnávalo haléře s haléři.
-- [ ] **Step 3: Ověř** — `php artisan test tests/Feature/Modules/Products --compact`
-- [ ] **Step 4: Commit** — `feat(products): store a sale percentage and a purchase VAT rate`
+- [x] **Step 2: Implementuj.** Přepočet v `prepareForValidation()` za `MoneyInput`, aby `lt:price` dál porovnávalo haléře s haléři.
+- [x] **Step 3: Ověř** — `php artisan test tests/Feature/Modules/Products --compact`
+- [x] **Step 4: Commit** — `feat(products): store a sale percentage and a purchase VAT rate`
 
 ---
 
@@ -56,23 +58,23 @@ Tři sekce pod sebou, v každé pořadí **bez DPH → sazba → s DPH**:
 | Nákupní cena | nákupní cena bez DPH, sazba DPH, nákupní cena s DPH |
 | Akce | akční cena **nebo** sleva v %, okno kampaně |
 
-- [ ] **Step 1: Napiš padající testy**
+- [x] **Step 1: Napiš padající testy**
 
 1. Plátce vidí všechny tři sekce a v každé tři pole ve správném pořadí.
 2. **Neplátce vidí jen částky** — žádnou sazbu, žádné „bez DPH" (regrese na 3.7).
 3. Nákupní sekce se nezobrazí bez práva `products.costs` (regrese na §16.1).
 4. Vyplnění procenta dopočítá náhled částky, ale uloží se to, co spočítá server.
 
-- [ ] **Step 2: Implementuj.**
-- [ ] **Step 3: Ověř + `npm run build` + commit** — `feat(products): lay the prices tab out the way a merchant reads it`
+- [x] **Step 2: Implementuj.**
+- [x] **Step 3: Ověř + `npm run build` + commit** — `feat(products): lay the prices tab out the way a merchant reads it`
 
 ---
 
 ### Task 3: Uzavření
 
-- [ ] **Step 1:** PHPUnit po adresářích, `npm run e2e`.
-- [ ] **Step 2:** `php artisan migrate` na lokále a ruční průchod.
-- [ ] **Step 3:** as-is, STATUS, CLAUDE.md, `VERSION` → `0.44.0`, CHANGELOG, merge.
+- [x] **Step 1:** PHPUnit po adresářích, `npm run e2e`.
+- [x] **Step 2:** `php artisan migrate` na lokále a ruční průchod.
+- [x] **Step 3:** as-is, STATUS, CLAUDE.md, `VERSION` → `0.44.0`, CHANGELOG, merge.
 
 ---
 
