@@ -221,27 +221,39 @@ const createForm = useForm({
         reader announcing the photo as well would read every row twice.
         A product without one gets an empty box rather than a broken image.
 
-        It grows in place on hover, and on keyboard focus too — which is why
-        it is a link rather than a bare image: hovering is not something a
-        keyboard does, and an enlargement only a mouse can reach is an
-        enlargement half the users never get (WCAG 2.1.1). The link goes where
-        the row's own link goes.
+        The preview floats over the table instead of growing the cell: a
+        thumbnail that grows in flow makes the row taller and shoves every row
+        below it down, which is worse than not seeing the picture.
 
-        Grown in flow rather than floated over the table: the listing sits in
-        an `overflow-x-auto` wrapper, which clips vertically as well, so an
-        overlay would be cut off on the first and last rows.
+        `fixed`, not `absolute`, and that is the whole trick — the listing sits
+        in an `overflow-x-auto` wrapper, and a scroll container clips in both
+        axes, so an absolutely positioned preview would be cut off at the edge
+        of the table. A fixed element with no offsets stays exactly where it
+        would have been laid out and is not clipped by any of that.
+
+        Hidden by default and shown on hover, so it never occupies space and
+        the row height does not move. It follows keyboard focus too, which is
+        why the thumbnail is a link: hovering is not something a keyboard does
+        (WCAG 2.1.1).
       -->
       <template #cell-image="{ row }">
         <Link
           v-if="(row as ProductRow).image"
           :href="route('admin.products.show', (row as ProductRow).slug)"
-          class="group inline-block rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-900"
+          class="group relative inline-block rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-900"
         >
           <img
             :src="(row as ProductRow).image!"
             alt=""
-            class="h-10 w-10 rounded border border-gray-200 bg-white object-cover transition-all duration-150 group-hover:h-24 group-hover:w-24 group-focus-visible:h-24 group-focus-visible:w-24"
+            class="h-10 w-10 rounded border border-gray-200 bg-white object-cover"
           />
+
+          <img
+            :src="(row as ProductRow).image!"
+            alt=""
+            class="pointer-events-none fixed z-50 hidden h-56 w-56 -translate-y-1/2 translate-x-3 rounded-lg border border-gray-200 bg-white object-contain p-1 shadow-xl group-hover:block group-focus-visible:block"
+          />
+
           <!-- A link with no text has no name at all; the image is
                deliberately decorative, so the name goes here. It repeats the
                next cell's link, which is what an image-plus-title pair does
