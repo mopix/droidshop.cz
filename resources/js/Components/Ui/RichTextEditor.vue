@@ -102,6 +102,18 @@ const TitledLink = Link.extend({
   // the schema in step with HtmlSanitizer::ALLOWED_SCHEMES. `isSafeUrl()`
   // below is the actual gate: it runs before setLink() is ever called.
   protocols: ['http', 'https', 'mailto', 'tel'],
+  // Stock @tiptap/extension-link defaults HTMLAttributes to
+  // `{ target: '_blank', rel: 'noopener noreferrer nofollow' }`. Because
+  // `target`/`rel` are declared as attribute *defaults*, that stock value
+  // does not only apply to links inserted by `setLink()` here (which only
+  // sets `href`) — it is also what a parsed `<a>` with no target attribute
+  // of its own falls back to, so opening and saving a plain internal link
+  // (e.g. the `/ochrana-osobnich-udaju` link on the seeded "Obchodní
+  // podmínky" template) would silently stamp target="_blank" onto it.
+  // Overriding both to null here makes "no target" the actual default; a
+  // parsed value (the same template's ČOI link, which genuinely carries
+  // target="_blank") still wins over this default, same as it always has.
+  HTMLAttributes: { target: null, rel: null },
 })
 
 /**
@@ -266,13 +278,25 @@ function openLinkDialog() {
 }
 
 function applyLink() {
+  const value = linkUrl.value.trim()
+
+  // Same '//' / '/\\' branch isSafeUrl rejects on above, checked first so the
+  // message names the real reason: "//example.com" already starts with "/",
+  // so the generic "must start with ... or /" message below reads as wrong
+  // to whoever typed it — it looks satisfied and got refused anyway.
+  if (value.startsWith('//') || value.startsWith('/\\')) {
+    linkError.value = 'Adresa vypadající jako odkaz na cizí web (// nebo /\\) není povolená, i když začíná lomítkem.'
+
+    return
+  }
+
   if (!isSafeUrl(linkUrl.value)) {
     linkError.value = 'Adresa musí začínat http://, https://, mailto:, tel: nebo /.'
 
     return
   }
 
-  editor.value?.chain().focus().extendMarkRange('link').setLink({ href: linkUrl.value.trim() }).run()
+  editor.value?.chain().focus().extendMarkRange('link').setLink({ href: value }).run()
   linkOpen.value = false
 }
 
@@ -506,7 +530,11 @@ watch(
       </button>
     </div>
 
-    <div v-if="linkOpen" class="flex flex-wrap items-start gap-2 border-b border-gray-200 bg-white p-2">
+    <div
+      v-if="linkOpen"
+      class="flex flex-wrap items-start gap-2 border-b border-gray-200 bg-white p-2"
+      @keydown.esc.prevent="closeLinkDialog"
+    >
       <input
         ref="linkInput"
         v-model="linkUrl"
@@ -517,7 +545,6 @@ watch(
         class="min-w-0 flex-1 rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-900 focus:ring-gray-900"
         placeholder="https://"
         @keydown.enter.prevent="applyLink"
-        @keydown.esc.prevent="closeLinkDialog"
       />
       <button type="button" class="rounded-md bg-gray-900 px-3 py-2 text-sm text-white" @click="applyLink">
         Vložit
@@ -530,8 +557,12 @@ watch(
         unconditionally, and an id that only exists while there is an error
         is a dangling reference (and an axe aria-valid-attr-value violation)
         the rest of the time. v-show only toggles visibility, never removes it.
+
+        role="alert" so a screen-reader user gets an actual signal when the
+        URL is rejected — until now, focus stayed put on the input and this
+        text only ever appeared, never announced.
       -->
-      <p v-show="linkError" :id="linkErrorId" class="w-full text-sm text-red-600">{{ linkError }}</p>
+      <p v-show="linkError" :id="linkErrorId" role="alert" class="w-full text-sm text-red-600">{{ linkError }}</p>
     </div>
 
     <EditorContent :editor="editor" />

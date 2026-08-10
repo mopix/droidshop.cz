@@ -1,23 +1,6 @@
-import AxeBuilder from '@axe-core/playwright'
 import { expect, test } from '@playwright/test'
-import type { Page } from '@playwright/test'
 import { artisanEval, shopUrl, signInAsOwner } from '../support/shop'
-
-/**
- * Same shape as accessibility.spec.ts's auditPage: only critical and serious
- * block, everything else is printed but does not fail the build (a suite red
- * over a finding nobody will fix gets skipped, and then it misses the one
- * that mattered — wave 3.4).
- */
-async function auditPage(page: Page, label: string): Promise<void> {
-  const results = await new AxeBuilder({ page }).analyze()
-  const blocking = results.violations.filter((v) => v.impact === 'critical' || v.impact === 'serious')
-
-  expect(
-    blocking.map((v) => `${v.id} (${v.impact}) — ${v.nodes.length}× — ${v.help}`),
-    `${label} has blocking accessibility violations`,
-  ).toEqual([])
-}
+import { auditPage } from '../support/a11y'
 
 /**
  * The description field used to be a bare <textarea> where a merchant had to
@@ -184,6 +167,7 @@ test.describe('rich text editor', () => {
 
     await editor.click()
     await page.keyboard.press('Control+a')
+    await page.keyboard.press('Delete')
     await editor.pressSequentially('Odkaz')
     await page.keyboard.press('Control+a')
 
@@ -512,6 +496,19 @@ test.describe('rich text editor elsewhere in the admin', () => {
     expect(termsBody).toContain('href="https://adr.coi.cz"')
     expect(termsBody).toContain('target="_blank"')
     expect(termsBody).toContain('rel="noopener noreferrer"')
+
+    // The same template also carries a plain internal link
+    // (`/ochrana-osobnich-udaju`, PageTemplates::terms()) with no target of
+    // its own. Stock @tiptap/extension-link defaults the `target` attribute
+    // to "_blank" for every link the schema knows about — parsed or
+    // inserted — so without TitledLink overriding that default to null, this
+    // internal link would silently gain target="_blank" (and, downstream,
+    // HtmlSanitizer.php:135-136 would then stamp a rel onto it too) just from
+    // being opened and saved. A tenant's own terms page would start punting
+    // customers into a new tab for a link that never asked for one.
+    const internalLink = termsBody.match(/<a[^>]*href="\/ochrana-osobnich-udaju"[^>]*>/)
+    expect(internalLink).not.toBeNull()
+    expect(internalLink![0]).not.toContain('target=')
   })
 
   /**
