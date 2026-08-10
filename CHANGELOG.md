@@ -11,6 +11,38 @@ Pravidla: [`.claude/skills/versioning/SKILL.md`](.claude/skills/versioning/SKILL
 
 > CHANGELOG vede milníky (minor/major). Detail patchů je v `git log`.
 
+## [0.45.0] – 2026-08-10
+
+**Rich text editor pro HTML pole administrace.** Uzavření vlny (`docs/as-is/2026-08-10-rich-text-editor.md`). 17 E2E scénářů v novém souboru (celkem 81), server nezměněn.
+
+### Konec psaní HTML rukou
+Popis produktu, obsah statické stránky a textový blok homepage byly holá `<textarea>` s nápovědou, které značky jsou povolené. Nájemce je provozovatel e-shopu, ne autor HTML — a u vzorů VOP z vlny 3.2 to byla práce na tisíce znaků, ve které se markery `[DOPLŇTE …]` mezi značkami ztrácely.
+
+Nově jedna sdílená komponenta nad Tiptapem: tučné, kurzíva, podtržení, nadpisy H2–H4, seznamy, citace, odkaz a tabulky. Bez vkládání obrázků a bez zdrojového HTML (rozhodnutí vlastníka).
+
+### Co editor nabídne, to server neumaže — a naopak
+Schéma editoru je ruční zrcadlo allowlistu `HtmlSanitizer`. Tlačítko, jehož výstup se při uložení zahodí, je lež o tom, co e-shop umí. Opačný směr je ale horší a míň vidět: Tiptap zahazuje uzly, které nezná, takže popis nesoucí obrázek nebo odkaz by o ně přišel už tím, že se pole otevře. Obrázky proto schéma zná, přestože je editor neumí vložit.
+
+`HtmlSanitizer` se nezměnil a zůstává jedinou autoritou nad tím, co se uloží.
+
+### Tři chyby, které by se jinak dostaly ven
+Stock Tiptap přidával `target="_blank"` **každému** odkazu, kterého se editor dotkl — včetně interního odkazu na zásady ochrany údajů ve vzoru VOP. Nájemcovy vlastní podmínky by posílaly zákazníka na jeho vlastní stránku do nového okna.
+
+`aria-label` seděl na `<div>` bez role, což ARIA zakazuje — odečítač by editační plochu nepojmenoval vůbec.
+
+A schéma bez odkazového marku by existující `<a>` zahodilo při otevření pole.
+
+### Čtyři testy, které nemohly selhat
+Uložení formuláře bez editace posílá hodnotu z Inertia props, která nikdy neprojde přes `getHTML()`. Tři testy „obsah přežije uložení" na tom stály a prošly by i se schématem, které tabulky a obrázky zahazuje. Čtvrtý ověřoval varování o nedoplněných místech na šabloně, která je obsahuje už při načtení.
+
+Všechny přepsané a s doloženým červeným během. Zelený a slepý test jsou zvenčí k nerozeznání — poučení z vlny 3.4, tady zopakované čtyřikrát.
+
+### Nález mimo rozsah
+`HtmlSanitizer::isSafeUrl` propouští protokolově relativní `//evil.com` v odkazu psaném nájemcem, tedy open redirect maskovaný jako interní cesta. Server byl v této vlně zmrazený, nález je zapsaný v `security_warnings.md` i s návrhem opravy.
+
+### Deploy
+`npm run build`. Žádná migrace.
+
 ## [0.44.0] – 2026-08-09
 
 **Fáze 2 / vlna 3.9 — záložka Ceny na kartě produktu.** Uzavření vlny (`docs/as-is/2026-08-09-zalozka-ceny.md`). 3 nové E2E scénáře (celkem 46), 7 nových PHPUnit testů.
