@@ -302,3 +302,90 @@ test.describe('rich text editor', () => {
     `)
   })
 })
+
+/**
+ * The other two admin fields that carry tenant HTML (wave 3.13 named three:
+ * the product description above, the static page body, and the homepage
+ * text block). Both get the same component Tasks 1-3 built; this only checks
+ * that each screen actually mounts it, not the schema/sanitiser behaviour
+ * already covered above.
+ */
+test.describe('rich text editor elsewhere in the admin', () => {
+  test.beforeEach(async ({ page }) => {
+    await signInAsOwner(page)
+  })
+
+  // DataTable renders each row as a real <tr>, and the "Upravit" link text is
+  // identical on every row (Pages/Index.vue has no per-row suffix), so the
+  // row has to be found by its title cell first, same as any other row-scoped
+  // action in this admin.
+  test('the static page body is an editor', async ({ page }) => {
+    await page.goto(shopUrl('/admin/m/pages'))
+    await page
+      .locator('tr', { hasText: 'Obchodní podmínky' })
+      .getByRole('link', { name: 'Upravit' })
+      .click()
+
+    await expect(page.locator('#body .ProseMirror')).toBeVisible()
+    await expect(page.locator('textarea#body')).toHaveCount(0)
+  })
+
+  /**
+   * The legal templates from wave 3.2 are filled in at "[DOPLŇTE …]" markers
+   * and the form warns while any remain. Tiptap carries the text unchanged,
+   * so the warning must still fire — it is the only thing standing between a
+   * template and a page published while it still reads as unfinished.
+   *
+   * The templates seed unpublished (Modules/Pages/Lifecycle.php), and the
+   * banner is gated on `form.is_published && hasPlaceholders`, so the
+   * checkbox has to be ticked here for the banner to ever have a chance to
+   * show — without it this test would pass even if `hasPlaceholders` were
+   * deleted outright.
+   */
+  test('the placeholder warning still fires', async ({ page }) => {
+    await page.goto(shopUrl('/admin/m/pages'))
+    await page
+      .locator('tr', { hasText: 'Obchodní podmínky' })
+      .getByRole('link', { name: 'Upravit' })
+      .click()
+
+    const editor = page.locator('#body .ProseMirror')
+    await editor.click()
+    await page.keyboard.press('Control+a')
+    await page.keyboard.press('Delete')
+    await editor.pressSequentially('[DOPLŇTE název firmy]')
+
+    await page.getByLabel(/Publikovat/i).check()
+
+    await expect(page.getByText(/nedoplněné části/)).toBeVisible()
+  })
+
+  /**
+   * DefaultHomepage seeds hero/product_row/category_grid only — no shop
+   * starts with a text block — so this adds one itself before it can open
+   * its editor, and removes it afterwards so a later spec file (shop-lock,
+   * shop-settings, smoke, vat-mode — all sort after this file and all visit
+   * "/") never renders against a leftover block.
+   */
+  test('the homepage text block is an editor', async ({ page }) => {
+    await page.goto(shopUrl('/admin/m/storefront/homepage'))
+
+    await page.locator('#new-block-type').selectOption('text')
+    await page.getByRole('button', { name: 'Přidat blok' }).click()
+
+    const row = page.locator('li', { hasText: 'Textový blok' })
+    await row.getByRole('button', { name: 'Upravit' }).click()
+    await expect(row.locator('.ProseMirror')).toBeVisible()
+
+    // exact: true — the editor's own toolbar adds a "Smazat tabulku" button
+    // inside the same row once the RichTextEditor mounts, and a substring
+    // match against plain "Smazat" catches that one too.
+    await row.getByRole('button', { name: 'Smazat', exact: true }).click()
+    // ConfirmDialog's confirm button is relabelled "Smazat" here too
+    // (confirm-label="Smazat" on the dialog), not the component's default
+    // "Potvrdit" — every other block's own row "Smazat" button carries the
+    // same accessible name, so this has to be scoped to the dialog itself.
+    await page.getByLabel('Smazat blok').getByRole('button', { name: 'Smazat', exact: true }).click()
+    await expect(page.locator('li', { hasText: 'Textový blok' })).toHaveCount(0)
+  })
+})
