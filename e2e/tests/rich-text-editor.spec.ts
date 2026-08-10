@@ -53,6 +53,43 @@ test.describe('rich text editor', () => {
     expect(html).toContain('<li>Hliník</li>')
   })
 
+  /**
+   * The old textarea's own hint told merchants links were allowed, so a
+   * hand-typed `<a href>` in an existing description is a real scenario, not
+   * a hypothetical. Neither a link nor an image has a toolbar button in this
+   * task (Task 2 and the plan's own image decision respectively), so the
+   * only way either survives is if the editor's schema still knows the tag
+   * even without a button producing it — opening and saving unchanged must
+   * not be what strips it.
+   */
+  test('a hand-typed link and an existing image survive opening the field unchanged', async ({ page }) => {
+    artisanEval(`
+      $t = App\\Models\\Tenant::whereHas('domains', fn($q) => $q->where('domain', 'obchod.droidshop'))->firstOrFail();
+      app(App\\Core\\Tenancy\\TenantContext::class)->runAs($t, function () {
+        $product = Modules\\Products\\Models\\Product::where('slug', '${slug}')->firstOrFail();
+        app(Modules\\Products\\Services\\ProductWriter::class)->update($product, [
+          'description' => '<p>Text s <a href="https://example.com/x">odkazem</a>.</p><p><img src="/media/e2e-test.png" alt="Ukazkovy obrazek" width="120"></p>',
+        ]);
+      });
+    `)
+
+    // The shared beforeEach already navigated before this seed ran.
+    await page.reload()
+
+    const editor = page.locator('#p-description .ProseMirror')
+    await expect(editor.locator('a[href="https://example.com/x"]')).toBeVisible()
+    await expect(editor.locator('img[src="/media/e2e-test.png"]')).toBeVisible()
+
+    await page.getByRole('button', { name: 'Uložit', exact: true }).click()
+    await expect(page.getByText('Produkt byl uložen.')).toBeVisible()
+
+    const response = await page.request.get(shopUrl(`/produkt/${slug}`))
+    const html = await response.text()
+
+    expect(html).toContain('<a href="https://example.com/x">odkazem</a>')
+    expect(html).toContain('<img src="/media/e2e-test.png" alt="Ukazkovy obrazek" width="120">')
+  })
+
   test('the toolbar offers no image and no source view', async ({ page }) => {
     await expect(page.getByRole('button', { name: /obráz/i })).toHaveCount(0)
     await expect(page.getByRole('button', { name: /zdrojov|HTML/i })).toHaveCount(0)

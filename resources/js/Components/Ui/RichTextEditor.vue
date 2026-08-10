@@ -36,6 +36,19 @@ const props = defineProps<{
   ariaLabel?: string
 }>()
 
+/**
+ * Attributes that must land on the actual editing surface, not on the
+ * wrapper `<EditorContent>` renders for itself — the same reason `ariaLabel`
+ * goes through `editorProps.attributes` above. `aria-describedby` binding on
+ * `<EditorContent>` in the template would attach to that wrapper, which is
+ * never focused and never announced; the hint would exist in the DOM but no
+ * screen reader would ever read it out.
+ */
+const editableAttributes = () => ({
+  ...(props.ariaLabel ? { 'aria-label': props.ariaLabel } : {}),
+  ...(props.ariaDescribedby ? { 'aria-describedby': props.ariaDescribedby } : {}),
+})
+
 const emit = defineEmits<{ (e: 'update:modelValue', value: string): void }>()
 
 /**
@@ -100,7 +113,7 @@ const applyingExternal = ref(false)
 const editor = useEditor({
   content: props.modelValue ?? '',
   editorProps: {
-    attributes: props.ariaLabel ? { 'aria-label': props.ariaLabel } : {},
+    attributes: editableAttributes(),
     // On macOS, Chromium resolves a literal Ctrl-A inside any editable
     // region to the Cocoa text-editing binding "move to paragraph start",
     // not select-all (only Cmd-a is). Left alone, a merchant on a Mac would
@@ -127,7 +140,14 @@ const editor = useEditor({
       horizontalRule: false,
       // h1 belongs to the product name on the storefront.
       heading: { levels: [2, 3, 4] },
-      link: false, // replaced in Task 2 with one that keeps the title attribute
+      // Link stays at its StarterKit default — no toolbar button yet (Task 2
+      // adds one, on a TitledLink that also keeps the `title` attribute),
+      // but `link: false` would remove the mark from the schema entirely,
+      // not just hide a button for it. A merchant who hand-typed
+      // `<a href="…">` into the old textarea — its own hint told them links
+      // were allowed — would have it silently stripped the moment this
+      // field loads into the editor. Same reasoning as SizedImage below:
+      // known to the schema even with nothing in the toolbar producing it.
     }),
     SizedImage,
   ],
@@ -275,7 +295,7 @@ watch(
       </button>
     </div>
 
-    <EditorContent :editor="editor" :aria-describedby="ariaDescribedby" />
+    <EditorContent :editor="editor" />
   </div>
 </template>
 
