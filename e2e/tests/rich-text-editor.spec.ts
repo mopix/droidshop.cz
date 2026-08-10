@@ -94,4 +94,20 @@ test.describe('rich text editor', () => {
     await expect(page.getByRole('button', { name: /obráz/i })).toHaveCount(0)
     await expect(page.getByRole('button', { name: /zdrojov|HTML/i })).toHaveCount(0)
   })
+
+  /**
+   * The hint text ("Nadpisy, seznamy a odkazy...") lives in a <p> next to
+   * the editor, wired by id through aria-describedby — but the id it needs
+   * to land on belongs to the actual editable node Tiptap builds at
+   * runtime, not the wrapping <div id="p-description"> Show.vue renders
+   * around the whole component. An attribute bound on the wrong element is
+   * present in the DOM either way, so only checking where it actually
+   * ended up catches the bug.
+   */
+  test('the hint is announced from the editable node itself', async ({ page }) => {
+    await expect(page.locator('#p-description .ProseMirror')).toHaveAttribute(
+      'aria-describedby',
+      'p-description-hint',
+    )
+  })
 })
