@@ -14,7 +14,8 @@
 import { EditorContent, useEditor } from '@tiptap/vue-3'
 import StarterKit from '@tiptap/starter-kit'
 import Image from '@tiptap/extension-image'
-import { ref, watch } from 'vue'
+import Link from '@tiptap/extension-link'
+import { nextTick, ref, watch } from 'vue'
 
 const props = defineProps<{
   modelValue: string | null
@@ -63,6 +64,18 @@ const SizedImage = Image.extend({
       height: { default: null },
     }
   },
+})
+
+/** The sanitiser allows title on <a>; Tiptap does not know it. */
+const TitledLink = Link.extend({
+  addAttributes() {
+    return { ...this.parent?.(), title: { default: null } }
+  },
+}).configure({
+  openOnClick: false,
+  autolink: false,
+  // Mirrors HtmlSanitizer::ALLOWED_SCHEMES plus relative paths.
+  protocols: ['http', 'https', 'mailto', 'tel'],
 })
 
 /**
@@ -140,16 +153,12 @@ const editor = useEditor({
       horizontalRule: false,
       // h1 belongs to the product name on the storefront.
       heading: { levels: [2, 3, 4] },
-      // Link stays at its StarterKit default — no toolbar button yet (Task 2
-      // adds one, on a TitledLink that also keeps the `title` attribute),
-      // but `link: false` would remove the mark from the schema entirely,
-      // not just hide a button for it. A merchant who hand-typed
-      // `<a href="…">` into the old textarea — its own hint told them links
-      // were allowed — would have it silently stripped the moment this
-      // field loads into the editor. Same reasoning as SizedImage below:
-      // known to the schema even with nothing in the toolbar producing it.
+      // Replaced below by TitledLink, which keeps the `title` attribute the
+      // sanitiser allows and StarterKit's default Link does not know about.
+      link: false,
     }),
     SizedImage,
+    TitledLink,
   ],
   onUpdate: ({ editor }) => {
     if (applyingExternal.value) return
@@ -157,6 +166,48 @@ const editor = useEditor({
     emit('update:modelValue', editor.isEmpty ? '' : collapseSingleParagraphListItems(editor.getHTML()))
   },
 })
+
+const linkOpen = ref(false)
+const linkUrl = ref('')
+const linkError = ref('')
+const linkInput = ref<HTMLInputElement | null>(null)
+
+/** Mirrors HtmlSanitizer::isSafeUrl. */
+function isSafeUrl(url: string): boolean {
+  const value = url.trim()
+  if (value === '') return false
+  if (value.startsWith('#')) return true
+  // "/" is fine, but "//evil.com" and "/\evil.com" are open redirects wearing
+  // an internal path (same guard as BlockUrl::isSafe, decision 2026-07-26).
+  if (value.startsWith('/')) return !value.startsWith('//') && !value.startsWith('/\\')
+
+  return /^(https?|mailto|tel):/i.test(value)
+}
+
+function openLinkDialog() {
+  linkUrl.value = editor.value?.getAttributes('link').href ?? ''
+  linkError.value = ''
+  linkOpen.value = true
+
+  // A dialog a keyboard user cannot type into is worse than no dialog: the
+  // click that opened it left focus on the toolbar button.
+  nextTick(() => linkInput.value?.focus())
+}
+
+function applyLink() {
+  if (!isSafeUrl(linkUrl.value)) {
+    linkError.value = 'Adresa musí začínat http://, https://, mailto:, tel: nebo /.'
+
+    return
+  }
+
+  editor.value?.chain().focus().extendMarkRange('link').setLink({ href: linkUrl.value.trim() }).run()
+  linkOpen.value = false
+}
+
+function removeLink() {
+  editor.value?.chain().focus().extendMarkRange('link').unsetLink().run()
+}
 
 watch(
   () => props.modelValue,
@@ -287,12 +338,55 @@ watch(
 
       <button
         type="button"
+        aria-label="Vložit odkaz"
+        :aria-pressed="editor.isActive('link')"
+        class="rounded px-2 py-1 text-sm text-gray-700 hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-900 aria-pressed:bg-gray-900 aria-pressed:text-white"
+        @click="openLinkDialog"
+      >
+        🔗
+      </button>
+      <button
+        type="button"
+        aria-label="Odebrat odkaz"
+        :disabled="!editor.isActive('link')"
+        class="rounded px-2 py-1 text-sm text-gray-700 hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-900 disabled:opacity-40 disabled:hover:bg-transparent"
+        @click="removeLink"
+      >
+        🔗✕
+      </button>
+
+      <span class="mx-1 w-px bg-gray-300" aria-hidden="true" />
+
+      <button
+        type="button"
         aria-label="Vymazat formátování"
         class="rounded px-2 py-1 text-sm text-gray-700 hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-900"
         @click="editor.chain().focus().unsetAllMarks().clearNodes().run()"
       >
         ✕
       </button>
+    </div>
+
+    <div v-if="linkOpen" class="flex flex-wrap items-start gap-2 border-b border-gray-200 bg-white p-2">
+      <input
+        ref="linkInput"
+        v-model="linkUrl"
+        type="text"
+        aria-label="Adresa odkazu"
+        :aria-invalid="linkError ? 'true' : undefined"
+        aria-describedby="rte-link-error"
+        class="min-w-0 flex-1 rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-900 focus:ring-gray-900"
+        placeholder="https://"
+        @keydown.enter.prevent="applyLink"
+        @keydown.esc.prevent="linkOpen = false"
+      />
+      <button type="button" class="rounded-md bg-gray-900 px-3 py-2 text-sm text-white" @click="applyLink">
+        Vložit
+      </button>
+      <button type="button" class="rounded-md border border-gray-300 px-3 py-2 text-sm" @click="linkOpen = false">
+        Zrušit
+      </button>
+      <p v-if="linkError" id="rte-link-error" class="w-full text-sm text-red-600">{{ linkError }}</p>
     </div>
 
     <EditorContent :editor="editor" />

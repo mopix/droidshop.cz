@@ -110,4 +110,45 @@ test.describe('rich text editor', () => {
       'p-description-hint',
     )
   })
+
+  test('a link written in the editor reaches the storefront', async ({ page }) => {
+    const editor = page.locator('#p-description .ProseMirror')
+
+    await editor.click()
+    await page.keyboard.press('Control+a')
+    await page.keyboard.press('Delete')
+    await editor.pressSequentially('Návod')
+    await page.keyboard.press('Control+a')
+
+    await page.getByRole('button', { name: 'Vložit odkaz' }).click()
+    await page.getByLabel('Adresa odkazu').fill('https://example.com/navod')
+    await page.getByRole('button', { name: 'Vložit', exact: true }).click()
+
+    await page.getByRole('button', { name: 'Uložit', exact: true }).click()
+    await expect(page.getByText('Produkt byl uložen.')).toBeVisible()
+
+    const html = await (await page.request.get(shopUrl(`/produkt/${slug}`))).text()
+    expect(html).toContain('href="https://example.com/navod"')
+  })
+
+  /**
+   * The sanitiser rejects javascript: on the server. The editor must not offer
+   * it either — a field that accepts a value the server silently strips teaches
+   * the merchant that the save is broken.
+   */
+  test('the link dialog refuses a javascript: url', async ({ page }) => {
+    const editor = page.locator('#p-description .ProseMirror')
+
+    await editor.click()
+    await page.keyboard.press('Control+a')
+    await editor.pressSequentially('Odkaz')
+    await page.keyboard.press('Control+a')
+
+    await page.getByRole('button', { name: 'Vložit odkaz' }).click()
+    await page.getByLabel('Adresa odkazu').fill('javascript:alert(1)')
+    await page.getByRole('button', { name: 'Vložit', exact: true }).click()
+
+    await expect(page.getByText('Adresa musí začínat http://, https://, mailto:, tel: nebo /.')).toBeVisible()
+    await expect(page.locator('#p-description .ProseMirror a')).toHaveCount(0)
+  })
 })
