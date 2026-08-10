@@ -302,6 +302,31 @@ test.describe('rich text editor', () => {
   })
 
   /**
+   * axe's button-name rule cannot see a mislabeled toolbar button here: every
+   * button also carries visible glyph text ("B", "H3", "•"...), so an
+   * accessible name always exists even if aria-label goes missing — proven by
+   * deliberately deleting Tučné's aria-label during this task and watching
+   * the axe test above stay green. getByRole(role, { name }) performs the
+   * same accessible-name lookup a screen reader does, so it is sensitive to
+   * exactly the case axe is not: it only matches when the name is the Czech
+   * label, not merely present. One button per family covered here (a text
+   * mark, a heading, a list, the link button, a table control) rather than
+   * all twenty — this is a representative sample against regressions in how
+   * `editableAttributes`/toolbar labels are wired, not a re-test of every
+   * individual aria-label string (already covered by each toolbar button's
+   * own `getByRole('button', { name: ... })` used throughout this file).
+   */
+  test('the toolbar buttons announce their Czech names, not their glyphs', async ({ page }) => {
+    await page.locator('#p-description .ProseMirror').waitFor()
+
+    await expect(page.getByRole('button', { name: 'Tučné' })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Nadpis 3' })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Odrážkový seznam' })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Vložit odkaz' })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Vložit tabulku' })).toBeVisible()
+  })
+
+  /**
    * The link dialog swaps in a second row of controls (a text input plus two
    * buttons) that only exist while it is open — an axe pass over the closed
    * toolbar says nothing about whether that markup is also clean.
