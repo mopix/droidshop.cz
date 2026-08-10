@@ -74,15 +74,17 @@ const props = defineProps<{
 }>()
 
 /** Tabs whose fields belong to the main product form. */
-const FORM_TABS = ['basic', 'prices', 'stock', 'seo']
+const FORM_TABS = ['basic', 'categories', 'prices', 'stock', 'seo', 'settings']
 
 const TABS = [
   { key: 'basic', label: 'Základní' },
+  { key: 'categories', label: 'Kategorie' },
   { key: 'prices', label: 'Ceny' },
   { key: 'images', label: 'Obrázky' },
   { key: 'stock', label: 'Sklad' },
   { key: 'variants', label: 'Varianty' },
   { key: 'seo', label: 'SEO' },
+  { key: 'settings', label: 'Nastavení' },
 ] as const
 
 const tab = ref<(typeof TABS)[number]['key']>('basic')
@@ -835,7 +837,22 @@ const runVariantDelete = () => {
             </p>
           </div>
 
-          <fieldset class="sm:col-span-2">
+        </div>
+
+        <!--
+          Categories and the variant control used to sit at the bottom of
+          "Základní", which is where a merchant filling in a new product runs
+          out of patience. They are their own decisions, so they get their own
+          tabs (owner's decision, 2026-08-10).
+        -->
+        <div
+          v-show="tab === 'categories'"
+          :id="'panel-categories'"
+          role="tabpanel"
+          aria-labelledby="tab-categories"
+          class="space-y-4"
+        >
+          <fieldset>
             <legend class="text-sm font-medium text-gray-700">Kategorie</legend>
             <div class="mt-2 grid gap-1 sm:grid-cols-2">
               <label v-for="category in categories" :key="category.id" class="flex items-center gap-2 text-sm">
@@ -874,6 +891,15 @@ const runVariantDelete = () => {
             </div>
           </fieldset>
 
+        </div>
+
+        <div
+          v-show="tab === 'settings'"
+          :id="'panel-settings'"
+          role="tabpanel"
+          aria-labelledby="tab-settings"
+          class="grid gap-4 sm:grid-cols-2"
+        >
           <div>
             <label for="p-variant-display" class="block text-sm font-medium text-gray-700">
               Zobrazení výběru varianty
