@@ -55,8 +55,15 @@ const editableAttributes = () => ({
 const emit = defineEmits<{ (e: 'update:modelValue', value: string): void }>()
 
 /**
- * The sanitiser allows width and height on <img>; Tiptap does not know them
- * and would drop them on load.
+ * The sanitiser allows width and height on <img>. Stock `@tiptap/extension-image`
+ * at the currently installed version (3.29.2) already declares both, which
+ * makes this override redundant today — verified directly against the
+ * installed package's `addAttributes()`. It is kept anyway, deliberately: if
+ * a future Tiptap upgrade ever drops width/height from its own defaults,
+ * this restores them without anyone having to notice the dependency changed
+ * underneath. The survival tests in rich-text-editor.spec.ts pin both
+ * attributes through a real editor round trip, so a regression here — stock
+ * or ours — would fail loudly rather than silently.
  */
 const SizedImage = Image.extend({
   addAttributes() {
@@ -68,7 +75,12 @@ const SizedImage = Image.extend({
   },
 })
 
-/** The sanitiser allows title on <a>; Tiptap does not know it. */
+/**
+ * The sanitiser allows title on <a>. Same situation as SizedImage above:
+ * stock `@tiptap/extension-link` at 3.29.2 already declares `title`, so this
+ * override is redundant today and kept as a guard against a future stock
+ * regression, not because Tiptap currently lacks it.
+ */
 const TitledLink = Link.extend({
   addAttributes() {
     return { ...this.parent?.(), title: { default: null } }
