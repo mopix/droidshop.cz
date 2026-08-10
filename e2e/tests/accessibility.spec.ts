@@ -1,7 +1,6 @@
-import AxeBuilder from '@axe-core/playwright'
 import { expect, test } from '@playwright/test'
-import type { Page } from '@playwright/test'
 import { seedVariantProduct, shopUrl } from '../support/shop'
+import { auditPage } from '../support/a11y'
 
 /**
  * WCAG 2.2 AA is a legal obligation here (EAA), and until now it was checked
@@ -11,31 +10,6 @@ import { seedVariantProduct, shopUrl } from '../support/shop'
  * replace the manual check or the a11y-checker agent; what it does is catch
  * regressions in the third it knows about, every time, for free.
  */
-
-const STANDARD = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa']
-
-/**
- * Only critical and serious block the build.
- *
- * A suite that goes red over something nobody is going to fix gets skipped,
- * and a skipped suite misses the finding that mattered. Lower severities are
- * printed so they stay visible without holding anything up.
- */
-async function auditPage(page: Page, label: string): Promise<void> {
-  const results = await new AxeBuilder({ page }).withTags(STANDARD).analyze()
-
-  const blocking = results.violations.filter((v) => v.impact === 'critical' || v.impact === 'serious')
-  const minor = results.violations.filter((v) => v.impact !== 'critical' && v.impact !== 'serious')
-
-  if (minor.length > 0) {
-    console.log(`[a11y] ${label}: ${minor.length} minor issue(s): ${minor.map((v) => v.id).join(', ')}`)
-  }
-
-  expect(
-    blocking.map((v) => `${v.id} (${v.impact}) — ${v.nodes.length}× — ${v.help}`),
-    `${label} has blocking accessibility violations`,
-  ).toEqual([])
-}
 
 test.describe('accessibility', () => {
   test('homepage', async ({ page }) => {
