@@ -226,14 +226,17 @@ test.describe('rich text editor', () => {
   })
 
   /**
-   * This file is the only one in the suite that mutates this product's
-   * description (grep confirms it), and global-setup only runs migrate:fresh
-   * once per `playwright test` invocation, not per spec file — so a later
-   * file in the same run, or a developer re-running just this file against a
-   * server left up from a previous invocation, would otherwise start from
-   * whatever the last test above happened to save. Restoring it here keeps
-   * this file's mutations local to itself, matching what DemoShopSeeder would
-   * have written (it does not re-seed an existing product on rerun).
+   * global-setup runs migrate:fresh once per `playwright test` invocation,
+   * not per spec file, and this describe block's tests run serially
+   * (workers: 1, fullyParallel: false) against the one product `slug` picks
+   * in beforeAll — so every save above lands on the same row, and whichever
+   * of these tests runs last decides what that row holds for the rest of the
+   * invocation. This file is currently the only one in the suite that reads
+   * or writes a product's `description` (checked by grep), so nothing else
+   * observes the mutation today; restoring it here is what keeps that true
+   * as the suite grows, without relying on every future spec file to avoid
+   * this one field. Matches what DemoShopSeeder itself writes (it does not
+   * re-seed a product that already exists).
    */
   test.afterAll(() => {
     artisanEval(`
