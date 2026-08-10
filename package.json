@@ -27,6 +27,8 @@
         "@tiptap/extension-image": "^3.29.2",
         "@tiptap/extension-link": "^3.29.2",
         "@tiptap/extension-table": "^3.29.2",
+        "@tiptap/extension-underline": "^3.29.2",
+        "@tiptap/pm": "^3.29.2",
         "@tiptap/starter-kit": "^3.29.2",
         "@tiptap/vue-3": "^3.29.2",
         "lucide-vue-next": "^1.0.0"

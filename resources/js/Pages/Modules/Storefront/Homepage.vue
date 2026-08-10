@@ -644,8 +644,8 @@ const existingImageName = computed(() => existingImagePath.value?.split('/').pop
                     aria-describedby="html-hint"
                   />
                   <p id="html-hint" class="mt-1 text-sm text-gray-600">
-                    Povolené HTML: odstavce, tučné, kurzíva, seznamy, nadpisy, odkazy. Ostatní se při uložení
-                    odstraní.
+                    Nadpisy, seznamy a odkazy udělá panel nad polem. Vložený text se pročistí při
+                    uložení.
                   </p>
                 </div>
               </template>
