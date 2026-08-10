@@ -61,12 +61,22 @@ Emituje `update:modelValue` s `editor.getHTML()`. Prázdný dokument emituje pr�
 řetězec, ne `<p></p>` — jinak by se pole nikdy nečetlo jako nevyplněné.
 
 **Schéma editoru = allowlist `HtmlSanitizer`.** StarterKit s vypnutým `codeBlock`,
-`code`, `strike`, `horizontalRule`. Navíc `Underline`, `Link`, `Image`, `Table`
-(+ `TableRow`, `TableCell`, `TableHeader`).
+`code`, `strike`, `horizontalRule` a `heading` omezeným na úrovně 2–4 (`h1` patří
+názvu produktu na storefrontu a sanitizer ho zahazuje). `Underline` a `Link` jsou
+od Tiptapu 3 součástí StarterKitu, samostatné balíčky nejsou potřeba. Navíc `Image`
+a `TableKit`.
 
 `Image` je ve schématu **bez tlačítka v toolbaru**: Tiptap zahazuje uzly, které jeho
 schéma nezná, takže popis produktu nesoucí `<img>` by o něj při prvním uložení tiše
 přišel. Schéma ho tedy zná, aby ho zachovalo; nabídnout ho neumí.
+
+**Atributy, které Tiptap ve výchozím stavu nezná, se doplní.** `HtmlSanitizer`
+povoluje na `img` také `width` a `height` a na `a` také `title`; Tiptap je nezná a
+při načtení by je zahodil. Obě rozšíření je proto doplňují (`addAttributes`) —
+jinak by editor tiše měnil cizí obsah jen tím, že se otevřel.
+
+Naopak `b` se uloží jako `strong` a `i` jako `em`. To je změna značky, ne ztráta
+významu, a `HtmlSanitizer` obojí povoluje.
 
 **Toolbar**
 
@@ -99,10 +109,13 @@ stejným pravidlem jako `HtmlSanitizer::isSafeUrl` — relativní `/`, `#`, jina
 
 ### Závislosti
 
-Nové, do `dependencies` (vedle `lucide-vue-next`): `@tiptap/vue-3`,
-`@tiptap/starter-kit`, `@tiptap/extension-underline`, `@tiptap/extension-link`,
-`@tiptap/extension-image`, `@tiptap/extension-table`. Verze se ověří na npm před
-instalací.
+Nové, do `dependencies` (vedle `lucide-vue-next`), všechny `^3.29.2` (ověřeno na npm
+2026-08-10): `@tiptap/vue-3`, `@tiptap/starter-kit`, `@tiptap/extension-image`,
+`@tiptap/extension-link`, `@tiptap/extension-table`.
+
+`extension-link` je tranzitivní závislost StarterKitu, ale komponenta ho importuje
+přímo (aby doplnila atribut `title`), a importovat balíček, který v `package.json`
+není, je závislost na cizím stromu závislostí — proto je uvedený explicitně.
 
 Admin bundle poroste přibližně o 90 kB gzip. Storefront nulově — jsou to oddělené
 vstupy Vite a storefront nese jen `resources/js/storefront.js`. Limit 100 kB gzip
