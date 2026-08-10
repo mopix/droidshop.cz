@@ -3,6 +3,7 @@ import { computed, nextTick, ref } from 'vue'
 import { router, useForm } from '@inertiajs/vue3'
 import AdminLayout from '@/Layouts/AdminLayout.vue'
 import ConfirmDialog from '@/Components/Ui/ConfirmDialog.vue'
+import RichTextEditor from '@/Components/Ui/RichTextEditor.vue'
 
 type BlockPayload = Record<string, unknown>
 
@@ -623,19 +624,28 @@ const existingImageName = computed(() => existingImagePath.value?.split('/').pop
                 </div>
 
                 <div class="sm:col-span-2">
+                  <!--
+                    Same split as Products/Show.vue's #p-description: `id`
+                    now sits on the wrapping <div> RichTextEditor renders,
+                    not a form control, so this <label for> does not point at
+                    anything focusable. aria-label repeats the visible
+                    label's text so the editing surface still announces as
+                    "Obsah". Label dropped the "(HTML)" suffix along with the
+                    textarea it described — the merchant no longer types HTML
+                    by hand, so the old label was no longer true.
+                  -->
                   <label :for="`html-${block.id}`" class="block text-sm font-medium text-gray-700">
-                    Obsah (HTML)
+                    Obsah
                   </label>
-                  <textarea
+                  <RichTextEditor
                     :id="`html-${block.id}`"
                     v-model="editState.html"
-                    rows="6"
+                    aria-label="Obsah"
                     aria-describedby="html-hint"
-                    class="mt-1 w-full rounded-md border-gray-300 font-mono text-sm shadow-sm focus:border-gray-900 focus:ring-gray-900"
                   />
                   <p id="html-hint" class="mt-1 text-sm text-gray-600">
-                    Povolené HTML: odstavce, tučné, kurzíva, seznamy, nadpisy, odkazy. Ostatní se při uložení
-                    odstraní.
+                    Nadpisy, seznamy a odkazy udělá panel nad polem. Vložený text se pročistí při
+                    uložení.
                   </p>
                 </div>
               </template>

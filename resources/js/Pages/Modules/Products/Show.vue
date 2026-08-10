@@ -3,6 +3,7 @@ import { computed, nextTick, ref, watch } from 'vue'
 import { Link, router, useForm } from '@inertiajs/vue3'
 import AdminLayout from '@/Layouts/AdminLayout.vue'
 import ConfirmDialog from '@/Components/Ui/ConfirmDialog.vue'
+import RichTextEditor from '@/Components/Ui/RichTextEditor.vue'
 
 type ProductImage = { id: number; url: string; alt: string | null; is_main: boolean }
 
@@ -823,17 +824,25 @@ const runVariantDelete = () => {
           </div>
 
           <div class="sm:col-span-2">
+            <!--
+              `id` now belongs to the wrapping <div>, not a form control, so
+              `<label for>` would not point at anything a screen reader
+              considers focusable. Keeping the visible <label> (sighted users
+              still read it as the field's caption) and putting an
+              `aria-label` on the editing surface itself is simpler than
+              rewiring the label to `aria-labelledby` on a div, and gives the
+              same result: the editable region announces as "Popis".
+            -->
             <label for="p-description" class="block text-sm font-medium text-gray-700">Popis</label>
-            <textarea
+            <RichTextEditor
               id="p-description"
               v-model="form.description"
-              rows="8"
-              class="mt-1 w-full rounded-md border-gray-300 font-mono text-sm shadow-sm focus:border-gray-900 focus:ring-gray-900"
+              aria-label="Popis"
               aria-describedby="p-description-hint"
             />
             <p id="p-description-hint" class="mt-1 text-sm text-gray-600">
-              Povolené HTML: odstavce, tučné, kurzíva, seznamy, nadpisy, odkazy, obrázky, tabulky.
-              Ostatní se při uložení odstraní.
+              Nadpisy, seznamy a odkazy udělá panel nad polem. Vložený text se pročistí při
+              uložení.
             </p>
           </div>
 

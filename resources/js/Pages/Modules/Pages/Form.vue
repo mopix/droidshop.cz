@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { Link, useForm } from '@inertiajs/vue3'
 import AdminLayout from '@/Layouts/AdminLayout.vue'
+import RichTextEditor from '@/Components/Ui/RichTextEditor.vue'
 
 type Page = {
   id: number
@@ -81,17 +82,22 @@ const hasPlaceholders = computed(() => form.body.includes('[DOPLŇTE'))
       </div>
 
       <div>
+        <!--
+          Same split as Products/Show.vue's #p-description: `id` now sits on
+          the wrapping <div> RichTextEditor renders, not a form control, so
+          this <label for> does not point at anything focusable. The visible
+          label stays for sighted users; aria-label repeats its text so the
+          editing surface itself still announces as "Obsah".
+        -->
         <label for="body" class="block text-sm font-medium text-gray-700">Obsah</label>
-        <textarea
+        <RichTextEditor
           id="body"
           v-model="form.body"
-          rows="24"
-          class="mt-1 block w-full rounded-md border-gray-300 font-mono text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
-        ></textarea>
-        <p class="mt-1 text-sm text-gray-500">
-          Můžete použít HTML značky <code>&lt;h2&gt;</code>, <code>&lt;p&gt;</code>,
-          <code>&lt;strong&gt;</code>, <code>&lt;ul&gt;</code>, <code>&lt;li&gt;</code> a
-          <code>&lt;a&gt;</code>. Ostatní se při uložení odstraní.
+          aria-label="Obsah"
+          aria-describedby="body-hint"
+        />
+        <p id="body-hint" class="mt-1 text-sm text-gray-500">
+          Nadpisy, seznamy a odkazy udělá panel nad polem. Vložený text se pročistí při uložení.
         </p>
         <p v-if="form.errors.body" class="mt-1 text-sm text-red-600">{{ form.errors.body }}</p>
       </div>
