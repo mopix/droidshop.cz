@@ -336,28 +336,118 @@ test.describe('rich text editor elsewhere in the admin', () => {
    * so the warning must still fire — it is the only thing standing between a
    * template and a page published while it still reads as unfinished.
    *
+   * "Obchodní podmínky" (PageTemplates::terms()) seeds with about a dozen
+   * [DOPLŇTE …] markers already in it, so `hasPlaceholders` is true from the
+   * moment the page loads — before this test touches the editor at all.
+   * Ticking "Publikovat" alone, with zero interaction with the editor, would
+   * satisfy an assertion that the banner is merely *visible*: that version of
+   * this test passed whether or not RichTextEditor propagated anything into
+   * `form.body`. A before/after transition is the only shape that can only
+   * pass if the binding actually works: select-all + delete empties the
+   * document (RichTextEditor's onUpdate emits '' for a lone empty paragraph,
+   * see isTrulyEmpty in RichTextEditor.vue), which must make the banner
+   * disappear despite is_published staying checked throughout; typing a
+   * marker back in must make it reappear. If the editor's v-model binding
+   * were broken, form.body would still hold the original dozen markers after
+   * the delete, and the first assertion (banner gone) would fail.
+   *
    * The templates seed unpublished (Modules/Pages/Lifecycle.php), and the
    * banner is gated on `form.is_published && hasPlaceholders`, so the
-   * checkbox has to be ticked here for the banner to ever have a chance to
-   * show — without it this test would pass even if `hasPlaceholders` were
-   * deleted outright.
+   * checkbox is ticked once up front and left alone — the test only ever
+   * varies the editor's content from there.
    */
-  test('the placeholder warning still fires', async ({ page }) => {
+  test('the placeholder warning tracks the editor, not just the publish checkbox', async ({ page }) => {
     await page.goto(shopUrl('/admin/m/pages'))
     await page
       .locator('tr', { hasText: 'Obchodní podmínky' })
       .getByRole('link', { name: 'Upravit' })
       .click()
 
+    await page.getByLabel(/Publikovat/i).check()
+    await expect(page.getByText(/nedoplněné části/)).toBeVisible()
+
     const editor = page.locator('#body .ProseMirror')
     await editor.click()
     await page.keyboard.press('Control+a')
     await page.keyboard.press('Delete')
+
+    await expect(page.getByText(/nedoplněné části/)).toHaveCount(0)
+
     await editor.pressSequentially('[DOPLŇTE název firmy]')
 
-    await page.getByLabel(/Publikovat/i).check()
-
     await expect(page.getByText(/nedoplněné části/)).toBeVisible()
+  })
+
+  /**
+   * The wave-3.2 legal templates (Modules/Pages/Support/PageTemplates.php)
+   * carry two constructs the survival tests on the product description never
+   * exercised: <br> line breaks (the "Kontakt" page's address block, line 64)
+   * and target="_blank" rel="noopener" on an external link (the ČOI link on
+   * "Obchodní podmínky", line 84). Both tags/attributes are in
+   * HtmlSanitizer::ALLOWED, so both should survive a real edit — "should" is
+   * what the description field's own survival tests said too, before anyone
+   * made them able to fail on a broken schema.
+   *
+   * HtmlSanitizer itself rewrites `rel` to exactly "noopener noreferrer"
+   * whenever `target` is non-empty (HtmlSanitizer.php:135-136), unconditionally
+   * — that already ran on every save before this task existed, so the
+   * assertion checks for that server-authoritative value, not the template's
+   * original "noopener".
+   *
+   * Each page gets the same harmless edit-and-undo the description survival
+   * tests use: it forces a real Tiptap transaction, so getHTML() actually
+   * re-serialises the whole loaded document (br and link included) through
+   * the schema before it is posted, rather than just re-posting the prop
+   * PageTemplates seeded untouched.
+   */
+  test('the seeded legal templates keep <br> and target/rel through an edit and a save', async ({ page }) => {
+    await page.goto(shopUrl('/admin/m/pages'))
+    await page.locator('tr', { hasText: 'Kontakt' }).getByRole('link', { name: 'Upravit' }).click()
+
+    // <br> has no box of its own, so Playwright's toBeVisible() reports it
+    // hidden even when present — count is the correct check here, not
+    // visibility.
+    let editor = page.locator('#body .ProseMirror')
+    await expect(editor.locator('br')).not.toHaveCount(0)
+
+    await editor.locator('p').first().click()
+    await page.keyboard.press('Home')
+    await page.keyboard.type('x')
+    await page.keyboard.press('Backspace')
+
+    await page.getByRole('button', { name: 'Uložit' }).click()
+    await expect(page.getByText('Stránka byla uložena.')).toBeVisible()
+
+    const contactBody = artisanEval(`
+      $t = App\\Models\\Tenant::whereHas('domains', fn($q) => $q->where('domain', 'obchod.droidshop'))->firstOrFail();
+      app(App\\Core\\Tenancy\\TenantContext::class)->runAs($t, function () {
+        echo Modules\\Pages\\Models\\Page::where('slug', 'kontakt')->value('body');
+      });
+    `)
+    expect(contactBody).toContain('<br>')
+
+    await page.locator('tr', { hasText: 'Obchodní podmínky' }).getByRole('link', { name: 'Upravit' }).click()
+
+    editor = page.locator('#body .ProseMirror')
+    await expect(editor.locator('a[href="https://adr.coi.cz"]')).toBeVisible()
+
+    await editor.locator('p').first().click()
+    await page.keyboard.press('Home')
+    await page.keyboard.type('x')
+    await page.keyboard.press('Backspace')
+
+    await page.getByRole('button', { name: 'Uložit' }).click()
+    await expect(page.getByText('Stránka byla uložena.')).toBeVisible()
+
+    const termsBody = artisanEval(`
+      $t = App\\Models\\Tenant::whereHas('domains', fn($q) => $q->where('domain', 'obchod.droidshop'))->firstOrFail();
+      app(App\\Core\\Tenancy\\TenantContext::class)->runAs($t, function () {
+        echo Modules\\Pages\\Models\\Page::where('slug', 'obchodni-podminky')->value('body');
+      });
+    `)
+    expect(termsBody).toContain('href="https://adr.coi.cz"')
+    expect(termsBody).toContain('target="_blank"')
+    expect(termsBody).toContain('rel="noopener noreferrer"')
   })
 
   /**

@@ -630,15 +630,17 @@ const existingImageName = computed(() => existingImagePath.value?.split('/').pop
                     not a form control, so this <label for> does not point at
                     anything focusable. aria-label repeats the visible
                     label's text so the editing surface still announces as
-                    "Obsah (HTML)".
+                    "Obsah". Label dropped the "(HTML)" suffix along with the
+                    textarea it described — the merchant no longer types HTML
+                    by hand, so the old label was no longer true.
                   -->
                   <label :for="`html-${block.id}`" class="block text-sm font-medium text-gray-700">
-                    Obsah (HTML)
+                    Obsah
                   </label>
                   <RichTextEditor
                     :id="`html-${block.id}`"
                     v-model="editState.html"
-                    aria-label="Obsah (HTML)"
+                    aria-label="Obsah"
                     aria-describedby="html-hint"
                   />
                   <p id="html-hint" class="mt-1 text-sm text-gray-600">
