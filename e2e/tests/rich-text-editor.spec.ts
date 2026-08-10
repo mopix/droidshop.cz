@@ -158,4 +158,92 @@ test.describe('rich text editor', () => {
     await expect(page.getByText('Adresa musí začínat http://, https://, mailto:, tel: nebo /.')).toBeVisible()
     await expect(page.locator('#p-description .ProseMirror a')).toHaveCount(0)
   })
+
+  /**
+   * Tiptap drops nodes its schema does not know, so a description carrying a
+   * table or an image would lose it just by being opened and saved. The schema
+   * knows both; only the table is offered in the toolbar.
+   */
+  test('a table and an image already in the description survive a save', async ({ page }) => {
+    const original =
+      '<p>Popis</p><table><tbody><tr><th colspan="2">Rozměry</th></tr>' +
+      '<tr><td>Šířka</td><td>30 cm</td></tr></tbody></table>' +
+      '<img src="/media/demo.png" alt="Náhled" width="120" height="80">'
+
+    artisanEval(`
+      $t = App\\Models\\Tenant::whereHas('domains', fn($q) => $q->where('domain', 'obchod.droidshop'))->firstOrFail();
+      app(App\\Core\\Tenancy\\TenantContext::class)->runAs($t, function () {
+        $p = Modules\\Products\\Models\\Product::query()->where('slug', '${slug}')->firstOrFail();
+        $p->forceFill(['description' => '${original.replace(/'/g, "\\'")}'])->save();
+      });
+    `)
+
+    await page.goto(shopUrl(`/admin/m/products/${slug}`))
+    await page.getByRole('button', { name: 'Uložit', exact: true }).click()
+    await expect(page.getByText('Produkt byl uložen.')).toBeVisible()
+
+    const html = await (await page.request.get(shopUrl(`/produkt/${slug}`))).text()
+
+    expect(html).toContain('<th colspan="2">Rozměry</th>')
+    expect(html).toContain('<td>30 cm</td>')
+    expect(html).toContain('src="/media/demo.png"')
+    expect(html).toContain('alt="Náhled"')
+    expect(html).toContain('width="120"')
+  })
+
+  test('a table can be inserted from the toolbar', async ({ page }) => {
+    const editor = page.locator('#p-description .ProseMirror')
+
+    await editor.click()
+    await page.keyboard.press('Control+a')
+    await page.keyboard.press('Delete')
+
+    await page.getByRole('button', { name: 'Vložit tabulku' }).click()
+    await expect(editor.locator('table')).toBeVisible()
+
+    await page.getByRole('button', { name: 'Uložit', exact: true }).click()
+    await expect(page.getByText('Produkt byl uložen.')).toBeVisible()
+
+    const html = await (await page.request.get(shopUrl(`/produkt/${slug}`))).text()
+    expect(html).toContain('<table>')
+  })
+
+  /**
+   * Row and column buttons stay visible but go inactive outside a table:
+   * buttons that disappear shift the rest of the toolbar and the merchant hunts
+   * for them where they were last time.
+   */
+  test('row and column buttons are disabled outside a table', async ({ page }) => {
+    const editor = page.locator('#p-description .ProseMirror')
+
+    await editor.click()
+    await page.keyboard.press('Control+a')
+    await page.keyboard.press('Delete')
+    await editor.pressSequentially('Bez tabulky')
+
+    await expect(page.getByRole('button', { name: 'Přidat řádek' })).toBeDisabled()
+    await expect(page.getByRole('button', { name: 'Přidat řádek' })).toBeVisible()
+  })
+
+  /**
+   * This file is the only one in the suite that mutates this product's
+   * description (grep confirms it), and global-setup only runs migrate:fresh
+   * once per `playwright test` invocation, not per spec file — so a later
+   * file in the same run, or a developer re-running just this file against a
+   * server left up from a previous invocation, would otherwise start from
+   * whatever the last test above happened to save. Restoring it here keeps
+   * this file's mutations local to itself, matching what DemoShopSeeder would
+   * have written (it does not re-seed an existing product on rerun).
+   */
+  test.afterAll(() => {
+    artisanEval(`
+      $t = App\\Models\\Tenant::whereHas('domains', fn($q) => $q->where('domain', 'obchod.droidshop'))->firstOrFail();
+      app(App\\Core\\Tenancy\\TenantContext::class)->runAs($t, function () {
+        $p = Modules\\Products\\Models\\Product::query()->where('slug', '${slug}')->firstOrFail();
+        app(Modules\\Products\\Services\\ProductWriter::class)->update($p, [
+          'description' => '<p>'.$p->short_description.'</p><p>Demo produkt e-shopu DroidShop.</p>',
+        ]);
+      });
+    `)
+  })
 })

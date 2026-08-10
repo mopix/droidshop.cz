@@ -15,6 +15,8 @@ import { EditorContent, useEditor } from '@tiptap/vue-3'
 import StarterKit from '@tiptap/starter-kit'
 import Image from '@tiptap/extension-image'
 import Link from '@tiptap/extension-link'
+import { TableKit } from '@tiptap/extension-table'
+import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
 import { nextTick, ref, watch } from 'vue'
 
 const props = defineProps<{
@@ -116,6 +118,29 @@ function collapseSingleParagraphListItems(html: string): string {
   return doc.body.innerHTML
 }
 
+/**
+ * Tiptap's own `editor.isEmpty` walks every descendant leaf and calls the
+ * document empty as soon as none of them holds text — including a freshly
+ * inserted table, whose header and body cells are all blank paragraphs until
+ * someone types into one. `onUpdate` below used to gate on `editor.isEmpty`
+ * to collapse the placeholder ProseMirror leaves behind after a full
+ * select-and-delete (a lone empty paragraph, serialised as `<p></p>`) down to
+ * a real empty string; that same check silently discarded a table the moment
+ * it was inserted and saved, because the table has no text either.
+ *
+ * "Nothing here" for this field is specifically that placeholder, not "no
+ * text content anywhere" — a table or a top-level image is real structure
+ * even with zero characters typed into it.
+ */
+function isTrulyEmpty(doc: ProseMirrorNode): boolean {
+  if (doc.childCount === 0) return true
+  if (doc.childCount > 1) return false
+
+  const only = doc.firstChild
+
+  return only !== null && only.type.name === 'paragraph' && only.content.size === 0
+}
+
 /** True while we are writing the prop into the editor, so the resulting
  * update event does not bounce back out as a change the user made. */
 const applyingExternal = ref(false)
@@ -163,11 +188,16 @@ const editor = useEditor({
     }),
     SizedImage,
     TitledLink,
+    TableKit.configure({
+      // Resizing writes a colwidth attribute the sanitiser drops anyway, and
+      // the handle is mouse-only.
+      table: { resizable: false },
+    }),
   ],
   onUpdate: ({ editor }) => {
     if (applyingExternal.value) return
 
-    emit('update:modelValue', editor.isEmpty ? '' : collapseSingleParagraphListItems(editor.getHTML()))
+    emit('update:modelValue', isTrulyEmpty(editor.state.doc) ? '' : collapseSingleParagraphListItems(editor.getHTML()))
   },
 })
 
@@ -244,7 +274,7 @@ watch(
     const current = editor.value ? collapseSingleParagraphListItems(editor.value.getHTML()) : ''
     if (!editor.value || value === current) return
     // An empty document reads as "<p></p>", which is not the same as no value.
-    if ((value ?? '') === '' && editor.value.isEmpty) return
+    if ((value ?? '') === '' && isTrulyEmpty(editor.value.state.doc)) return
 
     applyingExternal.value = true
     editor.value.commands.setContent(value ?? '', { emitUpdate: false })
@@ -383,6 +413,62 @@ watch(
 
       <button
         type="button"
+        aria-label="Vložit tabulku"
+        class="rounded px-2 py-1 text-sm text-gray-700 hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-900"
+        @click="editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()"
+      >
+        ▦
+      </button>
+      <button
+        type="button"
+        aria-label="Přidat řádek"
+        :disabled="!editor.can().addRowAfter()"
+        class="rounded px-2 py-1 text-sm text-gray-700 hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-900 disabled:opacity-40 disabled:hover:bg-transparent"
+        @click="editor.chain().focus().addRowAfter().run()"
+      >
+        +řádek
+      </button>
+      <button
+        type="button"
+        aria-label="Odebrat řádek"
+        :disabled="!editor.can().deleteRow()"
+        class="rounded px-2 py-1 text-sm text-gray-700 hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-900 disabled:opacity-40 disabled:hover:bg-transparent"
+        @click="editor.chain().focus().deleteRow().run()"
+      >
+        −řádek
+      </button>
+      <button
+        type="button"
+        aria-label="Přidat sloupec"
+        :disabled="!editor.can().addColumnAfter()"
+        class="rounded px-2 py-1 text-sm text-gray-700 hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-900 disabled:opacity-40 disabled:hover:bg-transparent"
+        @click="editor.chain().focus().addColumnAfter().run()"
+      >
+        +sloupec
+      </button>
+      <button
+        type="button"
+        aria-label="Odebrat sloupec"
+        :disabled="!editor.can().deleteColumn()"
+        class="rounded px-2 py-1 text-sm text-gray-700 hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-900 disabled:opacity-40 disabled:hover:bg-transparent"
+        @click="editor.chain().focus().deleteColumn().run()"
+      >
+        −sloupec
+      </button>
+      <button
+        type="button"
+        aria-label="Smazat tabulku"
+        :disabled="!editor.can().deleteTable()"
+        class="rounded px-2 py-1 text-sm text-gray-700 hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-900 disabled:opacity-40 disabled:hover:bg-transparent"
+        @click="editor.chain().focus().deleteTable().run()"
+      >
+        ✕tabulka
+      </button>
+
+      <span class="mx-1 w-px bg-gray-300" aria-hidden="true" />
+
+      <button
+        type="button"
         aria-label="Vymazat formátování"
         class="rounded px-2 py-1 text-sm text-gray-700 hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-900"
         @click="editor.chain().focus().unsetAllMarks().clearNodes().run()"
@@ -478,5 +564,20 @@ watch(
 :deep(.ProseMirror img) {
   max-width: 100%;
   height: auto;
+}
+:deep(.ProseMirror table) {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 0.75rem 0;
+}
+:deep(.ProseMirror th),
+:deep(.ProseMirror td) {
+  border: 1px solid #d1d5db;
+  padding: 0.375rem 0.5rem;
+  text-align: left;
+}
+:deep(.ProseMirror th) {
+  background: #f3f4f6;
+  font-weight: 600;
 }
 </style>
