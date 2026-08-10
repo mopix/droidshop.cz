@@ -131,6 +131,15 @@ function collapseSingleParagraphListItems(html: string): string {
  * "Nothing here" for this field is specifically that placeholder, not "no
  * text content anywhere" — a table or a top-level image is real structure
  * even with zero characters typed into it.
+ *
+ * That narrows what "empty" means compared to the old check, and the
+ * narrowing is unannounced anywhere else: a heading whose text a merchant
+ * deletes down to nothing used to collapse to '' (an empty `<h2>` has no
+ * text, `editor.isEmpty` said so); it now persists as `<h2></h2>` instead,
+ * because a single non-paragraph block does not match the placeholder shape
+ * this function looks for. Deliberate — it means the function never discards
+ * structure it cannot prove is meaningless — but worth knowing before
+ * changing what counts as "the placeholder shape" here.
  */
 function isTrulyEmpty(doc: ProseMirrorNode): boolean {
   if (doc.childCount === 0) return true

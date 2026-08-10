@@ -59,15 +59,25 @@ test.describe('rich text editor', () => {
    * a hypothetical. Neither a link nor an image has a toolbar button in this
    * task (Task 2 and the plan's own image decision respectively), so the
    * only way either survives is if the editor's schema still knows the tag
-   * even without a button producing it — opening and saving unchanged must
-   * not be what strips it.
+   * even without a button producing it.
    *
    * The seed link also carries `title` — the one attribute TitledLink adds
    * on top of Tiptap's stock Link mark (HtmlSanitizer allows it on <a>,
    * Tiptap does not know it without the extension). Nothing else in this
    * suite would notice if that override silently stopped working.
+   *
+   * Clicking "Uložit" with no prior interaction is not a schema test: Show.vue
+   * initialises `form.description` straight from the loaded prop and posts
+   * that same value on submit unless `RichTextEditor`'s `onUpdate` has fired
+   * at least once — mounting the editor does not fire it, only a real
+   * transaction does. Without the harmless edit-and-undo below, this test
+   * would stay green even with `TitledLink`/`SizedImage` deleted, because it
+   * would just be re-posting the exact string `artisanEval` seeded. The edit
+   * forces `getHTML()` to actually re-serialise the loaded document, so the
+   * assertions below are checking what the *schema* reconstructs, not what
+   * PHP originally wrote to the row.
    */
-  test('a hand-typed link and an existing image survive opening the field unchanged', async ({ page }) => {
+  test('a hand-typed link and an existing image survive an edit and a save', async ({ page }) => {
     artisanEval(`
       $t = App\\Models\\Tenant::whereHas('domains', fn($q) => $q->where('domain', 'obchod.droidshop'))->firstOrFail();
       app(App\\Core\\Tenancy\\TenantContext::class)->runAs($t, function () {
@@ -85,6 +95,14 @@ test.describe('rich text editor', () => {
     await expect(editor.locator('a[href="https://example.com/x"]')).toBeVisible()
     await expect(editor.locator('a[title="Navod"]')).toBeVisible()
     await expect(editor.locator('img[src="/media/e2e-test.png"]')).toBeVisible()
+
+    // A harmless type-then-undo, placed before the link by Home, so it fires
+    // a real Tiptap transaction (see the comment above) without touching the
+    // link's or the image's own markup.
+    await editor.locator('p').first().click()
+    await page.keyboard.press('Home')
+    await page.keyboard.type('x')
+    await page.keyboard.press('Backspace')
 
     await page.getByRole('button', { name: 'Uložit', exact: true }).click()
     await expect(page.getByText('Produkt byl uložen.')).toBeVisible()
@@ -163,8 +181,29 @@ test.describe('rich text editor', () => {
    * Tiptap drops nodes its schema does not know, so a description carrying a
    * table or an image would lose it just by being opened and saved. The schema
    * knows both; only the table is offered in the toolbar.
+   *
+   * Clicking "Uložit" with no prior interaction proves nothing about that: per
+   * the comment on the link/image test above, `form.description` is posted
+   * unchanged unless the editor has fired a real transaction — with no edit
+   * here, this test would stay green even with `TableKit`/`SizedImage`
+   * deleted from the schema entirely, because it would just be re-posting the
+   * exact string `forceFill` wrote. The edit-and-undo below forces
+   * `getHTML()` to re-serialise the whole document (table, image and all)
+   * through the actual schema before it is posted.
+   *
+   * A genuine round trip does not come back byte-identical, and the
+   * assertions below deliberately do not require that: Tiptap's table cell
+   * schema wraps cell text in its own `<p>` (the same reason list items need
+   * `collapseSingleParagraphListItems`, not applied here since it only
+   * targets `<li>`) and always serialises `colspan`/`rowspan` — even the `1`
+   * a cell never had explicitly. `HtmlSanitizer` allows both on `<th>`/`<td>`
+   * and does not police nesting, so none of that is stripped and none of it
+   * changes what a browser renders. What must not change is the row/column
+   * shape (the `colspan="2"` header still spans two columns) and the actual
+   * content (both cell values, the image and every attribute HtmlSanitizer
+   * allows on it) — that is what these assertions check.
    */
-  test('a table and an image already in the description survive a save', async ({ page }) => {
+  test('a table and an image already in the description survive an edit and a save', async ({ page }) => {
     const original =
       '<p>Popis</p><table><tbody><tr><th colspan="2">Rozměry</th></tr>' +
       '<tr><td>Šířka</td><td>30 cm</td></tr></tbody></table>' +
@@ -179,16 +218,29 @@ test.describe('rich text editor', () => {
     `)
 
     await page.goto(shopUrl(`/admin/m/products/${slug}`))
+
+    const editor = page.locator('#p-description .ProseMirror')
+    // A harmless type-then-undo in the leading paragraph — see the comment
+    // above and the matching one on the link/image test.
+    await editor.locator('p').first().click()
+    await page.keyboard.press('Home')
+    await page.keyboard.type('x')
+    await page.keyboard.press('Backspace')
+
     await page.getByRole('button', { name: 'Uložit', exact: true }).click()
     await expect(page.getByText('Produkt byl uložen.')).toBeVisible()
 
     const html = await (await page.request.get(shopUrl(`/produkt/${slug}`))).text()
 
-    expect(html).toContain('<th colspan="2">Rozměry</th>')
-    expect(html).toContain('<td>30 cm</td>')
+    expect(html).toContain('<table>')
+    expect(html).toContain('colspan="2"')
+    expect(html).toContain('Rozměry')
+    expect(html).toContain('Šířka')
+    expect(html).toContain('30 cm')
     expect(html).toContain('src="/media/demo.png"')
     expect(html).toContain('alt="Náhled"')
     expect(html).toContain('width="120"')
+    expect(html).toContain('height="80"')
   })
 
   test('a table can be inserted from the toolbar', async ({ page }) => {
