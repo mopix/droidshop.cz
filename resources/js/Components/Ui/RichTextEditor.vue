@@ -48,6 +48,14 @@ const props = defineProps<{
  * screen reader would ever read it out.
  */
 const editableAttributes = () => ({
+  // A bare contenteditable <div> exposes no ARIA role of its own — browsers
+  // and axe both treat it as role=generic — and generic prohibits
+  // aria-label/aria-labelledby (axe: aria-prohibited-attr). `role="textbox"`
+  // plus `aria-multiline="true"` is the WAI-ARIA APG's own rich-text-editor
+  // pattern for exactly this contenteditable shape; it is what makes the
+  // aria-label below a legal attribute in the first place, not decoration.
+  role: 'textbox',
+  'aria-multiline': 'true',
   ...(props.ariaLabel ? { 'aria-label': props.ariaLabel } : {}),
   ...(props.ariaDescribedby ? { 'aria-describedby': props.ariaDescribedby } : {}),
 })

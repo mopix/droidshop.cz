@@ -1,5 +1,23 @@
+import AxeBuilder from '@axe-core/playwright'
 import { expect, test } from '@playwright/test'
+import type { Page } from '@playwright/test'
 import { artisanEval, shopUrl, signInAsOwner } from '../support/shop'
+
+/**
+ * Same shape as accessibility.spec.ts's auditPage: only critical and serious
+ * block, everything else is printed but does not fail the build (a suite red
+ * over a finding nobody will fix gets skipped, and then it misses the one
+ * that mattered — wave 3.4).
+ */
+async function auditPage(page: Page, label: string): Promise<void> {
+  const results = await new AxeBuilder({ page }).analyze()
+  const blocking = results.violations.filter((v) => v.impact === 'critical' || v.impact === 'serious')
+
+  expect(
+    blocking.map((v) => `${v.id} (${v.impact}) — ${v.nodes.length}× — ${v.help}`),
+    `${label} has blocking accessibility violations`,
+  ).toEqual([])
+}
 
 /**
  * The description field used to be a bare <textarea> where a merchant had to
@@ -275,6 +293,27 @@ test.describe('rich text editor', () => {
 
     await expect(page.getByRole('button', { name: 'Přidat řádek' })).toBeDisabled()
     await expect(page.getByRole('button', { name: 'Přidat řádek' })).toBeVisible()
+  })
+
+  test('the product form with the editor has no blocking accessibility findings', async ({ page }) => {
+    await page.locator('#p-description .ProseMirror').waitFor()
+
+    await auditPage(page, 'product form — editor closed')
+  })
+
+  /**
+   * The link dialog swaps in a second row of controls (a text input plus two
+   * buttons) that only exist while it is open — an axe pass over the closed
+   * toolbar says nothing about whether that markup is also clean.
+   */
+  test('the link dialog has no blocking accessibility findings while open', async ({ page }) => {
+    const editor = page.locator('#p-description .ProseMirror')
+    await editor.click()
+
+    await page.getByRole('button', { name: 'Vložit odkaz' }).click()
+    await expect(page.getByLabel('Adresa odkazu')).toBeVisible()
+
+    await auditPage(page, 'product form — link dialog open')
   })
 
   /**
