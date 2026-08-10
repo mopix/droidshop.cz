@@ -74,7 +74,11 @@ const TitledLink = Link.extend({
 }).configure({
   openOnClick: false,
   autolink: false,
-  // Mirrors HtmlSanitizer::ALLOWED_SCHEMES plus relative paths.
+  // Naming these here does not narrow Tiptap to just this list — `protocols`
+  // is additive to linkifyjs's own built-in set (which already includes
+  // http/https/mailto), not a replacement of it, so this is not what keeps
+  // the schema in step with HtmlSanitizer::ALLOWED_SCHEMES. `isSafeUrl()`
+  // below is the actual gate: it runs before setLink() is ever called.
   protocols: ['http', 'https', 'mailto', 'tel'],
 })
 
@@ -171,14 +175,22 @@ const linkOpen = ref(false)
 const linkUrl = ref('')
 const linkError = ref('')
 const linkInput = ref<HTMLInputElement | null>(null)
+// Derived from props.id, not a fixed string, so two editor instances on the
+// same admin page cannot collide on which input their error text describes.
+const linkErrorId = `${props.id}-link-error`
 
-/** Mirrors HtmlSanitizer::isSafeUrl. */
+/**
+ * Deliberately stricter than HtmlSanitizer::isSafeUrl on one point: the
+ * server accepts anything starting with "/", including "//evil.com" and
+ * "/\evil.com" — open redirects wearing an internal path. Rejecting those
+ * here uses the same guard as BlockUrl::isSafe (decision 2026-07-26). The
+ * divergence only ever runs in the safe direction: this refuses a value the
+ * server would keep, so the merchant is never told "saved" when it was not.
+ */
 function isSafeUrl(url: string): boolean {
   const value = url.trim()
   if (value === '') return false
   if (value.startsWith('#')) return true
-  // "/" is fine, but "//evil.com" and "/\evil.com" are open redirects wearing
-  // an internal path (same guard as BlockUrl::isSafe, decision 2026-07-26).
   if (value.startsWith('/')) return !value.startsWith('//') && !value.startsWith('/\\')
 
   return /^(https?|mailto|tel):/i.test(value)
@@ -207,6 +219,18 @@ function applyLink() {
 
 function removeLink() {
   editor.value?.chain().focus().extendMarkRange('link').unsetLink().run()
+}
+
+/**
+ * Escape and "Zrušit" unmount the panel while focus is still inside it
+ * (the input, or one of these two buttons) — without moving focus back to
+ * the editor first, a keyboard user lands on document.body and has lost
+ * their place on the page, same failure applyLink already avoids by
+ * chaining `.focus()` before it closes.
+ */
+function closeLinkDialog() {
+  editor.value?.chain().focus().run()
+  linkOpen.value = false
 }
 
 watch(
@@ -374,19 +398,25 @@ watch(
         type="text"
         aria-label="Adresa odkazu"
         :aria-invalid="linkError ? 'true' : undefined"
-        aria-describedby="rte-link-error"
+        :aria-describedby="linkErrorId"
         class="min-w-0 flex-1 rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-900 focus:ring-gray-900"
         placeholder="https://"
         @keydown.enter.prevent="applyLink"
-        @keydown.esc.prevent="linkOpen = false"
+        @keydown.esc.prevent="closeLinkDialog"
       />
       <button type="button" class="rounded-md bg-gray-900 px-3 py-2 text-sm text-white" @click="applyLink">
         Vložit
       </button>
-      <button type="button" class="rounded-md border border-gray-300 px-3 py-2 text-sm" @click="linkOpen = false">
+      <button type="button" class="rounded-md border border-gray-300 px-3 py-2 text-sm" @click="closeLinkDialog">
         Zrušit
       </button>
-      <p v-if="linkError" id="rte-link-error" class="w-full text-sm text-red-600">{{ linkError }}</p>
+      <!--
+        Always in the DOM — the input's aria-describedby points at this id
+        unconditionally, and an id that only exists while there is an error
+        is a dangling reference (and an axe aria-valid-attr-value violation)
+        the rest of the time. v-show only toggles visibility, never removes it.
+      -->
+      <p v-show="linkError" :id="linkErrorId" class="w-full text-sm text-red-600">{{ linkError }}</p>
     </div>
 
     <EditorContent :editor="editor" />

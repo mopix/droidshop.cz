@@ -61,6 +61,11 @@ test.describe('rich text editor', () => {
    * only way either survives is if the editor's schema still knows the tag
    * even without a button producing it — opening and saving unchanged must
    * not be what strips it.
+   *
+   * The seed link also carries `title` — the one attribute TitledLink adds
+   * on top of Tiptap's stock Link mark (HtmlSanitizer allows it on <a>,
+   * Tiptap does not know it without the extension). Nothing else in this
+   * suite would notice if that override silently stopped working.
    */
   test('a hand-typed link and an existing image survive opening the field unchanged', async ({ page }) => {
     artisanEval(`
@@ -68,7 +73,7 @@ test.describe('rich text editor', () => {
       app(App\\Core\\Tenancy\\TenantContext::class)->runAs($t, function () {
         $product = Modules\\Products\\Models\\Product::where('slug', '${slug}')->firstOrFail();
         app(Modules\\Products\\Services\\ProductWriter::class)->update($product, [
-          'description' => '<p>Text s <a href="https://example.com/x">odkazem</a>.</p><p><img src="/media/e2e-test.png" alt="Ukazkovy obrazek" width="120"></p>',
+          'description' => '<p>Text s <a href="https://example.com/x" title="Navod">odkazem</a>.</p><p><img src="/media/e2e-test.png" alt="Ukazkovy obrazek" width="120"></p>',
         ]);
       });
     `)
@@ -78,6 +83,7 @@ test.describe('rich text editor', () => {
 
     const editor = page.locator('#p-description .ProseMirror')
     await expect(editor.locator('a[href="https://example.com/x"]')).toBeVisible()
+    await expect(editor.locator('a[title="Navod"]')).toBeVisible()
     await expect(editor.locator('img[src="/media/e2e-test.png"]')).toBeVisible()
 
     await page.getByRole('button', { name: 'Uložit', exact: true }).click()
@@ -86,7 +92,8 @@ test.describe('rich text editor', () => {
     const response = await page.request.get(shopUrl(`/produkt/${slug}`))
     const html = await response.text()
 
-    expect(html).toContain('<a href="https://example.com/x">odkazem</a>')
+    expect(html).toContain('href="https://example.com/x"')
+    expect(html).toContain('title="Navod"')
     expect(html).toContain('<img src="/media/e2e-test.png" alt="Ukazkovy obrazek" width="120">')
   })
 
