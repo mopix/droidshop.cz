@@ -188,7 +188,9 @@ const editor = useEditor({
       horizontalRule: false,
       // h1 belongs to the product name on the storefront.
       heading: { levels: [2, 3, 4] },
-      link: false, // replaced in Task 2 with one that keeps the title attribute
+      // Link stays registered at its default: no toolbar button until Task 2,
+      // but a description carrying a hand-typed <a> must not lose it just by
+      // being opened. Same treatment as Image.
     }),
     SizedImage,
   ],
@@ -427,9 +429,11 @@ npx playwright test --config=e2e/playwright.config.ts e2e/tests/rich-text-editor
 
 Očekávané: FAIL — tlačítko `Vložit odkaz` neexistuje.
 
-- [ ] **Step 3: Doplnit Link do schématu**
+- [ ] **Step 3: Vyměnit Link ve schématu**
 
-Ve `<script setup>` komponenty přidej k importům a k `extensions` (StarterKit má `link: false` už z Tasku 1):
+Task 1 nechává `Link` registrovaný na výchozím nastavení StarterKitu (bez tlačítka), aby existující odkazy přežily — schéma bez Link marku by je zahodilo při načtení, stejná chyba jako u `Image`. Tady ho vypni ve StarterKitu (`link: false`) a nahraď vlastním, který navíc drží atribut `title`.
+
+Ve `<script setup>` komponenty přidej k importům a k `extensions`:
 
 ```ts
 import Link from '@tiptap/extension-link'
