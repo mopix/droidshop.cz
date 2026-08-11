@@ -33,19 +33,33 @@ interface Carrier
      * driver derive them, so the one authority on "how much money is on this
      * packet" stays where the order total is known.
      *
-     * @throws CarrierError
-     */
-    /**
-     * @param  array{length: int, width: int, height: int}|null  $dimensionsMm
-     *                                                                          outer size in millimetres, when the shop filled it in and the parcel
+     * $destination means different things depending on requiresPickupPoint():
+     * for a carrier that delivers to a branch it is the chosen pickup point's
+     * code; for a carrier that delivers to the shopper's own address (home
+     * delivery, wave "Packeta home delivery") it is the partner carrier's own
+     * id (PPL/DPD/GLS/Česká pošta — Packeta's own catalog id for the delivery
+     * service it brokers through), not a code either driver looks up in a
+     * catalogue. One parameter, not two, because a caller only ever has one
+     * or the other to give — never both — for a single order.
+     *
+     * $address is the delivery address, required by a driver that does not
+     * require a pickup point and ignored by one that does (a pickup point
+     * already carries its own address, resolved from the pickup-point
+     * catalogue, not the shopper's).
+     *
+     * @param  array{length: int, width: int, height: int}|null  $dimensionsMm  outer size in millimetres, when the shop filled it in and the parcel
      *                                                                          is a single product (wave 3.8)
+     * @param  array<string, mixed>|null  $address  the order's delivery address (street, city, zip, ...), shaped like OrderView::orderBilling()
+     *
+     * @throws CarrierError
      */
     public function submit(
         OrderView $order,
-        string $pickupPointCode,
+        string $destination,
         Money $codAmount,
         int $weightGrams,
         ?array $dimensionsMm = null,
+        ?array $address = null,
     ): ShipmentResult;
 
     /**

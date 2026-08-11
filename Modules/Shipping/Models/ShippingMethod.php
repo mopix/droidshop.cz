@@ -31,6 +31,15 @@ class ShippingMethod extends Model implements ShippingOption
 
     public const PROVIDER_PACKETA = 'packeta';
 
+    /**
+     * Zásilkovna delivering to the shopper's own address through a partner
+     * carrier (PPL/DPD/GLS/Česká pošta) rather than to a branch — a separate
+     * shipping_methods row from PROVIDER_PACKETA, with its own credentials
+     * and price, exactly like PROVIDER_PICKUP and PROVIDER_FLAT are separate
+     * rows rather than a flag on one.
+     */
+    public const PROVIDER_PACKETA_HD = 'packeta_hd';
+
     protected $guarded = [];
 
     protected $hidden = ['settings'];

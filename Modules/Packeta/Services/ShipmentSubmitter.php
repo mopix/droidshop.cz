@@ -123,9 +123,23 @@ final class ShipmentSubmitter
 
         $pickupPointCode = (string) ($pickupPoint['code'] ?? '');
 
-        if ($pickupPointCode === '') {
+        // Only a carrier that delivers to a branch requires one — a driver
+        // delivering to the shopper's own address (home-delivery wave) has
+        // no pickup_point on the snapshot at all, by design (Modules\Orders\
+        // Services\OrderPlacer::resolvePickupPoint() returns null for it).
+        if ($carrier->requiresPickupPoint() && $pickupPointCode === '') {
             throw CarrierError::rejected($carrier->key(), 'objednávka nemá výdejní místo');
         }
+
+        // Carrier::submit()'s $destination means different things per
+        // driver (see its own docblock): a pickup point's code, or the
+        // partner carrier's own id for a driver that delivers to an
+        // address. The latter is a platform-wide constant (Packeta's own
+        // catalog id for the delivery service, not a tenant credential),
+        // never resolved from the order.
+        $destination = $carrier->requiresPickupPoint()
+            ? $pickupPointCode
+            : (string) config('packeta.home_delivery_carrier_id');
 
         // Modules\Orders\Services\OrderPlacer already applies the shipping
         // method's own configured fallback (or a last-resort 1000g) whenever
@@ -175,13 +189,17 @@ final class ShipmentSubmitter
         try {
             $result = $carrier->submit(
                 $order,
-                $pickupPointCode,
+                $destination,
                 $shipment->cod_amount,
                 (int) $shipment->weight_grams,
                 // Snapshotted at placement (wave 3.8), like the weight: a
                 // later edit to the product must not redescribe a parcel
                 // that has already been placed.
                 $this->dimensionsFrom($order),
+                // Passed only to a driver that actually needs one — a pickup
+                // point already carries its own address (see PacketaCarrier's
+                // own note on its unused $address parameter).
+                $carrier->requiresPickupPoint() ? null : $this->deliveryAddress($order),
             );
         } catch (CarrierError $e) {
             // The write is best-effort here: this request's own outcome is
@@ -380,6 +398,23 @@ final class ShipmentSubmitter
         return is_array($point) && is_array($point['dimensions_mm'] ?? null)
             ? $point['dimensions_mm']
             : null;
+    }
+
+    /**
+     * The order's delivery address, falling back to billing when the
+     * shopper ships to the address they're billed at — the same fallback
+     * the admin order page already shows ("shodná s fakturační") for a null
+     * orders.shipping (Modules\Orders\Http\Controllers\OrderAdminController,
+     * resources/js/Pages/Modules/Orders/Show.vue). OrderView::
+     * orderShippingAddress() stays a plain mirror of the column, so this is
+     * the one place that applies the fallback, rather than every caller
+     * re-deciding it.
+     *
+     * @return array<string, mixed>
+     */
+    private function deliveryAddress(OrderView $order): array
+    {
+        return $order->orderShippingAddress() ?? $order->orderBilling();
     }
 
     private function refreshCodAmount(Shipment $shipment, OrderView $order): Shipment

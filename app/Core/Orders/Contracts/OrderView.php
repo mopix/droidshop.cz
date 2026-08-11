@@ -108,6 +108,21 @@ interface OrderView
     public function orderBilling(): array;
 
     /**
+     * The delivery address as it was recorded at placement, or null when the
+     * shopper ships to the same address they're billed at — the same
+     * fallback the admin order page already shows ("shodná s fakturační")
+     * for a null orders.shipping. A caller that needs an address regardless
+     * of whether one was chosen must apply that fallback itself, e.g.
+     * `orderShippingAddress() ?? orderBilling()` (Modules\Packeta\Services\
+     * ShipmentSubmitter, home-delivery wave) — this accessor stays a plain
+     * mirror of the column rather than baking the fallback in, the same
+     * separation orderShippingSnapshot() keeps from orderBilling() itself.
+     *
+     * @return array<string, mixed>|null
+     */
+    public function orderShippingAddress(): ?array;
+
+    /**
      * The per-rate VAT recap computed in haléře at placement (base, vat, rate).
      * A document takes its VAT from here rather than recomputing it, so the
      * money on the invoice is exactly the money the customer paid.

@@ -8,13 +8,21 @@ use Modules\Shipping\Models\ShippingMethod;
 use Modules\Storefront\Support\ShopModules;
 
 /**
- * Resolves a carrier driver for the current tenant (wave 2.5).
+ * Resolves a carrier driver for the current tenant (wave 2.5; extended for
+ * Packeta home delivery).
  *
  * Per-tenant activation is answered here at call time through ShopModules, the
  * same as EloquentPaymentGatewayRegistry — the provider's binding is per
  * deploy, activation is per request. A driver is only built for a provider the
  * tenant has switched on AND configured, so checkout never offers a delivery
  * nobody could hand over.
+ *
+ * Two provider keys share this one module: branch delivery (PROVIDER_PACKETA)
+ * and address delivery through a partner carrier (PROVIDER_PACKETA_HD), each
+ * its own shipping_methods row with its own credentials — for() looks up the
+ * row that matches the REQUESTED provider, not a hardcoded one, so adding a
+ * third Packeta-family provider later is another arm of the match, not a
+ * rewrite of this class.
  */
 final class EloquentCarrierRegistry implements CarrierRegistry
 {
@@ -22,15 +30,28 @@ final class EloquentCarrierRegistry implements CarrierRegistry
 
     public function for(string $provider): ?Carrier
     {
-        if ($provider !== ShippingMethod::PROVIDER_PACKETA || ! $this->modules->has('packeta')) {
+        if (! $this->modules->has('packeta')) {
             return null;
         }
 
-        $method = ShippingMethod::query()
-            ->where('provider', ShippingMethod::PROVIDER_PACKETA)
-            ->where('is_active', true)
-            ->orderBy('position')
-            ->first();
+        return match ($provider) {
+            ShippingMethod::PROVIDER_PACKETA => $this->packetaCarrier(),
+            ShippingMethod::PROVIDER_PACKETA_HD => $this->packetaHomeDelivery(),
+            default => null,
+        };
+    }
+
+    public function available(): array
+    {
+        return array_values(array_filter(
+            [ShippingMethod::PROVIDER_PACKETA, ShippingMethod::PROVIDER_PACKETA_HD],
+            fn (string $provider): bool => $this->for($provider) !== null,
+        ));
+    }
+
+    private function packetaCarrier(): ?Carrier
+    {
+        $method = $this->method(ShippingMethod::PROVIDER_PACKETA);
 
         // The raw secret, not the model's apiPasswordSet() boolean — the
         // admin surfaces only the boolean (spec §16.5, never echo a
@@ -47,10 +68,29 @@ final class EloquentCarrierRegistry implements CarrierRegistry
         return new PacketaCarrier(new PacketaClient((string) $password), (string) $eshop);
     }
 
-    public function available(): array
+    private function packetaHomeDelivery(): ?Carrier
     {
-        return $this->for(ShippingMethod::PROVIDER_PACKETA) !== null
-            ? [ShippingMethod::PROVIDER_PACKETA]
-            : [];
+        $method = $this->method(ShippingMethod::PROVIDER_PACKETA_HD);
+
+        // Read raw, like packetaCarrier() above: packetaEshop()/settings
+        // accessors on ShippingMethod are scoped to PROVIDER_PACKETA today,
+        // and this is a different row/provider entirely.
+        $password = $method?->settings['api_password'] ?? null;
+        $eshop = $method?->settings['eshop'] ?? null;
+
+        if (blank($password) || blank($eshop)) {
+            return null;
+        }
+
+        return new PacketaHomeDelivery(new PacketaClient((string) $password), (string) $eshop);
+    }
+
+    private function method(string $provider): ?ShippingMethod
+    {
+        return ShippingMethod::query()
+            ->where('provider', $provider)
+            ->where('is_active', true)
+            ->orderBy('position')
+            ->first();
     }
 }

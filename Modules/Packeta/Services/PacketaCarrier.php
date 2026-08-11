@@ -50,11 +50,16 @@ final class PacketaCarrier implements Carrier
 
     public function submit(
         OrderView $order,
-        string $pickupPointCode,
+        string $destination,
         Money $codAmount,
         int $weightGrams,
         ?array $dimensionsMm = null,
+        ?array $address = null,
     ): ShipmentResult {
+        // $address is unused here on purpose: a pickup point already carries
+        // its own address, resolved from the pickup-point catalogue (see
+        // Modules\Orders\Services\OrderPlacer::resolvePickupPoint()), never
+        // the shopper's own. Only the home-delivery driver needs $address.
         $billing = $order->orderBilling();
 
         [$firstName, $lastName] = $this->splitName((string) ($billing['name'] ?? ''));
@@ -74,7 +79,7 @@ final class PacketaCarrier implements Carrier
             'surname' => $lastName,
             'email' => $order->orderEmail(),
             'phone' => $order->orderPhone(),
-            'addressId' => $pickupPointCode,
+            'addressId' => $destination,
             'cod' => $codAmount->isZero() ? null : $this->crowns($codAmount),
             'value' => $this->crowns($order->orderTotal()),
             'currency' => $order->orderCurrency(),
