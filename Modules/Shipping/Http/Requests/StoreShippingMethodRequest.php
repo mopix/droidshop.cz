@@ -39,6 +39,7 @@ class StoreShippingMethodRequest extends FormRequest
                 ShippingMethod::PROVIDER_PICKUP,
                 ShippingMethod::PROVIDER_FLAT,
                 ShippingMethod::PROVIDER_PACKETA,
+                ShippingMethod::PROVIDER_PACKETA_HD,
             ])],
             'name' => ['required', 'string', 'max:191'],
             'description' => ['nullable', 'string', 'max:500'],
@@ -71,10 +72,21 @@ class StoreShippingMethodRequest extends FormRequest
             // Packeta credentials. api_key and eshop are not secret; api_password
             // is (encrypted, masked, re-entered to change). On create a carrier
             // account with no password cannot call the API, so it is required.
+            // Shared by both Packeta-family providers (branch pickup and
+            // address delivery, task 5) — each row enters them independently
+            // (2026-08-11 decision: not shared across methods).
             'api_password' => $this->apiPasswordRule(),
-            'api_key' => [Rule::requiredIf($this->isPacketa()), 'nullable', 'string', 'max:64'],
-            'eshop' => [Rule::requiredIf($this->isPacketa()), 'nullable', 'string', 'max:64'],
+            'api_key' => [Rule::requiredIf($this->isPacketaFamily()), 'nullable', 'string', 'max:64'],
+            'eshop' => [Rule::requiredIf($this->isPacketaFamily()), 'nullable', 'string', 'max:64'],
             'default_weight_g' => ['nullable', 'integer', 'min:1', 'max:30000'],
+
+            // The partner carrier (PPL/DPD/GLS/Česká pošta) address delivery
+            // hands the parcel to — only PROVIDER_PACKETA_HD needs one;
+            // branch pickup has no partner carrier to name. String, not
+            // integer: Packeta's own carrier.json feed returns ids as
+            // strings, and this value only ever round-trips through their
+            // API, never arithmetic.
+            'carrier_id' => [Rule::requiredIf($this->isPacketaHd()), 'nullable', 'string', 'max:20'],
         ];
     }
 
@@ -83,13 +95,24 @@ class StoreShippingMethodRequest extends FormRequest
         return $this->input('provider') === ShippingMethod::PROVIDER_PACKETA;
     }
 
+    protected function isPacketaHd(): bool
+    {
+        return $this->input('provider') === ShippingMethod::PROVIDER_PACKETA_HD;
+    }
+
+    protected function isPacketaFamily(): bool
+    {
+        return $this->isPacketa() || $this->isPacketaHd();
+    }
+
     /**
      * @return array<int, mixed>
      */
     protected function apiPasswordRule(): array
     {
         // On create a Packeta account needs its password; Update relaxes this
-        // to nullable (blank = keep the stored one).
-        return [Rule::requiredIf($this->isPacketa()), 'nullable', 'string', 'max:255'];
+        // to nullable (blank = keep the stored one). Both Packeta-family
+        // providers need one — each row has its own (task 5).
+        return [Rule::requiredIf($this->isPacketaFamily()), 'nullable', 'string', 'max:255'];
     }
 }

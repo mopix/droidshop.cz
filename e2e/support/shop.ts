@@ -116,6 +116,42 @@ export function seedVariantProduct(slug = 'e2e-varianty'): string {
 }
 
 /**
+ * Creates a packeta_hd shipping method for the demo shop — the address-
+ * delivery driver the no-JS purchase test exercises.
+ *
+ * Only eshop/api_password are load-bearing for EloquentCarrierRegistry::
+ * packetaHomeDelivery() to resolve a driver at all; carrier_id is left to
+ * its config fallback on purpose. Submitting the parcel to Packeta itself is
+ * not part of what checkout proves — that only ever happens later, from the
+ * admin's expedition queue — so this suite has no reason to fake an outbound
+ * HTTP call the way the PHPUnit suite does with Http::fake.
+ *
+ * Idempotent: re-running the suite reuses the method rather than piling up
+ * duplicates (mirrors seedVariantProduct's own guard).
+ */
+export function seedHomeDeliveryShipping(): void {
+  artisanEval(`
+    $t = App\\Models\\Tenant::whereHas('domains', fn($q) => $q->where('domain', 'obchod.${HOST}'))->firstOrFail();
+    app(App\\Core\\Tenancy\\TenantContext::class)->runAs($t, function () {
+      if (Modules\\Shipping\\Models\\ShippingMethod::where('provider', 'packeta_hd')->exists()) {
+        return;
+      }
+
+      app(Modules\\Shipping\\Services\\ShippingMethodWriter::class)->create([
+        'provider' => 'packeta_hd',
+        'name' => 'Zásilkovna – doručení na adresu',
+        'price' => 9900,
+        'is_active' => true,
+        'api_key' => 'e2e-key',
+        'eshop' => 'e2e-eshop',
+        'api_password' => 'e2e-password',
+        'default_weight_g' => 1000,
+      ]);
+    });
+  `)
+}
+
+/**
  * Signs in as the shop's owner.
  *
  * Through the real form rather than a session shortcut: the login screen is

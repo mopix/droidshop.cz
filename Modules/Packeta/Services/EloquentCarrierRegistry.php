@@ -72,11 +72,13 @@ final class EloquentCarrierRegistry implements CarrierRegistry
     {
         $method = $this->method(ShippingMethod::PROVIDER_PACKETA_HD);
 
-        // Read raw, like packetaCarrier() above: packetaEshop()/settings
-        // accessors on ShippingMethod are scoped to PROVIDER_PACKETA today,
-        // and this is a different row/provider entirely.
+        // The raw secret is still read directly — ShippingMethod never
+        // exposes it through an accessor (only apiPasswordSet()'s boolean),
+        // the same as packetaCarrier() above. Eshop now goes through
+        // packetaEshop() (task 5): that accessor was widened to the whole
+        // Packeta family, so this row no longer needs to bypass it.
         $password = $method?->settings['api_password'] ?? null;
-        $eshop = $method?->settings['eshop'] ?? null;
+        $eshop = $method?->packetaEshop();
 
         if (blank($password) || blank($eshop)) {
             return null;
@@ -87,9 +89,9 @@ final class EloquentCarrierRegistry implements CarrierRegistry
         // must be the shipping method's OWN setting, not a platform-wide
         // config value, the same as api_password/eshop just above. The
         // config fallback exists only for a tenant who has not filled the
-        // admin field in yet (no admin screen ships in this task); once set,
-        // the method's own value always wins.
-        $carrierId = $method?->settings['carrier_id'] ?? config('packeta.home_delivery_carrier_id');
+        // admin field in yet (task 5 ships that admin field); once set, the
+        // method's own value — packetaCarrierId() — always wins.
+        $carrierId = $method?->packetaCarrierId() ?? config('packeta.home_delivery_carrier_id');
 
         return new PacketaHomeDelivery(new PacketaClient((string) $password), (string) $eshop, (string) $carrierId);
     }

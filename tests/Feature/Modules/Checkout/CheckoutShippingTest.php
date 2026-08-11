@@ -255,6 +255,48 @@ class CheckoutShippingTest extends TestCase
         $page->assertDontSee($this->czk(1));
     }
 
+    /**
+     * Task 5: a carrier whose driver answers requiresPickupPoint() === false
+     * (PacketaHomeDelivery) must not get the "Vybrat výdejní místo" link at
+     * all — that branch in the template already reads it from
+     * $pickupPointOptionIds, computed generically through CarrierRegistry
+     * (CheckoutController::requiresPickupPoint()), so this proves the
+     * existing mechanism actually reaches the new provider rather than just
+     * looking like it should (task brief).
+     */
+    public function test_a_provider_that_needs_no_pickup_point_never_shows_the_pickup_point_link(): void
+    {
+        foreach (['shipping', 'packeta'] as $module) {
+            $this->activateModule($this->tenant, $module);
+        }
+
+        $homeDelivery = $this->context->runAs($this->tenant, fn () => ShippingMethod::create([
+            'provider' => ShippingMethod::PROVIDER_PACKETA_HD,
+            'name' => 'Zásilkovna – doručení na adresu',
+            'price' => 7_900,
+            'is_active' => true,
+            'settings' => ['eshop' => 'esh-1', 'api_password' => 'secret', 'carrier_id' => '106'],
+        ]));
+
+        $this->addToCart($this->makeProduct());
+        $token = $this->cartToken();
+
+        $page = $this->withCookie('cart_token', $token)->get($this->url('/pokladna/doprava'));
+
+        $page->assertOk();
+        $page->assertSee($homeDelivery->name);
+        $page->assertDontSee('Vybrat výdejní místo');
+
+        // The radio itself is still offered — only the pickup-point link is
+        // gone. Choosing it and continuing must not get stuck asking for a
+        // branch it will never need.
+        $choose = $this->withCookie('cart_token', $token)
+            ->post($this->url('/pokladna/doprava'), ['shipping_method_id' => $homeDelivery->id]);
+
+        $choose->assertRedirect($this->url('/pokladna/doprava'));
+        $choose->assertSessionDoesntHaveErrors();
+    }
+
     public function test_a_cart_cannot_choose_a_foreign_tenants_shipping_method(): void
     {
         $other = Tenant::factory()->withDomain('shop2.droidshop')->create(['name' => 'Shop Two']);

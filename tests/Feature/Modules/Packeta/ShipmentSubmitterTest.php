@@ -14,6 +14,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use LogicException;
 use Modules\Orders\Models\Order;
+use Modules\Orders\Services\OrderEditor;
 use Modules\Packeta\Models\PickupPoint;
 use Modules\Packeta\Models\Shipment;
 use Modules\Packeta\Services\ShipmentSubmitter;
@@ -695,5 +696,68 @@ class ShipmentSubmitterTest extends TestCase
         $this->assertSame(ShippingMethod::PROVIDER_PACKETA, $shipment->shipmentCarrier());
         $this->assertSame(1000, $shipment->weight_grams);
         Http::assertSentCount(1);
+    }
+
+    /**
+     * Task 5 fix (Modules\Orders\Services\OrderEditor::shippingSnapshot()):
+     * before it, a manually created order (admin "Nová objednávka") carried
+     * no `provider` on its shipping snapshot at all, so ShipmentSubmitter
+     * resolved an empty provider and CarrierError::notConfigured() fired
+     * every single time — a manual order could never be handed to ANY
+     * carrier, home delivery or branch pickup alike. This drives the exact
+     * path a real admin uses (OrderEditor::createManual(), not the
+     * checkout/OrderPlacer path every other test in this file exercises)
+     * and asserts the submission actually reaches the carrier and succeeds.
+     */
+    public function test_a_manually_created_order_can_be_submitted_to_the_home_delivery_carrier(): void
+    {
+        $tenant = $this->tenant();
+        $this->context->set($tenant);
+
+        $product = $this->product(400);
+
+        $homeDelivery = ShippingMethod::create([
+            'provider' => ShippingMethod::PROVIDER_PACKETA_HD,
+            'name' => 'Zásilkovna – doručení na adresu',
+            'price' => 7_900,
+            'is_active' => true,
+            'settings' => ['api_password' => 's3cr3t', 'eshop' => 'esh-1', 'carrier_id' => '106'],
+        ]);
+        $payment = $this->paymentMethod(PaymentMethod::PROVIDER_COD, 'Dobírka');
+
+        $order = app(OrderEditor::class)->createManual(
+            lines: [['product_id' => $product->id, 'quantity' => 1]],
+            billing: [
+                'name' => 'Jana Nováková', 'street' => 'Hlavní 1', 'city' => 'Praha',
+                'zip' => '110 00', 'country' => 'CZ',
+            ],
+            shipping: [
+                'name' => 'Jana Nováková', 'street' => 'Doručovací 5', 'city' => 'Brno',
+                'zip' => '60200', 'country' => 'CZ',
+            ],
+            email: 'jana@example.cz',
+            phone: '+420777123456',
+            shippingMethodId: $homeDelivery->id,
+            paymentMethodId: $payment->id,
+            note: null,
+            actorId: null,
+        );
+
+        $this->assertSame(ShippingMethod::PROVIDER_PACKETA_HD, $order->shipping_snapshot['provider']);
+
+        Http::fake(fn ($request) => match (true) {
+            str_contains($request->body(), '<createPacket>') => Http::response(self::OK_RESPONSE),
+            str_contains($request->body(), '<packetCourierNumber>') => Http::response(
+                '<response><status>ok</status><result>CN-1</result></response>'
+            ),
+            default => Http::response('<response><status>fault</status><string>unexpected call</string></response>'),
+        });
+
+        $shipment = app(ShipmentSubmitter::class)->submit($order->uuid);
+
+        $this->assertSame(Shipment::STATUS_SUBMITTED, $shipment->shipmentStatus());
+        $this->assertSame(ShippingMethod::PROVIDER_PACKETA_HD, $shipment->shipmentCarrier());
+        Http::assertSent(fn ($request) => str_contains($request->body(), '<street>Doručovací</street>'));
+        Http::assertSent(fn ($request) => str_contains($request->body(), '<addressId>106</addressId>'));
     }
 }

@@ -51,7 +51,38 @@ class ShippingMethodAdminController
                 'name' => $rate->name,
                 'percent' => $rate->percent(),
             ]),
+            // Fills the packeta_hd carrier_id select — fetched on demand
+            // right here (screen open), never on a schedule (task 5 brief:
+            // partner carriers are few and change rarely). Null on anything
+            // that keeps this from working (no key configured yet, the feed
+            // unreachable, an unexpected shape) and the form falls back to a
+            // plain text field rather than blocking a tenant who already
+            // knows their carrier id.
+            'packetaCarriers' => $this->partnerCarriers(),
         ]);
+    }
+
+    /**
+     * Packeta's own partner-carrier catalogue (PPL/DPD/GLS/Česká pošta),
+     * resolved by container string rather than a `use` import: shipping
+     * declares no manifest `requires` on packeta (module.json), and this
+     * admin-only convenience must not become a hard class dependency
+     * between the two modules — the same reasoning that has
+     * TenantProvisioner resolve Modules\Storefront\Support\DefaultHomepage
+     * by string (rozhodnutí 2026-07-26). The try/catch is defense in depth
+     * on top of PacketaCarrierCatalog::forTenant()'s own null returns: any
+     * failure at all, including one this class never anticipated, must
+     * degrade to the text-field fallback, never a 500 on a settings screen.
+     *
+     * @return list<array{id: string, name: string, country: string, currency: string}>|null
+     */
+    private function partnerCarriers(): ?array
+    {
+        try {
+            return app('Modules\\Packeta\\Services\\PacketaCarrierCatalog')->forTenant();
+        } catch (\Throwable) {
+            return null;
+        }
     }
 
     public function store(StoreShippingMethodRequest $request): RedirectResponse
@@ -108,7 +139,7 @@ class ShippingMethodAdminController
             'position' => $method->position,
         ];
 
-        if ($method->provider() === ShippingMethod::PROVIDER_PACKETA) {
+        if (in_array($method->provider(), [ShippingMethod::PROVIDER_PACKETA, ShippingMethod::PROVIDER_PACKETA_HD], true)) {
             // Packeta's settings hold a credential (api_password) and never
             // appear here in the clear — only the non-secret fields, and
             // whether a password is stored at all.
@@ -116,6 +147,9 @@ class ShippingMethodAdminController
             $data['packeta_eshop'] = $method->packetaEshop();
             $data['packeta_default_weight_g'] = $method->packetaDefaultWeightG();
             $data['has_api_password'] = $method->apiPasswordSet();
+            // Null for branch pickup — only address delivery names a
+            // partner carrier (task 5).
+            $data['packeta_carrier_id'] = $method->packetaCarrierId();
 
             return $data;
         }

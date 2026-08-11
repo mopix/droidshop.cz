@@ -30,6 +30,20 @@ return [
 
     'tracking_url' => env('PACKETA_TRACKING_URL', 'https://tracking.packeta.com/cs/?id={barcode}'),
 
+    // The partner-carrier catalogue (PPL/DPD/GLS/Česká pošta, task 5) —
+    // fills the packeta_hd carrier_id select in the shipping method admin
+    // screen. A different host and API version than feed_url above (Packeta
+    // documents them separately: docs/home-delivery/carriers.mdx), so this
+    // is its own key rather than reusing feed_url's pattern.
+    'carrier_feed_url' => env('PACKETA_CARRIER_FEED_URL', 'https://pickup-point.api.packeta.com/v5/{key}/carrier.json?lang=cs'),
+
+    // A day, not an hour: partner carriers are few and change rarely (task
+    // 5 brief) — a daily cron would be machinery for no gain, and this TTL
+    // is the whole substitute for one. Keyed per api key in
+    // PacketaCarrierCatalog, so a rotated key never serves a stale answer
+    // fetched under the old one.
+    'carrier_feed_ttl_seconds' => (int) env('PACKETA_CARRIER_FEED_TTL_SECONDS', 86400),
+
     // How long a shipment may sit claimed (status `submitting`) before a later
     // attempt is allowed to reclaim it and call the carrier again (wave 2.5,
     // fix round 2/5). This is the only way out of a row a process crashed on
