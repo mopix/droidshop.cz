@@ -23,12 +23,32 @@ use Modules\Shipping\Models\ShippingMethod;
  * vybrané" succeeds and whose printing then fails would have no way to work
  * out why — a failure of the second call is therefore a failure of this
  * whole method, not a separate later concern.
+ *
+ * A failed packetCourierNumber() call, though, does not mean nothing was
+ * created — createPacket() already produced a REAL parcel at Packeta before
+ * that second call ever runs. submit() therefore best-effort cancels that
+ * parcel before rethrowing (review finding, task 4): without it, the row
+ * ShipmentSubmitter writes on failure carries no packet_id (claimForSubmission()
+ * nulls it on every claim), so a retry — the normal flow for a `failed`
+ * shipment — would call createPacket() again and leave the first parcel
+ * live and untracked at Packeta. For a cash-on-delivery order that is the
+ * shopper being asked to pay twice at the door, exactly the scenario
+ * ShipmentSubmitter's own docblock (fix rounds 4/5) exists to prevent.
+ * PacketaCarrier has no equivalent failure mode: there, a failed createPacket
+ * means nothing was ever created in the first place.
  */
 final class PacketaHomeDelivery implements Carrier
 {
     public function __construct(
         private readonly PacketaClient $client,
         private readonly string $eshop,
+        // The partner carrier's own catalog id (PPL/DPD/GLS/Česká pošta) —
+        // which one depends on the tenant's own contract, so it lives on
+        // THIS shipping method's own settings, resolved by
+        // EloquentCarrierRegistry::packetaHomeDelivery() the same way
+        // $eshop/$apiPassword already are. Never $destination (see
+        // Carrier::submit()'s own docblock) and never the order.
+        private readonly string $carrierId,
     ) {}
 
     public function key(): string
@@ -49,6 +69,10 @@ final class PacketaHomeDelivery implements Carrier
         ?array $dimensionsMm = null,
         ?array $address = null,
     ): ShipmentResult {
+        // $destination is unused here on purpose (see this interface's own
+        // docblock): this driver's delivery target is $this->carrierId,
+        // resolved once at registry build time from the shipping method's
+        // own settings, not per submit() call.
         // Checked before anything touches the network (task requirement): a
         // missing address is this driver's own mistake to reject loudly, not
         // Packeta's to reject after a wasted round trip.
@@ -76,7 +100,7 @@ final class PacketaHomeDelivery implements Carrier
             'surname' => $lastName,
             'email' => $order->orderEmail(),
             'phone' => $order->orderPhone(),
-            'addressId' => $destination,
+            'addressId' => $this->carrierId,
             'street' => $street,
             'houseNumber' => $houseNumber,
             'city' => (string) ($address['city'] ?? ''),
@@ -92,11 +116,24 @@ final class PacketaHomeDelivery implements Carrier
         // The courier's own tracking number is not stored anywhere on the
         // shipments row today (flagged in the task report as an unplanned
         // migration, deliberately out of this task's scope) — only the fact
-        // that the courier accepted the order matters here. A CarrierError
-        // from this call propagates unchanged, so ShipmentSubmitter marks
-        // the whole submission failed rather than a half-submitted parcel
-        // that looks fine.
-        $this->client->packetCourierNumber($result->packetId);
+        // that the courier accepted the order matters here.
+        try {
+            $this->client->packetCourierNumber($result->packetId);
+        } catch (CarrierError $e) {
+            // Compensating action (review finding, task 4): createPacket()
+            // above already produced a REAL parcel at Packeta — a bare
+            // rethrow would orphan it (see this class's own docblock for
+            // the full consequence). Best-effort: if the cancel itself also
+            // fails, that failure is swallowed and $e — the one the caller
+            // actually needs to see and act on — is what propagates.
+            try {
+                $this->client->cancelPacket($result->packetId);
+            } catch (CarrierError) {
+                // Swallowed on purpose: $e below is the error that matters.
+            }
+
+            throw $e;
+        }
 
         return $result;
     }

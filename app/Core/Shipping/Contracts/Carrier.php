@@ -33,14 +33,16 @@ interface Carrier
      * driver derive them, so the one authority on "how much money is on this
      * packet" stays where the order total is known.
      *
-     * $destination means different things depending on requiresPickupPoint():
-     * for a carrier that delivers to a branch it is the chosen pickup point's
-     * code; for a carrier that delivers to the shopper's own address (home
-     * delivery, wave "Packeta home delivery") it is the partner carrier's own
-     * id (PPL/DPD/GLS/Česká pošta — Packeta's own catalog id for the delivery
-     * service it brokers through), not a code either driver looks up in a
-     * catalogue. One parameter, not two, because a caller only ever has one
-     * or the other to give — never both — for a single order.
+     * $destination is only meaningful to a carrier that requires a pickup
+     * point (requiresPickupPoint() === true): the chosen point's code. A
+     * driver that delivers to the shopper's own address instead sources its
+     * own delivery target (e.g. Packeta home delivery's partner-carrier id —
+     * PPL/DPD/GLS/Česká pošta) as part of its OWN configuration, resolved by
+     * CarrierRegistry from the shipping method's own settings the same way
+     * credentials are (Modules\Packeta\Services\EloquentCarrierRegistry::
+     * packetaHomeDelivery()) — never through this parameter, and never
+     * derived from the order. Such a driver may ignore $destination
+     * entirely, the same way a pickup-point driver ignores $address below.
      *
      * $address is the delivery address, required by a driver that does not
      * require a pickup point and ignored by one that does (a pickup point

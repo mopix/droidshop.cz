@@ -10,12 +10,15 @@ return [
 
     'api_url' => env('PACKETA_API_URL', 'https://www.zasilkovna.cz/api/rest'),
 
-    // Packeta's own catalog id for the partner carrier (PPL/DPD/GLS/Česká
-    // pošta) we broker home delivery through — a platform-wide constant, not
-    // a per-tenant credential, the same status as api_url above: it names
-    // which delivery service Packeta itself routes a createPacket call to,
-    // not an account. Choosing among several partner carriers per tenant is
-    // out of scope for this wave (see task 4's report).
+    // Fallback default for Packeta's own catalog id for the partner carrier
+    // (PPL/DPD/GLS/Česká pošta) home delivery brokers through — used ONLY
+    // when a tenant's packeta_hd shipping method has not set its own
+    // settings['carrier_id'] yet (review finding, task 4: which partner
+    // carrier depends on the tenant's own contract with them, so the
+    // method's own setting is the actual authority, read by
+    // Modules\Packeta\Services\EloquentCarrierRegistry::packetaHomeDelivery()
+    // — this key never wins over it, only fills the gap before the tenant
+    // configures one).
     'home_delivery_carrier_id' => env('PACKETA_HOME_DELIVERY_CARRIER_ID', ''),
 
     'timeout' => (int) env('PACKETA_TIMEOUT', 30),

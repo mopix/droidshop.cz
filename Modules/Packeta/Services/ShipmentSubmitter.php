@@ -131,15 +131,13 @@ final class ShipmentSubmitter
             throw CarrierError::rejected($carrier->key(), 'objednávka nemá výdejní místo');
         }
 
-        // Carrier::submit()'s $destination means different things per
-        // driver (see its own docblock): a pickup point's code, or the
-        // partner carrier's own id for a driver that delivers to an
-        // address. The latter is a platform-wide constant (Packeta's own
-        // catalog id for the delivery service, not a tenant credential),
-        // never resolved from the order.
-        $destination = $carrier->requiresPickupPoint()
-            ? $pickupPointCode
-            : (string) config('packeta.home_delivery_carrier_id');
+        // Carrier::submit()'s $destination is only meaningful to a driver
+        // that requires a pickup point (its own docblock) — a driver that
+        // delivers to an address instead carries its own delivery target as
+        // part of its own configuration (Modules\Packeta\Services\
+        // EloquentCarrierRegistry::packetaHomeDelivery()), so there is
+        // nothing else to resolve here for it.
+        $destination = $pickupPointCode;
 
         // Modules\Orders\Services\OrderPlacer already applies the shipping
         // method's own configured fallback (or a last-resort 1000g) whenever

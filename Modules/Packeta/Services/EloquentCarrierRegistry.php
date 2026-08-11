@@ -82,7 +82,16 @@ final class EloquentCarrierRegistry implements CarrierRegistry
             return null;
         }
 
-        return new PacketaHomeDelivery(new PacketaClient((string) $password), (string) $eshop);
+        // Which partner carrier (PPL/DPD/GLS/Česká pošta) depends on the
+        // tenant's own contract with them — review finding, task 4: this
+        // must be the shipping method's OWN setting, not a platform-wide
+        // config value, the same as api_password/eshop just above. The
+        // config fallback exists only for a tenant who has not filled the
+        // admin field in yet (no admin screen ships in this task); once set,
+        // the method's own value always wins.
+        $carrierId = $method?->settings['carrier_id'] ?? config('packeta.home_delivery_carrier_id');
+
+        return new PacketaHomeDelivery(new PacketaClient((string) $password), (string) $eshop, (string) $carrierId);
     }
 
     private function method(string $provider): ?ShippingMethod

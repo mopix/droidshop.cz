@@ -98,9 +98,15 @@ class PacketaHomeDeliveryTest extends TestCase
         ];
     }
 
-    private function driver(): PacketaHomeDelivery
+    /**
+     * $carrierId defaults to '106' — the driver's OWN configured partner
+     * carrier id (review finding, task 4: no longer the $destination
+     * argument of submit(), which this driver ignores — see
+     * Carrier::submit()'s own docblock).
+     */
+    private function driver(string $carrierId = '106'): PacketaHomeDelivery
     {
-        return new PacketaHomeDelivery(new PacketaClient('s3cr3t'), 'esh-1');
+        return new PacketaHomeDelivery(new PacketaClient('s3cr3t'), 'esh-1', $carrierId);
     }
 
     // --- Step 1: the three required tests ---------------------------------
@@ -113,9 +119,12 @@ class PacketaHomeDeliveryTest extends TestCase
             default => Http::response('<response><status>fault</status><string>unexpected call</string></response>'),
         });
 
+        // The second argument ($destination) is deliberately irrelevant
+        // here — this driver's carrier id (asserted below as '106') is the
+        // one baked into driver() above, not this parameter.
         $result = $this->driver()->submit(
             $this->order(),
-            '106',
+            'unused-destination',
             new Money(0, 'CZK'),
             800,
             null,
@@ -143,23 +152,90 @@ class PacketaHomeDeliveryTest extends TestCase
             str_contains($request->body(), '<packetCourierNumber>') => Http::response(
                 '<response><status>fault</status><string>kurýr zásilku odmítl</string></response>'
             ),
+            str_contains($request->body(), '<cancelPacket>') => Http::response(
+                '<response><status>ok</status></response>'
+            ),
             default => Http::response('<response><status>fault</status><string>unexpected call</string></response>'),
         });
 
         try {
-            $this->driver()->submit($this->order(), '106', new Money(0, 'CZK'), 800, null, $this->address());
+            $this->driver()->submit($this->order(), 'unused-destination', new Money(0, 'CZK'), 800, null, $this->address());
             $this->fail('Expected a CarrierError when the courier rejects the order — a half-submitted parcel must not look like a success.');
         } catch (CarrierError) {
             // expected
         }
 
-        // Both calls must have actually happened, in order: a test that only
-        // checks createPacket was called would pass even if
-        // packetCourierNumber() were never wired in at all.
-        Http::assertSentCount(2);
+        // Both calls must have actually happened: a test that only checks
+        // createPacket was called would pass even if packetCourierNumber()
+        // were never wired in at all. (A third call, the compensating
+        // cancel, also happens here now — covered on its own below.)
         Http::assertSent(fn ($request) => str_contains($request->body(), '<createPacket>'));
         Http::assertSent(fn ($request) => str_contains($request->body(), '<packetCourierNumber>')
             && str_contains($request->body(), '<packetId>777</packetId>'));
+    }
+
+    /**
+     * Review finding (task 4, critical): createPacket() above already
+     * produces a REAL parcel before packetCourierNumber() ever runs — a
+     * bare rethrow on that second call's failure would orphan it, and a
+     * retry (the normal flow for a `failed` shipment) would call
+     * createPacket() again, leaving the first parcel live and untracked at
+     * Packeta. This is driver-level (unlike the compensating-cancel test
+     * through ShipmentSubmitter below, which proves the row state and the
+     * retry path); this one proves the driver itself calls cancelPacket
+     * with the SAME packet id createPacket produced.
+     */
+    public function test_a_failed_courier_number_call_cancels_the_orphaned_packet(): void
+    {
+        Http::fake(fn ($request) => match (true) {
+            str_contains($request->body(), '<createPacket>') => Http::response(self::OK_CREATE),
+            str_contains($request->body(), '<packetCourierNumber>') => Http::response(
+                '<response><status>fault</status><string>kurýr zásilku odmítl</string></response>'
+            ),
+            str_contains($request->body(), '<cancelPacket>') => Http::response(
+                '<response><status>ok</status></response>'
+            ),
+            default => Http::response('<response><status>fault</status><string>unexpected call</string></response>'),
+        });
+
+        try {
+            $this->driver()->submit($this->order(), 'unused-destination', new Money(0, 'CZK'), 800, null, $this->address());
+            $this->fail('Expected a CarrierError when the courier rejects the order.');
+        } catch (CarrierError) {
+            // expected — the ORIGINAL error, not one about the cancel.
+        }
+
+        Http::assertSentCount(3);
+        Http::assertSent(fn ($request) => str_contains($request->body(), '<cancelPacket>')
+            && str_contains($request->body(), '<packetId>777</packetId>'));
+    }
+
+    /**
+     * The cancel is best-effort: if Packeta's cancel call itself fails, the
+     * ORIGINAL error (why the courier rejected the order) is still what the
+     * caller sees — a caller catching CarrierError to decide what to tell
+     * the tenant must not be handed an unrelated "cancel failed" message
+     * instead.
+     */
+    public function test_a_failed_cancel_does_not_hide_the_original_courier_error(): void
+    {
+        Http::fake(fn ($request) => match (true) {
+            str_contains($request->body(), '<createPacket>') => Http::response(self::OK_CREATE),
+            str_contains($request->body(), '<packetCourierNumber>') => Http::response(
+                '<response><status>fault</status><string>kurýr zásilku odmítl</string></response>'
+            ),
+            str_contains($request->body(), '<cancelPacket>') => Http::response(
+                '<response><status>fault</status><string>cancel also failed</string></response>'
+            ),
+            default => Http::response('<response><status>fault</status><string>unexpected call</string></response>'),
+        });
+
+        try {
+            $this->driver()->submit($this->order(), 'unused-destination', new Money(0, 'CZK'), 800, null, $this->address());
+            $this->fail('Expected a CarrierError.');
+        } catch (CarrierError $e) {
+            $this->assertStringContainsString('kurýr zásilku odmítl', $e->getMessage());
+        }
     }
 
     public function test_submitting_without_an_address_fails_loudly(): void
@@ -167,7 +243,7 @@ class PacketaHomeDeliveryTest extends TestCase
         Http::fake();
 
         try {
-            $this->driver()->submit($this->order(), '106', new Money(0, 'CZK'), 800, null, null);
+            $this->driver()->submit($this->order(), 'unused-destination', new Money(0, 'CZK'), 800, null, null);
             $this->fail('Expected a CarrierError for a missing delivery address.');
         } catch (CarrierError) {
             // expected
@@ -195,7 +271,7 @@ class PacketaHomeDeliveryTest extends TestCase
         $address = $this->address();
         $address['street'] = 'Náměstí Míru';
 
-        $this->driver()->submit($this->order(), '106', new Money(0, 'CZK'), 800, null, $address);
+        $this->driver()->submit($this->order(), 'unused-destination', new Money(0, 'CZK'), 800, null, $address);
 
         // AND, not "not-createPacket OR matches": with two recorded requests
         // (createPacket, packetCourierNumber), an OR-with-negation form would
@@ -335,14 +411,17 @@ class PacketaHomeDeliveryTest extends TestCase
         return $tenant;
     }
 
-    private function homeDeliveryShipping(): ShippingMethod
+    /**
+     * @param  array<string, mixed>  $extraSettings  merged over the base credentials, e.g. ['carrier_id' => '999']
+     */
+    private function homeDeliveryShipping(array $extraSettings = []): ShippingMethod
     {
         return ShippingMethod::create([
             'provider' => ShippingMethod::PROVIDER_PACKETA_HD,
             'name' => 'Doručení domů',
             'price' => 9_900,
             'is_active' => true,
-            'settings' => ['api_password' => 's3cr3t', 'eshop' => 'esh-1'],
+            'settings' => ['api_password' => 's3cr3t', 'eshop' => 'esh-1', ...$extraSettings],
         ]);
     }
 
@@ -458,13 +537,22 @@ class PacketaHomeDeliveryTest extends TestCase
             && str_contains($request->body(), '<city>Brno</city>'));
     }
 
-    public function test_home_delivery_uses_the_configured_partner_carrier_id_as_the_address_id(): void
+    /**
+     * The fallback path only — no tenant has configured their own partner
+     * carrier yet, so the platform-wide config default is what reaches
+     * Packeta. See test_the_shipping_methods_own_carrier_id_wins_over_the_config_fallback()
+     * below for proof the method's own setting takes priority once it exists
+     * (review finding, task 4).
+     */
+    public function test_home_delivery_falls_back_to_the_configured_default_partner_carrier_id(): void
     {
         $tenant = $this->packetaHdTenant();
         $this->context->set($tenant);
 
         config()->set('packeta.home_delivery_carrier_id', '106');
 
+        // No 'carrier_id' in settings — the method has not been configured
+        // with its own partner carrier yet.
         $shipping = $this->homeDeliveryShipping();
         $payment = $this->paymentMethod();
         $order = $this->placeOrder($shipping, $payment, null);
@@ -475,5 +563,119 @@ class PacketaHomeDeliveryTest extends TestCase
 
         Http::assertSent(fn ($request) => str_contains($request->body(), '<createPacket>')
             && str_contains($request->body(), '<addressId>106</addressId>'));
+    }
+
+    /**
+     * Review finding (task 4, important): which partner carrier depends on
+     * the tenant's own contract with them, so it must be configurable per
+     * shipping method — a platform-wide config value cannot express "this
+     * tenant uses PPL, that one uses DPD." The method's own settings must
+     * win even when a (different) platform default is also configured,
+     * proving the config value is truly just a fallback, not a competing
+     * source of truth.
+     */
+    public function test_the_shipping_methods_own_carrier_id_wins_over_the_config_fallback(): void
+    {
+        $tenant = $this->packetaHdTenant();
+        $this->context->set($tenant);
+
+        // A platform default IS configured, but must lose to the method's
+        // own setting below.
+        config()->set('packeta.home_delivery_carrier_id', '106');
+
+        $shipping = $this->homeDeliveryShipping(['carrier_id' => '999']);
+        $payment = $this->paymentMethod();
+        $order = $this->placeOrder($shipping, $payment, null);
+
+        $this->fakeSuccess();
+
+        app(ShipmentSubmitter::class)->submit($order->uuid);
+
+        Http::assertSent(fn ($request) => str_contains($request->body(), '<createPacket>')
+            && str_contains($request->body(), '<addressId>999</addressId>')
+            && ! str_contains($request->body(), '<addressId>106</addressId>'));
+    }
+
+    /**
+     * Review finding (task 4, critical), proven at the ShipmentSubmitter
+     * level rather than just the driver: a failed packetCourierNumber()
+     * call must not leave a `failed` shipment row that a retry — the normal
+     * flow for a failed shipment, per ShipmentSubmitter's own docblock —
+     * would resubmit by calling createPacket() again, orphaning the FIRST
+     * real parcel Packeta already created. Removing the compensating cancel
+     * in PacketaHomeDelivery::submit() makes this test fail: the third
+     * (cancelPacket) request would never be recorded.
+     */
+    public function test_a_failed_courier_number_call_is_compensated_and_a_retry_does_not_double_create(): void
+    {
+        $tenant = $this->packetaHdTenant();
+        $this->context->set($tenant);
+
+        $shipping = $this->homeDeliveryShipping();
+        $payment = $this->paymentMethod();
+        $order = $this->placeOrder($shipping, $payment, null);
+
+        // ONE Http::fake() for the whole test, not two: Http::fake() PUSHES
+        // a closure onto a stack rather than replacing the previous one, and
+        // matching returns the FIRST callback that answers a request — a
+        // second Http::fake() call later in this test (e.g. calling
+        // fakeSuccess() again before the retry) would never actually
+        // override this one, since this one already answers every request.
+        // A mutable counter is this suite's own established way to vary a
+        // faked answer across calls to the SAME endpoint (mirrors
+        // ShipmentSubmitterTest's Http::sequence() use for the analogous
+        // "fails then succeeds on retry" scenario — a plain sequence can't
+        // be used here because which endpoint is hit, not just call order,
+        // decides the response).
+        $courierAttempts = 0;
+
+        Http::fake(function ($request) use (&$courierAttempts) {
+            $body = $request->body();
+
+            if (str_contains($body, '<createPacket>')) {
+                return Http::response(self::OK_CREATE);
+            }
+
+            if (str_contains($body, '<packetCourierNumber>')) {
+                $courierAttempts++;
+
+                return $courierAttempts === 1
+                    ? Http::response('<response><status>fault</status><string>kurýr zásilku odmítl</string></response>')
+                    : Http::response(self::OK_COURIER_NUMBER);
+            }
+
+            if (str_contains($body, '<cancelPacket>')) {
+                return Http::response('<response><status>ok</status></response>');
+            }
+
+            return Http::response('<response><status>fault</status><string>unexpected call</string></response>');
+        });
+
+        try {
+            app(ShipmentSubmitter::class)->submit($order->uuid);
+            $this->fail('Expected a CarrierError when the courier rejects the order.');
+        } catch (CarrierError) {
+            // expected
+        }
+
+        // The orphaned parcel from createPacket() was cancelled — proof the
+        // compensation actually reached Packeta, for the exact packet id
+        // createPacket() produced.
+        Http::assertSentCount(3);
+        Http::assertSent(fn ($request) => str_contains($request->body(), '<cancelPacket>')
+            && str_contains($request->body(), '<packetId>777</packetId>'));
+
+        $shipment = Shipment::query()->firstOrFail();
+        $this->assertSame(Shipment::STATUS_FAILED, $shipment->shipmentStatus());
+        $this->assertNull($shipment->packet_id, 'A failed submission must not keep the cancelled packet_id.');
+
+        // A retry now calls createPacket() again (the normal, expected flow
+        // for a `failed` shipment) — this time the courier accepts it
+        // (2nd attempt, per the counter above), succeeding end to end.
+        $retried = app(ShipmentSubmitter::class)->submit($order->uuid);
+
+        $this->assertSame(Shipment::STATUS_SUBMITTED, $retried->shipmentStatus());
+        $this->assertSame($shipment->id, $retried->id);
+        $this->assertSame(1, Shipment::count());
     }
 }
