@@ -11,6 +11,30 @@ Pravidla: [`.claude/skills/versioning/SKILL.md`](.claude/skills/versioning/SKILL
 
 > CHANGELOG vede milníky (minor/major). Detail patchů je v `git log`.
 
+## [0.46.0] – 2026-08-12
+
+**Zásilkovna — doručení na adresu.** Uzavření vlny (`docs/as-is/2026-08-11-packeta-home-delivery.md`). 376 PHPUnit testů v dotčených oblastech, 83 E2E včetně nákupu na adresu bez JavaScriptu.
+
+### Zásilka konečně dojede domů
+Vlna 2.5 uměla jen výdejní místa, takže zákazník, který chtěl balík domů, ho u žádného e-shopu na této platformě nedostal — a to je většina objednávek. Zásilkovna doručení na adresu zprostředkovává přes partnerské dopravce; nájemce k tomu nepotřebuje novou smlouvu ani nové přihlašovací údaje, jen si v nastavení dopravní metody vybere dopravce, kterého má povoleného.
+
+### Přidání dalšího dopravce už nevyžaduje zásah do pokladny
+Tři místa zůstala od vlny 2.5 přidrátovaná k Zásilkovně natvrdo a bez jejich rozpojení by doručení na adresu nemohlo fungovat vůbec: snímek objednávky neměl kam uložit dopravce a hmotnost, vyhledávání výdejních míst hledalo napříč všemi katalogy a pokladna znala jediného dopravce jménem. Tím je splněné akceptační kritérium, které od 2.5 splněné nebylo.
+
+### Objednávku šlo vytvořit, ale nebylo ji odkud podat
+Nejzávažnější nález vlny, a našla ho až závěrečná revize celé větve: objednávka na adresu se nikdy neobjevila v expediční frontě, protože dotaz filtroval podle výdejního místa — které u ní z definice neexistuje. Chybělo i tlačítko na detailu objednávky a štítek by se tiskl přes endpoint pro výdejny.
+
+Pět dílčích revizí to minulo, protože všechny testy volaly podací službu přímo. Díra ležela mezi obrazovkami, ne uvnitř kódu.
+
+### Balík, za který by zákazník zaplatil dvakrát
+Doručení na adresu je poprvé dvě volání tam, kde výdejní místo mělo jedno. Když první uspěje a druhé selže, zásilka u Zásilkovny existuje, u nás je objednávka neúspěšná — a další pokus vytvoří druhou. U dobírky to znamená kurýra, který vybere peníze dvakrát. Osiřelá zásilka se nově ruší, a když se zrušit nepodaří, její číslo jde do logu i do chybové hlášky, kterou nájemce vidí.
+
+### Z-BOXy zatím ne
+Vlna je měla odlišit od poboček. Ukázalo se, že v katalogu vůbec nejsou: voláme feed poboček, boxy má Zásilkovna ve zvláštním feedu na jiném hostu. Odvozovat typ z názvu místa bylo zamítnuto — heuristika nad cizím textem se rozbije při přejmenování, a rozbije se tiše. Popsáno v `docs/future/zasilkovna-z-boxy.md`.
+
+### Deploy
+`php artisan migrate` (rozšíření enumu providerů) + `npm run build`. Před ostrým provozem ověřit odpovědi `packetCourierNumber` a `packetCourierLabelPdf` proti reálnému účtu — v testech jsou stubované.
+
 ## [0.45.0] – 2026-08-10
 
 **Rich text editor pro HTML pole administrace.** Uzavření vlny (`docs/as-is/2026-08-10-rich-text-editor.md`). 17 E2E scénářů v novém souboru (celkem 81), server nezměněn.
