@@ -7,6 +7,8 @@ use App\Core\Orders\Contracts\OrderView;
 use App\Core\Shipping\Contracts\Carrier;
 use App\Core\Shipping\Exceptions\CarrierError;
 use App\Core\Shipping\ShipmentResult;
+use App\Core\Tenancy\TenantContext;
+use Illuminate\Support\Facades\Log;
 use Modules\Packeta\Models\Shipment;
 use Modules\Shipping\Models\ShippingMethod;
 
@@ -124,12 +126,46 @@ final class PacketaHomeDelivery implements Carrier
             // above already produced a REAL parcel at Packeta — a bare
             // rethrow would orphan it (see this class's own docblock for
             // the full consequence). Best-effort: if the cancel itself also
-            // fails, that failure is swallowed and $e — the one the caller
-            // actually needs to see and act on — is what propagates.
+            // fails, $e — the one the caller actually needs to see and act
+            // on — is still what propagates, but it is no longer allowed to
+            // simply disappear (review finding I4).
             try {
                 $this->client->cancelPacket($result->packetId);
-            } catch (CarrierError) {
-                // Swallowed on purpose: $e below is the error that matters.
+            } catch (CarrierError $cancelError) {
+                // Review finding I4: this used to be swallowed outright. If
+                // cancelPacket() itself fails — or the process dies between
+                // the two calls — the row ShipmentSubmitter writes on
+                // failure has status `failed` and packet_id null
+                // (claimForSubmission() nulls it on every claim), so the
+                // live, orphaned parcel at Packeta then existed in no
+                // database row, no log, and no message the tenant could act
+                // on. A retry — the normal flow for a `failed` shipment —
+                // calls createPacket() again, and for a cash-on-delivery
+                // order that is the shopper being asked to pay twice at the
+                // door. Persisting packet_id for an actual resume is a
+                // contract change (out of this fix's scope, follow-up); the
+                // cheap, honest fix is to make sure the id is not lost:
+                // logged here, and folded into the error text
+                // ShipmentSubmitter writes to the row, so the tenant reads
+                // "zásilku 777 se nepodařilo zrušit, zrušte ji ručně"
+                // instead of only the unrelated courier rejection.
+                Log::warning('Packeta home delivery: failed to cancel an orphaned parcel after a rejected courier order.', [
+                    'packet_id' => $result->packetId,
+                    'order_number' => $order->orderNumber(),
+                    'tenant_id' => app(TenantContext::class)->current()?->id,
+                    'cancel_error' => $cancelError->getMessage(),
+                ]);
+
+                // A plain `new CarrierError(...)`, not another
+                // ::rejected()/::unreachable() factory call — those prepend
+                // their own "Dopravce X ..." prefix, which would double up
+                // ugly and unreadable on top of $e->getMessage() (itself
+                // already built through one of those factories).
+                throw new CarrierError(sprintf(
+                    '%s (POZOR: zásilku %s se nepodařilo zrušit, zrušte ji ručně u dopravce)',
+                    $e->getMessage(),
+                    $result->packetId,
+                ));
             }
 
             throw $e;

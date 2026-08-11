@@ -391,7 +391,19 @@ final class ShipmentSubmitter
      */
     private function dimensionsFrom(OrderView $order): ?array
     {
-        $point = $order->orderShippingSnapshot()['pickup_point'] ?? null;
+        $snapshot = $order->orderShippingSnapshot();
+
+        // Review finding I3: OrderPlacer now writes dimensions_mm at the top
+        // level of the snapshot for every carrier (home delivery has no
+        // pickup_point to nest it inside), so that is read first. The nested
+        // pickup_point copy is the pre-fix fallback for an order placed
+        // before this — an order snapshot is never rewritten retroactively
+        // (rozhodnutí 2026-07-22).
+        if (is_array($snapshot['dimensions_mm'] ?? null)) {
+            return $snapshot['dimensions_mm'];
+        }
+
+        $point = $snapshot['pickup_point'] ?? null;
 
         return is_array($point) && is_array($point['dimensions_mm'] ?? null)
             ? $point['dimensions_mm']

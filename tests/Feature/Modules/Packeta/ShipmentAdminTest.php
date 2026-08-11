@@ -167,6 +167,102 @@ class ShipmentAdminTest extends TestCase
     }
 
     /**
+     * A packeta_hd (home delivery) shipping method — a second, independent
+     * row from tenantFixtures()'s branch-pickup one, so a test using ONLY
+     * this method genuinely represents "a tenant offering only home
+     * delivery" (review finding C1). Carries its own 'carrier_id' setting so
+     * EloquentCarrierRegistry::packetaHomeDelivery()'s blank() guard (review
+     * finding, minor) never makes it resolve to null regardless of the
+     * platform-wide config default.
+     */
+    private function homeDeliveryShipping(Tenant $tenant): ShippingMethod
+    {
+        return $this->context->runAs($tenant, fn () => ShippingMethod::create([
+            'provider' => ShippingMethod::PROVIDER_PACKETA_HD,
+            'name' => 'Doručení domů',
+            'price' => 9_900,
+            'is_active' => true,
+            'settings' => ['api_password' => 's3cr3t', 'eshop' => 'esh-1', 'carrier_id' => '106'],
+        ]));
+    }
+
+    private function paymentMethod(Tenant $tenant): PaymentMethod
+    {
+        return $this->context->runAs($tenant, fn () => PaymentMethod::create([
+            'provider' => PaymentMethod::PROVIDER_COD,
+            'name' => 'Dobírka',
+            'fee' => 0,
+            'currency' => 'CZK',
+            'tax_rate_id' => app(TaxRates::class)->default()->id,
+            'is_active' => true,
+        ]));
+    }
+
+    /**
+     * Places a home-delivery order — no pickup point step at all, mirrors
+     * PacketaHomeDeliveryTest's own placeOrder().
+     */
+    private function placeHomeDeliveryOrder(Tenant $tenant, ShippingMethod $shipping, PaymentMethod $payment, string $sku): Order
+    {
+        return $this->context->runAs($tenant, function () use ($sku, $shipping, $payment): Order {
+            $product = $this->product($sku);
+
+            $cart = app(CartRepository::class)->forToken(null);
+            app(CartRepository::class)->addItem($cart, $product->id, 1);
+            app(CartRepository::class)->chooseShipping($cart, $shipping->id, $payment->id);
+
+            $placed = app(OrderPlacement::class)->place(new PlacementRequest(
+                cart: $cart,
+                shippingMethodId: $shipping->id,
+                paymentMethodId: $payment->id,
+                email: 'jana@example.cz',
+                phone: '+420777123456',
+                billing: [
+                    'name' => 'Jana Nováková',
+                    'street' => 'Hlavní 1',
+                    'city' => 'Praha',
+                    'zip' => '110 00',
+                    'country' => 'CZ',
+                ],
+                shipping: null,
+                checkoutToken: 'tok-'.bin2hex(random_bytes(8)),
+                customerId: null,
+                source: 'storefront',
+                note: null,
+            ));
+
+            return Order::query()->where('uuid', $placed->uuid())->firstOrFail();
+        });
+    }
+
+    /**
+     * Covers both createPacket and packetCourierNumber — the two calls
+     * PacketaHomeDelivery::submit() makes, in that order (mirrors
+     * PacketaHomeDeliveryTest::fakeSuccess()) — plus $overridesByMethod for a
+     * test that also needs a specific label response.
+     *
+     * @param  array<string, Response>  $overridesByMethod
+     */
+    private function fakeHomeDeliveryHttp(array $overridesByMethod = []): void
+    {
+        Http::fake(function (HttpRequest $request) use ($overridesByMethod) {
+            $body = $request->body();
+
+            foreach ($overridesByMethod as $method => $response) {
+                if (str_contains($body, '<'.$method.'>')) {
+                    return $response;
+                }
+            }
+
+            if (str_contains($body, '<packetCourierNumber>')) {
+                return Http::response('<response><status>ok</status><result>CN-999</result></response>');
+            }
+
+            return Http::response(self::OK_RESPONSE);
+        });
+    }
+
+    /**
      * Places a real, ready-to-ship order (Zásilkovna, pickup point `1001`
      * already chosen) against the given tenant, inside TenantContext::runAs()
      * so app()-resolved contracts see the right tenant.
@@ -458,6 +554,94 @@ class ShipmentAdminTest extends TestCase
             $other,
             fn () => $this->assertNull($foreignShipment->fresh()->label_printed_at),
         );
+    }
+
+    // --- labels: home delivery (review finding C1) -----------------------------
+
+    /**
+     * Review finding C1 (critical), third block: labels() used to resolve a
+     * single hardcoded for(PROVIDER_PACKETA) driver regardless of which
+     * carrier the selected shipment actually used, so a home-delivery
+     * shipment would print through packetsLabelsPdf (the branch endpoint,
+     * which rejects it) — and for a tenant offering only home delivery (as
+     * here — no branch-pickup method exists for this tenant at all),
+     * for('packeta') is null and the whole action answered "Zásilkovna není
+     * nastavená" even though the provider the shipment actually used
+     * (packeta_hd) was configured and running.
+     */
+    public function test_labels_resolve_the_home_delivery_driver_for_a_home_delivery_shipment(): void
+    {
+        $this->fakeAllStorageDisks();
+
+        $shipping = $this->homeDeliveryShipping($this->tenant);
+        $payment = $this->paymentMethod($this->tenant);
+        $order = $this->placeHomeDeliveryOrder($this->tenant, $shipping, $payment, 'KB-HD');
+
+        $pdfBytes = "%PDF-1.4\n%mock courier label";
+        $labelsResponse = '<response><status>ok</status><result>'.base64_encode($pdfBytes).'</result></response>';
+
+        $this->fakeHomeDeliveryHttp(['packetCourierLabelPdf' => Http::response($labelsResponse)]);
+
+        $shipment = $this->context->runAs(
+            $this->tenant,
+            fn () => app(ShipmentSubmitter::class)->submit($order->uuid),
+        );
+
+        $response = $this->actingAs($this->owner)->post($this->url('/zasilky/stitky'), [
+            'shipment_ids' => [$shipment->id],
+        ]);
+
+        $response->assertOk();
+        $response->assertHeader('Content-Type', 'application/pdf');
+        $this->assertStringStartsWith('%PDF-', $response->getContent());
+
+        Http::assertSent(fn ($request) => str_contains($request->body(), '<packetCourierLabelPdf>'));
+        Http::assertNotSent(fn ($request) => str_contains($request->body(), '<packetsLabelsPdf>'));
+    }
+
+    /**
+     * The fix groups selected shipment ids by their own `carrier` column and
+     * resolves a driver per group — the same shape cancel() already uses via
+     * shipmentCarrier(). Proven here by mixing a branch-pickup and a
+     * home-delivery shipment in one print request: there is no PDF-merge
+     * library in this project (out of this fix's scope to add one), so a
+     * batch spanning two carriers is refused with a clear message rather
+     * than silently printing only one provider's labels.
+     */
+    public function test_labels_refuses_a_selection_spanning_two_carriers(): void
+    {
+        $this->fakeAllStorageDisks();
+
+        Http::fake(function (HttpRequest $request) {
+            $body = $request->body();
+
+            if (str_contains($body, '<packetCourierNumber>')) {
+                return Http::response('<response><status>ok</status><result>CN-999</result></response>');
+            }
+
+            return Http::response(self::OK_RESPONSE);
+        });
+
+        $branchOrder = $this->placeOrder($this->tenant, 'KB-1');
+        $branchShipment = $this->context->runAs(
+            $this->tenant,
+            fn () => app(ShipmentSubmitter::class)->submit($branchOrder->uuid),
+        );
+
+        $shipping = $this->homeDeliveryShipping($this->tenant);
+        $payment = $this->paymentMethod($this->tenant);
+        $hdOrder = $this->placeHomeDeliveryOrder($this->tenant, $shipping, $payment, 'KB-HD');
+        $hdShipment = $this->context->runAs(
+            $this->tenant,
+            fn () => app(ShipmentSubmitter::class)->submit($hdOrder->uuid),
+        );
+
+        $response = $this->actingAs($this->owner)->post($this->url('/zasilky/stitky'), [
+            'shipment_ids' => [$branchShipment->id, $hdShipment->id],
+        ]);
+
+        $response->assertRedirect();
+        $response->assertSessionHasErrors('carrier');
     }
 
     // --- cancel ----------------------------------------------------------------

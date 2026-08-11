@@ -33,7 +33,7 @@ class PickupPointController
     public function show(Request $request): Response
     {
         $cart = $this->carts->forToken(CartCookie::read($request));
-        $carrier = $this->carrier($cart);
+        [$carrier, $optionId] = $this->resolveCarrier($request, $cart);
         $query = trim((string) $request->query('q', ''));
 
         $view = view('checkout::checkout.pickup-point', [
@@ -42,6 +42,11 @@ class PickupPointController
             'selected' => $cart->cartPickupPointCode(),
             'seo' => new Seo(title: 'Výdejní místo', noindex: true),
             'widgetApiKey' => $this->widgetApiKey($carrier),
+            // Round-tripped through every form on this page (search, results,
+            // the widget's data-action) so the NEXT request — a search, a
+            // point selection, the widget's own POST — still knows which
+            // shipping option opened the picker (review finding I2).
+            'shippingMethodId' => $optionId,
         ]);
 
         return CartCookie::attach($this->uncached($view), $cart, $request);
@@ -50,6 +55,7 @@ class PickupPointController
     public function store(Request $request): RedirectResponse
     {
         $cart = $this->carts->forToken(CartCookie::read($request));
+        [$carrier, $optionId] = $this->resolveCarrier($request, $cart);
         $code = (string) $request->input('pickup_point_code', '');
 
         // Only the code is trusted. Name and address are always re-read from
@@ -57,12 +63,14 @@ class PickupPointController
         // the buyer's choosing on the order (same policy as variant_id,
         // wave 2.4). An unknown or deactivated code is refused, never
         // written silently.
-        $point = $code === '' ? null : $this->points->find($this->carrier($cart), $code);
+        $point = $code === '' ? null : $this->points->find($carrier, $code);
+
+        $backParams = $optionId !== null ? ['shipping_method_id' => $optionId] : [];
 
         if ($point === null) {
             return CartCookie::attach(
                 redirect()
-                    ->route('storefront.checkout.pickupPoint')
+                    ->route('storefront.checkout.pickupPoint', $backParams)
                     ->withErrors(['pickup_point_code' => 'Toto výdejní místo neznáme nebo už není v provozu. Vyberte prosím jiné.']),
                 $cart,
                 $request,
@@ -106,32 +114,57 @@ class PickupPointController
     }
 
     /**
-     * The carrier this picker searches — read from the shipping method the
-     * cart already has chosen, the same source CheckoutController's
-     * requiresPickupPoint() uses, never a hardcoded provider string (AK
-     * §16.5: "another carrier without touching checkout").
-     * ShippingOptions::find() needs no credentials, unlike CarrierRegistry —
-     * so the picker still opens for a tenant who has not configured a
-     * carrier's API password yet.
+     * The carrier this picker searches, and the shipping-method id that
+     * decided it (or null when none did) — the latter is round-tripped back
+     * into the view so every subsequent request on this page keeps deciding
+     * the same way.
      *
-     * No shipping method chosen yet is not a rare first-visit edge case: the
-     * "Vybrat výdejní místo" link is rendered under EVERY pickup-point option
-     * in the shipping list (checkout/shipping.blade.php), regardless of
-     * which one — if any — is currently selected, so a shopper reaches this
-     * page cold every time they open the picker from an option they have not
-     * yet submitted. That is the common path, not the exception, and it
-     * falls back to the one carrier the catalogue serves today. A second
-     * pickup-point carrier will need this default resolved another way —
-     * nothing in this task adds one.
+     * Review finding I2: this used to derive the carrier ONLY from the
+     * shipping method the cart already has chosen (cartShippingMethodId()).
+     * That breaks in a shop offering both a pickup-point carrier and a
+     * carrier delivering to the shopper's own address (Packeta home
+     * delivery, this wave): the "Vybrat výdejní místo" link sits under EVERY
+     * pickup-point option in the shipping list
+     * (checkout/shipping.blade.php), regardless of which one is currently
+     * selected. A shopper who already submitted "doručení na adresu" (cart
+     * now holds that method) and then opens the picker link under the
+     * SEPARATE, not-yet-submitted branch-pickup radio was searching under
+     * the wrong provider and finding nothing — before this fix, there was no
+     * way to tell the picker "no, THIS option" at all.
+     *
+     * Fixed by carrying the clicked option's own id on the link
+     * (?shipping_method_id=…) and resolving through THAT first.
+     * ShippingOptions::find() is tenant-scoped to active methods (the same
+     * "cart's available options" a forged id could not otherwise fake its
+     * way into) and needs no credentials, unlike CarrierRegistry — so the
+     * picker still opens for a tenant who has not configured a carrier's API
+     * password yet, same as before.
+     *
+     * The cart-derived fallback stays for a request that carries no id at
+     * all — a bookmarked URL, a direct GET, or (now) the store() redirect
+     * when the id round-tripped from show() failed to resolve, i.e. exactly
+     * the pre-fix behaviour for those cases. No shipping method chosen at
+     * all falls back further to the one pickup-point carrier the catalogue
+     * serves today — a second one will need this default resolved another
+     * way, same caveat as before this fix.
+     *
+     * @return array{0: string, 1: ?int}
      */
-    private function carrier(CartShape $cart): string
+    private function resolveCarrier(Request $request, CartShape $cart): array
     {
+        $requestedId = $request->input('shipping_method_id');
+        $option = $requestedId !== null ? $this->shippingOptions->find((int) $requestedId) : null;
+
+        if ($option !== null) {
+            return [$option->provider(), $option->id()];
+        }
+
         $shippingMethodId = $cart->cartShippingMethodId();
 
         $provider = $shippingMethodId !== null
             ? $this->shippingOptions->find($shippingMethodId)?->provider()
             : null;
 
-        return $provider ?? ShippingMethod::PROVIDER_PACKETA;
+        return [$provider ?? ShippingMethod::PROVIDER_PACKETA, null];
     }
 }

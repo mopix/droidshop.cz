@@ -44,6 +44,26 @@ return [
     // fetched under the old one.
     'carrier_feed_ttl_seconds' => (int) env('PACKETA_CARRIER_FEED_TTL_SECONDS', 86400),
 
+    // Review finding I5: PacketaCarrierCatalog::forTenant() used to reuse
+    // the submission timeout ('timeout' above, 30s) for this read — but this
+    // call happens synchronously every time the shipping settings screen
+    // loads, not once per parcel, so a slow or dead feed stalled the screen
+    // for 30 seconds on EVERY reload. A few seconds is plenty for "list
+    // partner carriers"; nobody's parcel depends on this call succeeding
+    // quickly the way a real submission does.
+    'carrier_feed_read_timeout' => (int) env('PACKETA_CARRIER_FEED_READ_TIMEOUT', 5),
+
+    // How long a FAILED fetch is remembered before the next screen load
+    // tries again — deliberately much shorter than carrier_feed_ttl_seconds
+    // above, which is only for a genuine list of carriers. Without this, a
+    // failure was never cached at all (by design: a tenant who just fixed
+    // their key must see it on the very next load), which combined with the
+    // 30s timeout this was hanging on meant every reload during an outage
+    // re-ran the full slow call. A short negative cache keeps that
+    // near-immediacy while sparing every retry inside the window a second
+    // multi-second wait.
+    'carrier_feed_failure_ttl_seconds' => (int) env('PACKETA_CARRIER_FEED_FAILURE_TTL_SECONDS', 45),
+
     // How long a shipment may sit claimed (status `submitting`) before a later
     // attempt is allowed to reclaim it and call the carrier again (wave 2.5,
     // fix round 2/5). This is the only way out of a row a process crashed on

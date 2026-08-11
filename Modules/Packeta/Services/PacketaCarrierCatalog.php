@@ -29,6 +29,16 @@ use Throwable;
 final class PacketaCarrierCatalog
 {
     /**
+     * A cached PHP array is a legitimate return value; a cached string never
+     * is. Stored in place of null so a FAILED fetch can be remembered too
+     * (review finding I5), on a much shorter TTL than a genuine carrier
+     * list — Cache::get() cannot otherwise distinguish "never fetched" from
+     * "fetched and failed", so without a marker there would be nothing to
+     * check before deciding whether to hit the network again.
+     */
+    private const FAILURE_MARKER = '__packeta_carrier_feed_failed__';
+
+    /**
      * @return list<array{id: string, name: string, country: string, currency: string}>|null
      */
     public function forTenant(): ?array
@@ -49,16 +59,32 @@ final class PacketaCarrierCatalog
         // to a day (Cache::remember has no natural invalidation hook here).
         $cacheKey = 'packeta:carriers:'.hash('sha256', $apiKey);
 
-        // Laravel's remember() re-runs the callback whenever the cached
-        // value reads back null (Cache::get cannot distinguish "absent" from
-        // "the stored value is null") — so a failed fetch is never sticky
-        // for the full TTL; only a genuine list of carriers is. That is
-        // exactly the behaviour this class wants and gets for free.
-        return Cache::remember(
+        $cached = Cache::get($cacheKey);
+
+        if ($cached !== null) {
+            return $cached === self::FAILURE_MARKER ? null : $cached;
+        }
+
+        $carriers = $this->fetch($apiKey);
+
+        // Review finding I5: a failure used to write nothing to cache at
+        // all, so every screen load during an outage re-ran the full fetch
+        // — with the submission timeout (30s) this call used to share, that
+        // stalled the admin's shipping settings screen on EVERY reload, for
+        // a tenant who may only offer branch pickup and never even use the
+        // home-delivery carrier this list is for. A short negative cache
+        // (carrier_feed_failure_ttl_seconds, far below the success TTL)
+        // keeps a fixed key visible almost immediately while sparing every
+        // retry inside the window a second slow wait.
+        Cache::put(
             $cacheKey,
-            (int) config('packeta.carrier_feed_ttl_seconds'),
-            fn () => $this->fetch($apiKey),
+            $carriers ?? self::FAILURE_MARKER,
+            $carriers !== null
+                ? (int) config('packeta.carrier_feed_ttl_seconds')
+                : (int) config('packeta.carrier_feed_failure_ttl_seconds'),
         );
+
+        return $carriers;
     }
 
     /**
@@ -68,8 +94,15 @@ final class PacketaCarrierCatalog
     {
         $url = str_replace('{key}', $apiKey, (string) config('packeta.carrier_feed_url'));
 
+        // Review finding I5: this used to share config('packeta.timeout')
+        // (30s) with real parcel submission — but this call runs
+        // synchronously every time the shipping settings screen loads, not
+        // once per parcel, so a slow or dead feed stalled the screen for 30
+        // seconds on every single reload. A dedicated, much shorter timeout:
+        // nobody's parcel depends on "list partner carriers" succeeding
+        // quickly the way a real submission does.
         try {
-            $response = Http::timeout((int) config('packeta.timeout'))->get($url);
+            $response = Http::timeout((int) config('packeta.carrier_feed_read_timeout'))->get($url);
         } catch (Throwable) {
             return null;
         }

@@ -14,6 +14,7 @@ use App\Core\Tenancy\TenantContext;
 use App\Models\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Mockery;
 use Modules\Orders\Models\Order;
 use Modules\Packeta\Models\Shipment;
@@ -216,9 +217,20 @@ class PacketaHomeDeliveryTest extends TestCase
      * caller sees — a caller catching CarrierError to decide what to tell
      * the tenant must not be handed an unrelated "cancel failed" message
      * instead.
+     *
+     * Review finding I4: before this fix, that was ALL the caller saw — the
+     * failed cancel was swallowed outright, so the live, orphaned parcel at
+     * Packeta ended up recorded in no database row (claimForSubmission()
+     * nulls packet_id on every claim), no log, and no message a tenant could
+     * act on. A retry then calls createPacket() again, and for a
+     * cash-on-delivery order that means the shopper is asked to pay twice
+     * at the door. Now: the packet id is logged AND folded into the error
+     * text, so the row ShipmentSubmitter writes on failure still names it.
      */
     public function test_a_failed_cancel_does_not_hide_the_original_courier_error(): void
     {
+        Log::spy();
+
         Http::fake(fn ($request) => match (true) {
             str_contains($request->body(), '<createPacket>') => Http::response(self::OK_CREATE),
             str_contains($request->body(), '<packetCourierNumber>') => Http::response(
@@ -235,7 +247,18 @@ class PacketaHomeDeliveryTest extends TestCase
             $this->fail('Expected a CarrierError.');
         } catch (CarrierError $e) {
             $this->assertStringContainsString('kurýr zásilku odmítl', $e->getMessage());
+            // The orphaned packet id (777, from OK_CREATE) is named in the
+            // error text the tenant actually reads on the shipment row —
+            // not just logged where nobody but an operator would see it.
+            $this->assertStringContainsString('777', $e->getMessage());
+            $this->assertStringContainsString('zrušte ji ručně', $e->getMessage());
         }
+
+        Log::shouldHaveReceived('warning')
+            ->once()
+            ->withArgs(fn (string $message, array $context) => $context['packet_id'] === '777'
+                && $context['order_number'] === '2026042'
+            );
     }
 
     public function test_submitting_without_an_address_fails_loudly(): void
@@ -344,7 +367,7 @@ class PacketaHomeDeliveryTest extends TestCase
     public function test_registry_resolves_the_home_delivery_driver_when_configured(): void
     {
         $tenant = $this->tenantWithPacketa();
-        $this->makeShipping($tenant, ShippingMethod::PROVIDER_PACKETA_HD, ['api_password' => 's3cr3t', 'eshop' => 'esh-1']);
+        $this->makeShipping($tenant, ShippingMethod::PROVIDER_PACKETA_HD, ['api_password' => 's3cr3t', 'eshop' => 'esh-1', 'carrier_id' => '106']);
 
         $carrier = $this->context->runAs(
             $tenant,
@@ -359,8 +382,34 @@ class PacketaHomeDeliveryTest extends TestCase
     public function test_registry_returns_null_for_home_delivery_without_credentials(): void
     {
         $tenant = $this->tenantWithPacketa();
-        $this->makeShipping($tenant, ShippingMethod::PROVIDER_PACKETA_HD, ['eshop' => 'esh-1']);
+        $this->makeShipping($tenant, ShippingMethod::PROVIDER_PACKETA_HD, ['eshop' => 'esh-1', 'carrier_id' => '106']);
 
+        $carrier = $this->context->runAs(
+            $tenant,
+            fn () => $this->app->make(CarrierRegistry::class)->for(ShippingMethod::PROVIDER_PACKETA_HD)
+        );
+
+        $this->assertNull($carrier);
+    }
+
+    /**
+     * Minor finding: config('packeta.home_delivery_carrier_id') defaults to
+     * '' when nobody has set PACKETA_HOME_DELIVERY_CARRIER_ID, so a method
+     * created outside the admin form (seeder, CSV, a future API) — with
+     * credentials but no carrier id anywhere, neither its own settings nor
+     * the platform default — used to build a driver with an empty carrier
+     * id and call createPacket() with no addressId at all. blank() must
+     * read this as "carrier not configured", the same as the
+     * password/eshop guard right next to it, not forward an empty id to
+     * Packeta and let IT reject the request.
+     */
+    public function test_registry_returns_null_for_home_delivery_with_no_carrier_id_anywhere(): void
+    {
+        $tenant = $this->tenantWithPacketa();
+        $this->makeShipping($tenant, ShippingMethod::PROVIDER_PACKETA_HD, ['api_password' => 's3cr3t', 'eshop' => 'esh-1']);
+
+        // The platform-wide fallback is deliberately left unset — the
+        // config default is '' (config/packeta.php), never a real id.
         $carrier = $this->context->runAs(
             $tenant,
             fn () => $this->app->make(CarrierRegistry::class)->for(ShippingMethod::PROVIDER_PACKETA_HD)
@@ -378,7 +427,7 @@ class PacketaHomeDeliveryTest extends TestCase
     {
         $tenant = $this->tenantWithPacketa();
         $this->makeShipping($tenant, ShippingMethod::PROVIDER_PACKETA, ['api_password' => 'branch-pass', 'eshop' => 'esh-branch']);
-        $this->makeShipping($tenant, ShippingMethod::PROVIDER_PACKETA_HD, ['api_password' => 'hd-pass', 'eshop' => 'esh-hd']);
+        $this->makeShipping($tenant, ShippingMethod::PROVIDER_PACKETA_HD, ['api_password' => 'hd-pass', 'eshop' => 'esh-hd', 'carrier_id' => '106']);
 
         $registry = $this->context->runAs($tenant, fn () => $this->app->make(CarrierRegistry::class));
 
@@ -496,7 +545,11 @@ class PacketaHomeDeliveryTest extends TestCase
         $tenant = $this->packetaHdTenant();
         $this->context->set($tenant);
 
-        $shipping = $this->homeDeliveryShipping();
+        // Minor finding's blank() guard needs a carrier id from SOMEWHERE
+        // (settings or the platform config default) to resolve at all — the
+        // config fallback is exercised on its own further down, so every
+        // test not specifically about that fallback carries its own id.
+        $shipping = $this->homeDeliveryShipping(['carrier_id' => '106']);
         $payment = $this->paymentMethod();
 
         $order = $this->placeOrder($shipping, $payment, [
@@ -521,7 +574,7 @@ class PacketaHomeDeliveryTest extends TestCase
         $tenant = $this->packetaHdTenant();
         $this->context->set($tenant);
 
-        $shipping = $this->homeDeliveryShipping();
+        $shipping = $this->homeDeliveryShipping(['carrier_id' => '106']);
         $payment = $this->paymentMethod();
 
         // No delivery address at all — the shopper ships to the address
@@ -611,7 +664,7 @@ class PacketaHomeDeliveryTest extends TestCase
         $tenant = $this->packetaHdTenant();
         $this->context->set($tenant);
 
-        $shipping = $this->homeDeliveryShipping();
+        $shipping = $this->homeDeliveryShipping(['carrier_id' => '106']);
         $payment = $this->paymentMethod();
         $order = $this->placeOrder($shipping, $payment, null);
 

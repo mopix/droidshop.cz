@@ -119,12 +119,17 @@ export function seedVariantProduct(slug = 'e2e-varianty'): string {
  * Creates a packeta_hd shipping method for the demo shop — the address-
  * delivery driver the no-JS purchase test exercises.
  *
- * Only eshop/api_password are load-bearing for EloquentCarrierRegistry::
- * packetaHomeDelivery() to resolve a driver at all; carrier_id is left to
- * its config fallback on purpose. Submitting the parcel to Packeta itself is
- * not part of what checkout proves — that only ever happens later, from the
- * admin's expedition queue — so this suite has no reason to fake an outbound
- * HTTP call the way the PHPUnit suite does with Http::fake.
+ * carrier_id is now load-bearing too (fix-wave review, minor finding):
+ * EloquentCarrierRegistry::packetaHomeDelivery() rejects a blank carrier id
+ * — from the method's own settings OR the platform config fallback, which
+ * defaults to '' (PACKETA_HOME_DELIVERY_CARRIER_ID is unset for this suite,
+ * same as production until someone configures it) — as "carrier not
+ * configured", the same as a missing password. Before that fix, an empty
+ * carrier id silently reached Packeta's createPacket() as `addressId`; this
+ * fixture used to rely on exactly that gap. Submitting the parcel to Packeta
+ * itself is still not part of what checkout proves — that only ever happens
+ * later, from the admin's expedition queue — so this suite has no reason to
+ * fake an outbound HTTP call the way the PHPUnit suite does with Http::fake.
  *
  * Idempotent: re-running the suite reuses the method rather than piling up
  * duplicates (mirrors seedVariantProduct's own guard).
@@ -145,6 +150,7 @@ export function seedHomeDeliveryShipping(): void {
         'api_key' => 'e2e-key',
         'eshop' => 'e2e-eshop',
         'api_password' => 'e2e-password',
+        'carrier_id' => '106',
         'default_weight_g' => 1000,
       ]);
     });

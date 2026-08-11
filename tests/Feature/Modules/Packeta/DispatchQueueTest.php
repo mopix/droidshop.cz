@@ -158,6 +158,26 @@ class DispatchQueueTest extends TestCase
         });
     }
 
+    /**
+     * A packeta_hd (home delivery) shipping method for the tenant — a second,
+     * independent row from the branch-pickup one tenantFixtures() sets up,
+     * same as PacketaHomeDeliveryTest's own homeDeliveryShipping(). Carries
+     * its own 'carrier_id' setting so EloquentCarrierRegistry::
+     * packetaHomeDelivery()'s blank() guard (review finding, minor) never
+     * makes it resolve to null in this test regardless of the platform-wide
+     * config default.
+     */
+    private function homeDeliveryShipping(Tenant $tenant): ShippingMethod
+    {
+        return $this->context->runAs($tenant, fn () => ShippingMethod::create([
+            'provider' => ShippingMethod::PROVIDER_PACKETA_HD,
+            'name' => 'Doručení domů',
+            'price' => 9_900,
+            'is_active' => true,
+            'settings' => ['api_password' => 's3cr3t', 'eshop' => 'esh-1', 'carrier_id' => '106'],
+        ]));
+    }
+
     private function product(string $sku): Product
     {
         return app(ProductWriter::class)->create([
@@ -287,6 +307,36 @@ class DispatchQueueTest extends TestCase
                     $this->assertTrue($uuids->contains($failedOrder->uuid));
                     $this->assertFalse($uuids->contains($personal->uuid));
                     $this->assertFalse($uuids->contains($submittedOrder->uuid));
+
+                    return true;
+                });
+            });
+    }
+
+    /**
+     * Review finding C1 (critical): forShippingProvider() used to match only
+     * the JSON path shipping_snapshot->pickup_point->provider, and this
+     * queue only ever asked for the single constant PROVIDER_PACKETA. A
+     * home-delivery order's snapshot has no pickup_point at all — the
+     * provider sits at the top level instead (OrderPlacer::
+     * shippingSnapshot()) — so it matched nothing and could never be handed
+     * to a carrier from this screen. This test drives the real admin route,
+     * not forShippingProvider() directly, because that unit-level test is
+     * exactly what five prior reviews already had and still missed the bug:
+     * the controller's own hardcoded PROVIDER_PACKETA constant was a second,
+     * independent place the same mistake lived.
+     */
+    public function test_the_queue_lists_a_home_delivery_order(): void
+    {
+        $homeDelivery = $this->homeDeliveryShipping($this->tenant);
+
+        $order = $this->placeOrder($this->tenant, 'KB-HD', $homeDelivery);
+
+        $this->actingAs($this->owner)
+            ->get($this->url('/expedice'))
+            ->assertInertia(function (AssertableInertia $page) use ($order) {
+                $page->where('orders', function ($orders) use ($order) {
+                    $this->assertTrue(collect($orders)->pluck('uuid')->contains($order->uuid));
 
                     return true;
                 });

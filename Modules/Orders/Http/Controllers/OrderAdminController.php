@@ -120,6 +120,19 @@ class OrderAdminController
         // (wave 1.5).
         $shipment = $this->shipments->forOrder($order->orderInternalId());
 
+        // Review finding C1: whether THIS order's own carrier — its
+        // snapshot's top-level 'provider' — can still be resolved to a
+        // running, configured driver right now. Previously the "Podat do
+        // Zásilkovny" button was gated on pickupPoint !== null, which is
+        // always null for a home-delivery order (no branch at all), so the
+        // button could never appear for one even though PacketaHomeDelivery
+        // was perfectly able to accept it. A server-computed flag, not a
+        // client-side re-derivation, because the shopper-facing checkout
+        // already resolves the same driver through CarrierRegistry — the
+        // admin must not answer a different question than checkout did.
+        $provider = $order->orderShippingSnapshot()['provider'] ?? null;
+        $shippable = $provider !== null && $this->carriers->for($provider) !== null;
+
         return inertia('Modules/Orders/Show', [
             'order' => [
                 ...$this->summarise($order),
@@ -187,6 +200,7 @@ class OrderAdminController
             // carrier module that filled it in is still active, same as any
             // other placement-time snapshot (billing, VAT recap).
             'pickupPoint' => $order->orderShippingSnapshot()['pickup_point'] ?? null,
+            'shippable' => $shippable,
             'shipment' => $shipment === null ? null : [
                 'id' => $shipment->shipmentId(),
                 'status' => $shipment->shipmentStatus(),

@@ -143,13 +143,47 @@ class PacketaCarrierCatalogTest extends TestCase
     }
 
     /**
-     * Cache::remember() reads back null exactly like "nothing cached" (Laravel
-     * cannot tell the two apart), so a failed fetch is never sticky for the
-     * full TTL — the next call retries for real. This is the property that
-     * keeps a transient Packeta outage from locking a tenant out of the
-     * select for a whole day once the feed recovers.
+     * Review finding I5 changed this behaviour on purpose: a failure used to
+     * write nothing to cache at all, so a screen reload during an outage
+     * re-ran the full (30s-timeout) HTTP call every single time — that is
+     * exactly what stalled the shipping settings screen. A failure is now
+     * remembered too, on a short negative-cache TTL: immediately retrying
+     * must NOT hit the network again.
      */
-    public function test_a_failed_fetch_is_retried_on_the_next_call_not_cached_as_a_failure(): void
+    public function test_a_failed_fetch_is_not_retried_within_the_negative_cache_window(): void
+    {
+        $this->makeMethod(['api_key' => 'key-1', 'eshop' => 'esh-1', 'api_password' => 'secret']);
+
+        Http::fake(['pickup-point.api.packeta.com/*' => Http::response('', 500)]);
+
+        // Both calls inside ONE runAs(), mirroring
+        // test_a_successful_fetch_is_cached_and_the_feed_is_called_only_once
+        // above: config('cache.default') is 'array' in this suite, and
+        // PrefixCacheTask forgets that driver's in-memory store on every
+        // tenant switch (rozhodnutí 2026-08-05, TenantContext::set()'s own
+        // docblock) — two SEPARATE runAs() calls would each trigger a real
+        // switch (tenant -> null -> tenant) and wipe the cache in between,
+        // making this test pass for the wrong reason (no caching happened
+        // at all, not "the negative cache held").
+        $this->context->runAs($this->tenant, function () {
+            $first = $this->catalog()->forTenant();
+            $this->assertNull($first);
+
+            $immediateRetry = $this->catalog()->forTenant();
+            $this->assertNull($immediateRetry);
+        });
+
+        Http::assertSentCount(1);
+    }
+
+    /**
+     * The negative cache is deliberately short (far below the day-long
+     * success TTL) — this is the property that keeps a transient Packeta
+     * outage from locking a tenant out of the select for a whole day once
+     * the feed recovers, the same guarantee the pre-fix "never cache a
+     * failure" behaviour gave, just no longer paid for on every reload.
+     */
+    public function test_a_failed_fetch_is_retried_once_the_negative_cache_expires(): void
     {
         $this->makeMethod(['api_key' => 'key-1', 'eshop' => 'esh-1', 'api_password' => 'secret']);
 
@@ -161,11 +195,37 @@ class PacketaCarrierCatalogTest extends TestCase
             ->push('', 500)
             ->push(self::CARRIERS_JSON);
 
-        $first = $this->context->runAs($this->tenant, fn () => $this->catalog()->forTenant());
-        $this->assertNull($first);
+        // One runAs() again, for the same reason as the test above — the
+        // travel() call sits inside it too, since it must happen between
+        // the two forTenant() calls, not before either of them.
+        $this->context->runAs($this->tenant, function () {
+            $first = $this->catalog()->forTenant();
+            $this->assertNull($first);
 
-        $second = $this->context->runAs($this->tenant, fn () => $this->catalog()->forTenant());
-        $this->assertNotNull($second);
+            $this->travel((int) config('packeta.carrier_feed_failure_ttl_seconds') + 1)->seconds();
+
+            $second = $this->catalog()->forTenant();
+            $this->assertNotNull($second);
+        });
+    }
+
+    /**
+     * Review finding I5: this call used to share the 30s submission timeout
+     * (config('packeta.timeout')) with real parcel submission, even though
+     * it runs synchronously on every shipping settings screen load. Proven
+     * by asserting the config VALUE actually reaching the HTTP client is the
+     * dedicated, short one — a unit-level assertion is the only way to prove
+     * "which timeout" without an actually slow fake transport.
+     */
+    public function test_the_feed_read_uses_its_own_short_timeout_not_the_submission_one(): void
+    {
+        $this->assertNotSame(
+            (int) config('packeta.timeout'),
+            (int) config('packeta.carrier_feed_read_timeout'),
+            'The feed read must not silently share the submission timeout again.',
+        );
+
+        $this->assertLessThan((int) config('packeta.timeout'), (int) config('packeta.carrier_feed_read_timeout'));
     }
 
     public function test_a_tenant_with_no_key_of_its_own_never_sees_another_tenants_carriers(): void

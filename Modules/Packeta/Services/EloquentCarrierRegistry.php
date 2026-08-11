@@ -93,6 +93,17 @@ final class EloquentCarrierRegistry implements CarrierRegistry
         // method's own value — packetaCarrierId() — always wins.
         $carrierId = $method?->packetaCarrierId() ?? config('packeta.home_delivery_carrier_id');
 
+        // Minor finding: the config fallback defaults to '' when nobody has
+        // set PACKETA_HOME_DELIVERY_CARRIER_ID, so a method created outside
+        // the admin form (seeder, CSV, future API) would otherwise build a
+        // driver with an empty carrier id and call createPacket() with no
+        // addressId. Blank here must read as "carrier not configured", the
+        // same as the password/eshop guard just above — not as a request the
+        // driver forwards and Packeta rejects.
+        if (blank($carrierId)) {
+            return null;
+        }
+
         return new PacketaHomeDelivery(new PacketaClient((string) $password), (string) $eshop, (string) $carrierId);
     }
 

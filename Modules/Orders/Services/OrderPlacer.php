@@ -166,6 +166,13 @@ class OrderPlacer implements OrderPlacement
             // address still has to hand the driver a weight.
             $weightGrams = $this->resolveWeightGrams($lines, $shippingOption);
 
+            // Same reasoning as weightGrams just above (review finding I3):
+            // computed once here so the top-level shipping_snapshot and
+            // resolvePickupPoint() below carry the exact same figure, and a
+            // carrier delivering to the shopper's own address — which has no
+            // pickup_point to nest it inside — still gets it at all.
+            $dimensionsMm = $this->singleItemDimensions($lines);
+
             // 4a. A carrier that delivers to a branch cannot be handed an
             //     order with no branch on it. Checked here, before any stock
             //     is touched (wave 2.4 fixed exactly this class of ordering
@@ -174,7 +181,7 @@ class OrderPlacer implements OrderPlacement
             //     than trusted from the cart: a point deactivated between
             //     selection and submit must block placement, not produce an
             //     unshippable parcel.
-            $pickupPointSnapshot = $this->resolvePickupPoint($request, $shippingOption, $lines, $weightGrams);
+            $pickupPointSnapshot = $this->resolvePickupPoint($request, $shippingOption, $dimensionsMm, $weightGrams);
 
             // 4b. The discount, recomputed here and binding only here: the cart
             //     page and the checkout recap both ran the engine too, but
@@ -237,7 +244,7 @@ class OrderPlacer implements OrderPlacement
             $prefix = $this->settings->get('orders', 'number_prefix', '');
             $number = (is_string($prefix) ? $prefix : '').$this->sequences->next('orders');
 
-            $shippingSnapshot = $this->shippingSnapshot($shippingOption, $shippingTotal, $weightGrams);
+            $shippingSnapshot = $this->shippingSnapshot($shippingOption, $shippingTotal, $weightGrams, $dimensionsMm);
 
             if ($shippingSnapshot !== null && $pickupPointSnapshot !== null) {
                 $shippingSnapshot['pickup_point'] = $pickupPointSnapshot;
@@ -680,11 +687,11 @@ class OrderPlacer implements OrderPlacement
      * longer resolves to an active point, throws PickupPointMissing here and
      * the transaction rolls back before decrementStock() ever runs.
      *
-     * @param  list<array<string, mixed>>  $lines
+     * @param  array{length: int, width: int, height: int}|null  $dimensionsMm
      *
      * @throws PickupPointMissing
      */
-    private function resolvePickupPoint(PlacementRequest $request, ?ShippingOption $shipping, array $lines, int $weightGrams): ?array
+    private function resolvePickupPoint(PlacementRequest $request, ?ShippingOption $shipping, ?array $dimensionsMm, int $weightGrams): ?array
     {
         if ($shipping === null) {
             return null;
@@ -724,8 +731,11 @@ class OrderPlacer implements OrderPlacement
             // boxes into one set of outer dimensions is arithmetic nobody can
             // do without knowing how they are packed, and a guess handed to a
             // carrier is worse than saying nothing: it decides whether the
-            // parcel counts as oversized.
-            'dimensions_mm' => $this->singleItemDimensions($lines),
+            // parcel counts as oversized. Nested copy kept alongside the
+            // top-level shippingSnapshot() one (review finding I3) so an
+            // order snapshotted before that fix stays readable without a
+            // migration — the same precedent as 'provider'/'weight_grams'.
+            'dimensions_mm' => $dimensionsMm,
         ];
     }
 
@@ -833,9 +843,10 @@ class OrderPlacer implements OrderPlacement
     }
 
     /**
+     * @param  array{length: int, width: int, height: int}|null  $dimensionsMm
      * @return array<string, mixed>|null
      */
-    private function shippingSnapshot(?ShippingOption $option, Money $charged, int $weightGrams): ?array
+    private function shippingSnapshot(?ShippingOption $option, Money $charged, int $weightGrams, ?array $dimensionsMm): ?array
     {
         if ($option === null) {
             return null;
@@ -855,6 +866,14 @@ class OrderPlacer implements OrderPlacement
             // nowhere to record which driver ShipmentSubmitter must resolve.
             'provider' => $option->provider(),
             'weight_grams' => $weightGrams,
+            // Review finding I3: dimensions decide whether a parcel counts as
+            // oversized — price and acceptance — which applies MORE to a
+            // courier handling the whole delivery than to a branch drop-off,
+            // yet only the nested pickup_point copy existed, so a
+            // home-delivery shipment never got one. Hoisted here beside
+            // 'provider'/'weight_grams'; the nested copy in
+            // resolvePickupPoint() stays as the pre-fix fallback.
+            'dimensions_mm' => $dimensionsMm,
         ];
     }
 

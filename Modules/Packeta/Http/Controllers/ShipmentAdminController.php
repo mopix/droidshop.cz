@@ -12,7 +12,6 @@ use Modules\Packeta\Http\Requests\PrintLabelsRequest;
 use Modules\Packeta\Http\Requests\SubmitShipmentsRequest;
 use Modules\Packeta\Models\Shipment;
 use Modules\Packeta\Services\ShipmentSubmitter;
-use Modules\Shipping\Models\ShippingMethod;
 
 /**
  * Handing parcels over, printing labels, cancelling a shipment (wave 2.5).
@@ -118,17 +117,45 @@ class ShipmentAdminController
         // foreign shop's id is silently dropped rather than leaking into the
         // print run. whereNotNull('packet_id') drops ids that were never
         // actually handed to the carrier — nothing to print a label for.
-        $ids = Shipment::query()
+        $shipments = Shipment::query()
             ->whereIn('id', $request->validated('shipment_ids'))
             ->whereNotNull('packet_id')
-            ->pluck('id')
-            ->all();
+            ->get();
 
-        if ($ids === []) {
+        if ($shipments->isEmpty()) {
             return back()->withErrors(['carrier' => 'Vybrané zásilky nemají podanou zásilku u dopravce.']);
         }
 
-        $carrier = $this->carriers->for(ShippingMethod::PROVIDER_PACKETA);
+        // Review finding C1: this used to resolve a single hardcoded
+        // PROVIDER_PACKETA driver regardless of which carrier the selected
+        // shipments actually used, so a home-delivery shipment printed
+        // through packetsLabelsPdf (the branch-pickup endpoint, which
+        // rejects it) instead of packetCourierLabelPdf — and for a tenant
+        // offering only home delivery, for('packeta') is null and the whole
+        // action answered "Zásilkovna není nastavená" even though the
+        // carrier the shipment actually used was configured and running.
+        // Grouped by the shipment's own `carrier` column, the same value
+        // cancel() already resolves through via shipmentCarrier() — same
+        // shape, copied here.
+        $byCarrier = $shipments->groupBy(fn (Shipment $shipment) => $shipment->shipmentCarrier());
+
+        // Packeta's branch and courier label endpoints each return their own
+        // complete PDF; there is no library in this project to merge two PDF
+        // documents into one inline response (and adding one is outside this
+        // fix's scope). A batch spanning both providers is therefore printed
+        // one provider at a time — the queue screen groups this way anyway
+        // in the everyday case (one dispatch run picks one type of parcel).
+        if ($byCarrier->count() > 1) {
+            return back()->withErrors([
+                'carrier' => 'Vybrané zásilky používají víc dopravců najednou — vyberte prosím zásilky jen pro jednoho dopravce.',
+            ]);
+        }
+
+        /** @var string $carrierKey */
+        $carrierKey = $byCarrier->keys()->first();
+        $ids = $shipments->pluck('id')->all();
+
+        $carrier = $this->carriers->for($carrierKey);
 
         if ($carrier === null) {
             return back()->withErrors(['carrier' => 'Zásilkovna není nastavená.']);

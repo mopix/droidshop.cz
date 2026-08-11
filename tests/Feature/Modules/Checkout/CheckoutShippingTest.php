@@ -3,6 +3,7 @@
 namespace Tests\Feature\Modules\Checkout;
 
 use App\Core\Money\Money;
+use App\Core\Shipping\Contracts\CarrierRegistry;
 use App\Core\Tax\TaxRates;
 use App\Core\Tenancy\TenantContext;
 use App\Models\Tenant;
@@ -263,12 +264,32 @@ class CheckoutShippingTest extends TestCase
      * (CheckoutController::requiresPickupPoint()), so this proves the
      * existing mechanism actually reaches the new provider rather than just
      * looking like it should (task brief).
+     *
+     * Review finding I6: requiresPickupPoint() is null-safe —
+     * `for($provider)?->requiresPickupPoint() === true` — so "the registry
+     * never resolves packeta_hd at all" and "the driver correctly answers
+     * false" render IDENTICALLY on this page: both produce no link. Deleting
+     * PacketaHomeDelivery and its registry arm entirely left the original
+     * version of this test green while describing a broken shop. Fixed two
+     * ways: (1) the registry resolution is asserted directly, not only
+     * through its downstream effect on the template; (2) a real
+     * pickup-point method (PROVIDER_PACKETA) is seeded alongside, so the
+     * test proves the page DIFFERENTIATES the two options — shows the link
+     * for exactly one of them — rather than merely that neither shows one.
      */
     public function test_a_provider_that_needs_no_pickup_point_never_shows_the_pickup_point_link(): void
     {
         foreach (['shipping', 'packeta'] as $module) {
             $this->activateModule($this->tenant, $module);
         }
+
+        $branch = $this->context->runAs($this->tenant, fn () => ShippingMethod::create([
+            'provider' => ShippingMethod::PROVIDER_PACKETA,
+            'name' => 'Zásilkovna – výdejní místo',
+            'price' => 5_900,
+            'is_active' => true,
+            'settings' => ['eshop' => 'esh-1', 'api_password' => 'secret'],
+        ]));
 
         $homeDelivery = $this->context->runAs($this->tenant, fn () => ShippingMethod::create([
             'provider' => ShippingMethod::PROVIDER_PACKETA_HD,
@@ -278,6 +299,13 @@ class CheckoutShippingTest extends TestCase
             'settings' => ['eshop' => 'esh-1', 'api_password' => 'secret', 'carrier_id' => '106'],
         ]));
 
+        $carrier = $this->context->runAs(
+            $this->tenant,
+            fn () => app(CarrierRegistry::class)->for(ShippingMethod::PROVIDER_PACKETA_HD),
+        );
+        $this->assertNotNull($carrier, 'The home-delivery driver must actually resolve, not merely answer false downstream.');
+        $this->assertFalse($carrier->requiresPickupPoint());
+
         $this->addToCart($this->makeProduct());
         $token = $this->cartToken();
 
@@ -285,7 +313,12 @@ class CheckoutShippingTest extends TestCase
 
         $page->assertOk();
         $page->assertSee($homeDelivery->name);
-        $page->assertDontSee('Vybrat výdejní místo');
+        $page->assertSee($branch->name);
+
+        // Exactly one option gets the link — proof the page withholds it
+        // for the address-delivery option specifically, not that neither
+        // Packeta-family carrier ever gets one.
+        $this->assertSame(1, substr_count($page->getContent(), 'Vybrat výdejní místo'));
 
         // The radio itself is still offered — only the pickup-point link is
         // gone. Choosing it and continuing must not get stuck asking for a
