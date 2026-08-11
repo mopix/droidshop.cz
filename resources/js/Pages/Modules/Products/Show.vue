@@ -128,7 +128,13 @@ const form = useForm({
   short_description: props.product.short_description ?? '',
   description: props.product.description ?? '',
   price: props.product.price,
-  net_price: null as number | null,
+  // From the prop, like every other field: the server computes it from the
+  // stored gross price and both halves are meant to arrive filled, which is
+  // exactly why `price_source` exists instead of "whichever one is empty".
+  // Starting it at null left the merchant looking at an empty box beside a
+  // filled one, before and after a save, and reading that as a price that did
+  // not store.
+  net_price: props.product.net_price,
   sale_price: props.product.sale_price,
   sale_starts_at: props.product.sale_starts_at,
   sale_ends_at: props.product.sale_ends_at,

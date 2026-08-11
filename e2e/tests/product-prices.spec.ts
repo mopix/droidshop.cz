@@ -89,6 +89,40 @@ test.describe('product prices tab', () => {
     await expect(page.locator('#p-net-price')).toHaveValue('2000,00')
   })
 
+  /**
+   * The net field has to arrive filled, and stay filled after a save.
+   *
+   * The server sends it (ProductAdminController computes it from the stored
+   * gross price), and the request handler's own comment says the form "now
+   * fills both halves so it can show them together" — which is what makes
+   * `price_source` load-bearing rather than "whichever one is empty". A form
+   * that discards the prop leaves the merchant looking at an empty box beside
+   * a filled one and reading it as a price that did not save.
+   */
+  test('the net price arrives filled and survives a save', async ({ page }) => {
+    await signInAsOwner(page)
+    await page.goto(shopUrl(`/admin/m/products/${slug}`))
+    await page.getByRole('tab', { name: 'Ceny' }).click()
+
+    const gross = await page.locator('#p-price').inputValue()
+    expect(gross).not.toBe('')
+    await expect(page.locator('#p-net-price')).not.toHaveValue('')
+
+    // And after a save it is still there — this is the half the merchant reads
+    // as "it did not store my net price".
+    await page.locator('#p-net-price').fill('1000')
+    await expect(page.locator('#p-price')).toHaveValue('1210,00')
+
+    await page.getByRole('button', { name: 'Uložit', exact: true }).click()
+    await expect(page.getByText('Produkt byl uložen.')).toBeVisible()
+
+    await page.reload()
+    await page.getByRole('tab', { name: 'Ceny' }).click()
+
+    await expect(page.locator('#p-price')).toHaveValue('1210,00')
+    await expect(page.locator('#p-net-price')).toHaveValue('1000,00')
+  })
+
   test('typing a percentage previews the amount it works out to', async ({ page }) => {
     await signInAsOwner(page)
     await page.goto(shopUrl(`/admin/m/products/${slug}`))
