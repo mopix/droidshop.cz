@@ -498,11 +498,33 @@ class PacketaHomeDeliveryTest extends TestCase
     }
 
     /**
+     * A single product carrying its own outer dimensions (wave 3.8) — the
+     * fixture the dimensions-reach-the-carrier test (review finding I3)
+     * needs. Kept separate from product() above rather than adding
+     * dimensions to it: every other test in this file places an order
+     * through it and asserting dimensions ARE NOT sent would then be
+     * meaningless noise on top of what those tests actually check.
+     */
+    private function productWithDimensions(): Product
+    {
+        return app(ProductWriter::class)->create([
+            'name' => 'Klávesnice Acme',
+            'price' => 100_000,
+            'status' => Product::STATUS_ACTIVE,
+            'tax_rate_id' => app(TaxRates::class)->default()->id,
+            'weight_g' => 200,
+            'length_mm' => 200,
+            'width_mm' => 150,
+            'height_mm' => 80,
+        ]);
+    }
+
+    /**
      * @param  array<string, mixed>|null  $shippingAddress
      */
-    private function placeOrder(ShippingMethod $shipping, PaymentMethod $payment, ?array $shippingAddress): Order
+    private function placeOrder(ShippingMethod $shipping, PaymentMethod $payment, ?array $shippingAddress, ?Product $product = null): Order
     {
-        $product = $this->product();
+        $product ??= $this->product();
 
         $cart = app(CartRepository::class)->forToken(null);
         app(CartRepository::class)->addItem($cart, $product->id, 1);
@@ -588,6 +610,40 @@ class PacketaHomeDeliveryTest extends TestCase
         Http::assertSent(fn ($request) => str_contains($request->body(), '<createPacket>')
             && str_contains($request->body(), '<street>Billingova</street>')
             && str_contains($request->body(), '<city>Brno</city>'));
+    }
+
+    /**
+     * Review finding I3: OrderPlacer::shippingSnapshot() now writes
+     * dimensions_mm at the snapshot's TOP LEVEL (beside provider/
+     * weight_grams), not only nested under pickup_point — a home-delivery
+     * order has no pickup_point at all, so before this fix
+     * ShipmentSubmitter::dimensionsFrom() always read null for one and
+     * PacketaHomeDelivery::submit() never sent a <size> element, even for a
+     * single-item order whose product carries dimensions. This end-to-end
+     * test (place → submit, same shape as the address tests just above)
+     * is the only place in the suite that drives OrderPlacer's write and
+     * ShipmentSubmitter's read together — the driver-level dimensions test
+     * in PacketaCarrierTest passes the array straight into submit() and so
+     * cannot see this plumbing gap at all.
+     */
+    public function test_dimensions_reach_the_carrier_for_a_single_item_order(): void
+    {
+        $tenant = $this->packetaHdTenant();
+        $this->context->set($tenant);
+
+        $shipping = $this->homeDeliveryShipping(['carrier_id' => '106']);
+        $payment = $this->paymentMethod();
+
+        $order = $this->placeOrder($shipping, $payment, null, $this->productWithDimensions());
+
+        $this->fakeSuccess();
+
+        app(ShipmentSubmitter::class)->submit($order->uuid);
+
+        Http::assertSent(fn ($request) => str_contains($request->body(), '<createPacket>')
+            && str_contains($request->body(), '<length>200</length>')
+            && str_contains($request->body(), '<width>150</width>')
+            && str_contains($request->body(), '<height>80</height>'));
     }
 
     /**
