@@ -650,4 +650,50 @@ class ShipmentSubmitterTest extends TestCase
         Http::assertNothingSent();
         $this->assertSame(0, Shipment::count());
     }
+
+    /**
+     * Task 1 (home-delivery wave): OrderPlacer now writes `provider` and
+     * `weight_grams` at the top of shipping_snapshot, not just nested inside
+     * pickup_point (see Tests\Feature\Modules\Orders\PickupPointOrderTest::
+     * test_the_shipping_snapshot_carries_the_provider_and_weight_at_top_level).
+     * No snapshot migration ever rewrites an order already placed
+     * (rozhodnutí 2026-07-22), so an order snapshotted in the shape written
+     * BEFORE this task must stay submittable — this locks in that
+     * ShipmentSubmitter still falls back to the nested copy instead of
+     * failing with "carrier not configured".
+     */
+    public function test_an_order_snapshotted_before_the_change_can_still_be_submitted(): void
+    {
+        $tenant = $this->tenant();
+        $this->context->set($tenant);
+        $order = $this->readyOrder();
+
+        // Overwrite the snapshot to the shape written before this task:
+        // provider and weight_grams present only inside pickup_point, no
+        // top-level keys at all.
+        $order->forceFill([
+            'shipping_snapshot' => [
+                'id' => $order->shipping_snapshot['id'],
+                'name' => $order->shipping_snapshot['name'],
+                'pickup_point' => [
+                    'code' => '1001',
+                    'name' => 'Brno — Hlavní nádraží',
+                    'street' => 'Nádražní 1',
+                    'city' => 'Brno',
+                    'zip' => '60200',
+                    'provider' => ShippingMethod::PROVIDER_PACKETA,
+                    'weight_grams' => 1000,
+                ],
+            ],
+        ])->save();
+
+        Http::fake(['*' => Http::response(self::OK_RESPONSE)]);
+
+        $shipment = app(ShipmentSubmitter::class)->submit($order->uuid);
+
+        $this->assertSame(Shipment::STATUS_SUBMITTED, $shipment->shipmentStatus());
+        $this->assertSame(ShippingMethod::PROVIDER_PACKETA, $shipment->shipmentCarrier());
+        $this->assertSame(1000, $shipment->weight_grams);
+        Http::assertSentCount(1);
+    }
 }

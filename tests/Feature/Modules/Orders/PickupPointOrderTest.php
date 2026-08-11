@@ -399,4 +399,42 @@ class PickupPointOrderTest extends TestCase
         $this->assertArrayNotHasKey('pickup_point', $order->shipping_snapshot ?? []);
         $this->assertSame(4, $this->stockQty($product));
     }
+
+    /**
+     * Task 1 (home-delivery wave): a carrier that ships to the shopper's own
+     * address has no pickup_point at all, so provider/weight_grams — which
+     * OrderPlacer::resolvePickupPoint() used to nest only inside
+     * pickup_point — must be readable from every order regardless of
+     * whether one exists. Mirrors paymentSnapshot()'s top-level 'provider',
+     * carried there since wave 1.4.
+     */
+    public function test_the_shipping_snapshot_carries_the_provider_and_weight_at_top_level(): void
+    {
+        // Packeta driver deliberately never enabled — flat shipping needs no
+        // carrier and no pickup point, exactly the case that had nowhere to
+        // record a provider or a weight before this task.
+        $product = $this->makeProduct();
+        $shipping = $this->makeFlatShipping();
+
+        $this->addToCart($product);
+        $token = $this->cartToken();
+        $this->chooseShipping($token, $shipping->id);
+
+        $checkoutToken = $this->checkoutToken($token);
+
+        $response = $this->withCookie('cart_token', $token)
+            ->post($this->url('/pokladna/udaje'), $this->detailsPayload($checkoutToken));
+
+        $order = $this->context->runAs($this->tenant, fn () => Order::query()->firstOrFail());
+
+        $response->assertRedirect($this->url('/dekujeme/'.$order->uuid));
+
+        $snapshot = $order->shipping_snapshot;
+
+        $this->assertSame(ShippingMethod::PROVIDER_FLAT, $snapshot['provider']);
+        // makeProduct() sets weight_g to 200, so a real, non-fallback figure
+        // must reach the snapshot — not just any positive number.
+        $this->assertSame(200, $snapshot['weight_grams']);
+        $this->assertArrayNotHasKey('pickup_point', $snapshot);
+    }
 }

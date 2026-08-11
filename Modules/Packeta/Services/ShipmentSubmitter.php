@@ -101,14 +101,20 @@ final class ShipmentSubmitter
             throw CarrierError::rejected('packeta', 'objednávka neexistuje');
         }
 
-        // The pickup_point sub-array, not the snapshot's top level: OrderPlacer
-        // nests `provider` and `weight_grams` alongside the address inside
-        // shipping_snapshot['pickup_point'] (see
-        // Modules\Orders\Services\OrderPlacer::resolvePickupPoint()) — an order
-        // whose method needs no branch at all has no pickup_point, so it has no
-        // provider to resolve a carrier from either.
-        $pickupPoint = $order->orderShippingSnapshot()['pickup_point'] ?? null;
-        $provider = (string) ($pickupPoint['provider'] ?? '');
+        $snapshot = $order->orderShippingSnapshot();
+        $pickupPoint = $snapshot['pickup_point'] ?? null;
+
+        // Top level first: Modules\Orders\Services\OrderPlacer::
+        // shippingSnapshot() carries `provider` and `weight_grams` at the top
+        // of shipping_snapshot for every order since the home-delivery wave
+        // (mirrors paymentSnapshot()'s top-level `provider`, present since
+        // wave 1.4) — a carrier delivering to the shopper's own address has
+        // no pickup_point at all, so it has nowhere else to record either.
+        // The nested copy inside pickup_point is where an order snapshotted
+        // BEFORE that wave still keeps them; no snapshot migration ever
+        // rewrites a placed order (rozhodnutí 2026-07-22), so that fallback
+        // must stay forever.
+        $provider = (string) ($snapshot['provider'] ?? $pickupPoint['provider'] ?? '');
         $carrier = $this->carriers->for($provider);
 
         if ($carrier === null) {
@@ -121,7 +127,23 @@ final class ShipmentSubmitter
             throw CarrierError::rejected($carrier->key(), 'objednávka nemá výdejní místo');
         }
 
-        $shipment = $this->claim($order, $carrier->key(), $pickupPoint);
+        // Modules\Orders\Services\OrderPlacer already applies the shipping
+        // method's own configured fallback (or a last-resort 1000g) whenever
+        // every line's product carries no weight, so this is never actually
+        // 0 for an order placed after that fix. The `?: 1000` below is kept
+        // only as a guard for an order snapshot written before that fix
+        // shipped (final review, wave 2.5) — it must never be the thing that
+        // actually supplies a real order's weight.
+        //
+        // `?:` on purpose, not `??`: an older snapshot does not merely omit
+        // the key, it carries it PRESENT with a value of 0 (the column's own
+        // pre-fix default) — `??` only substitutes on a missing/null key, so
+        // it silently let a real 0 through and this guard never actually
+        // fired for the one snapshot shape it exists to catch (final review,
+        // wave 2.5).
+        $weightGrams = (int) ($snapshot['weight_grams'] ?? $pickupPoint['weight_grams'] ?? 0) ?: 1000;
+
+        $shipment = $this->claim($order, $carrier->key(), $weightGrams);
 
         if ($shipment->shipmentStatus() === Shipment::STATUS_SUBMITTED) {
             // Already handed over — a second click must not create a second
@@ -188,9 +210,11 @@ final class ShipmentSubmitter
      * does not decide who may call the carrier, see claimForSubmission()
      * below for that.
      *
-     * @param  array<string, mixed>|null  $pickupPoint
+     * $weightGrams is resolved by the caller (submit(), top-level snapshot
+     * first, falling back to the nested pickup_point copy) so this method
+     * does not need to know which snapshot shape the order carries.
      */
-    private function claim(OrderView $order, string $carrierKey, ?array $pickupPoint): Shipment
+    private function claim(OrderView $order, string $carrierKey, int $weightGrams): Shipment
     {
         $orderId = $order->orderInternalId();
 
@@ -204,23 +228,6 @@ final class ShipmentSubmitter
             // this is gets decided next, by claimForSubmission().
             return $existing;
         }
-
-        // Modules\Orders\Services\OrderPlacer::resolvePickupPoint() already
-        // applies the shipping method's own configured fallback (or a
-        // last-resort 1000g) whenever every line's product carries no
-        // weight, so weight_grams here is never actually 0 for an order
-        // placed after that fix. The `?: 1000` below is kept only as a guard
-        // for an order snapshot written before this fix shipped (final
-        // review, wave 2.5) — it must never be the thing that actually
-        // supplies a real order's weight.
-        //
-        // `?:` on purpose, not `??`: an older snapshot does not merely omit
-        // the key, it carries it PRESENT with a value of 0 (the column's own
-        // pre-fix default) — `??` only substitutes on a missing/null key, so
-        // it silently let a real 0 through and this guard never actually
-        // fired for the one snapshot shape it exists to catch (final review,
-        // wave 2.5).
-        $weightGrams = (int) ($pickupPoint['weight_grams'] ?? 0) ?: 1000;
 
         try {
             return Shipment::create([

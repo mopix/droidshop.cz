@@ -158,6 +158,14 @@ class OrderPlacer implements OrderPlacement
             $itemsTotal = $this->sum(array_column($lines, 'line_total'), $currency);
             [$shippingOption, $shippingTotal] = $this->resolveShipping($request, $itemsTotal, $currency);
 
+            // Computed once, here, so both the top-level shippingSnapshot()
+            // figure and resolvePickupPoint() below use the exact same sum —
+            // two independent totals of the same lines would eventually
+            // drift apart. Needed regardless of whether this carrier uses a
+            // pickup point at all: a carrier delivering to the shopper's own
+            // address still has to hand the driver a weight.
+            $weightGrams = $this->resolveWeightGrams($lines, $shippingOption);
+
             // 4a. A carrier that delivers to a branch cannot be handed an
             //     order with no branch on it. Checked here, before any stock
             //     is touched (wave 2.4 fixed exactly this class of ordering
@@ -166,7 +174,7 @@ class OrderPlacer implements OrderPlacement
             //     than trusted from the cart: a point deactivated between
             //     selection and submit must block placement, not produce an
             //     unshippable parcel.
-            $pickupPointSnapshot = $this->resolvePickupPoint($request, $shippingOption, $lines);
+            $pickupPointSnapshot = $this->resolvePickupPoint($request, $shippingOption, $lines, $weightGrams);
 
             // 4b. The discount, recomputed here and binding only here: the cart
             //     page and the checkout recap both ran the engine too, but
@@ -229,7 +237,7 @@ class OrderPlacer implements OrderPlacement
             $prefix = $this->settings->get('orders', 'number_prefix', '');
             $number = (is_string($prefix) ? $prefix : '').$this->sequences->next('orders');
 
-            $shippingSnapshot = $this->shippingSnapshot($shippingOption, $shippingTotal);
+            $shippingSnapshot = $this->shippingSnapshot($shippingOption, $shippingTotal, $weightGrams);
 
             if ($shippingSnapshot !== null && $pickupPointSnapshot !== null) {
                 $shippingSnapshot['pickup_point'] = $pickupPointSnapshot;
@@ -628,6 +636,42 @@ class OrderPlacer implements OrderPlacement
     }
 
     /**
+     * The total weight to hand a carrier, from the lines actually sold.
+     *
+     * Lifted out of resolvePickupPoint() (task 1, home-delivery wave): a
+     * carrier that delivers to the shopper's own address has no pickup point
+     * to nest this inside, but still needs a weight, and the top-level
+     * shipping_snapshot needs it for every order regardless of carrier. Both
+     * that top-level figure and resolvePickupPoint() below read the return
+     * of this one call rather than each summing the lines again — two
+     * independent sums of the same thing would eventually disagree.
+     *
+     * @param  list<array{weight_grams:int}>  $lines
+     */
+    private function resolveWeightGrams(array $lines, ?ShippingOption $shipping): int
+    {
+        $weightGrams = array_sum(array_column($lines, 'weight_grams'));
+
+        if ($weightGrams <= 0) {
+            // products.weight_g defaults to 0, so a shop that never fills in
+            // product weights would otherwise hand the carrier a literal
+            // <weight>0</weight> and, per PacketaClient/PacketaCarrier, ship
+            // nothing at all (final review, wave 2.5: this was the merge
+            // blocker — ShippingMethod::packetaDefaultWeightG() had zero call
+            // sites even though the admin form promises "used when the
+            // product carries none"). Resolved HERE, not in
+            // ShipmentSubmitter: the shipping snapshot is captured at
+            // placement (spec §16.4), so a later edit to the method's
+            // configured default must not silently reweigh an already-placed
+            // parcel — the fallback is captured once, exactly like every
+            // other figure on this snapshot.
+            $weightGrams = $shipping?->defaultWeightGrams() ?? 1000;
+        }
+
+        return $weightGrams;
+    }
+
+    /**
      * The pickup-point snapshot for a carrier delivery, or null when the
      * chosen method needs no branch at all.
      *
@@ -636,11 +680,11 @@ class OrderPlacer implements OrderPlacement
      * longer resolves to an active point, throws PickupPointMissing here and
      * the transaction rolls back before decrementStock() ever runs.
      *
-     * @param  list<array{weight_grams:int}>  $lines
+     * @param  list<array<string, mixed>>  $lines
      *
      * @throws PickupPointMissing
      */
-    private function resolvePickupPoint(PlacementRequest $request, ?ShippingOption $shipping, array $lines): ?array
+    private function resolvePickupPoint(PlacementRequest $request, ?ShippingOption $shipping, array $lines, int $weightGrams): ?array
     {
         if ($shipping === null) {
             return null;
@@ -659,24 +703,6 @@ class OrderPlacer implements OrderPlacement
             throw PickupPointMissing::make();
         }
 
-        $weightGrams = array_sum(array_column($lines, 'weight_grams'));
-
-        if ($weightGrams <= 0) {
-            // products.weight_g defaults to 0, so a shop that never fills in
-            // product weights would otherwise hand the carrier a literal
-            // <weight>0</weight> and, per PacketaClient/PacketaCarrier, ship
-            // nothing at all (final review, wave 2.5: this was the merge
-            // blocker — ShippingMethod::packetaDefaultWeightG() had zero call
-            // sites even though the admin form promises "used when the
-            // product carries none"). Resolved HERE, not in
-            // ShipmentSubmitter: shipping_snapshot['pickup_point'] is an
-            // order-time snapshot (spec §16.4), so a later edit to the
-            // method's configured default must not silently reweigh an
-            // already-placed parcel — the fallback is captured once, at
-            // placement, exactly like every other figure on this snapshot.
-            $weightGrams = $shipping->defaultWeightGrams() ?? 1000;
-        }
-
         return [
             'code' => $point->pointCode(),
             'name' => $point->pointName(),
@@ -686,7 +712,12 @@ class OrderPlacer implements OrderPlacement
             // Carried alongside the address so a later shipment-submission
             // task can resolve CarrierRegistry::for($provider) and hand the
             // driver a weight without re-touching the cart or the catalogue
-            // (rozhodnutí wave 2.5, task-8 brief extension).
+            // (rozhodnutí wave 2.5, task-8 brief extension). Since task 1
+            // (home-delivery wave) the same two values also sit at the top
+            // of shippingSnapshot() — kept here too, unchanged, so an order
+            // snapshotted before that task stays readable without a
+            // migration (spec: an order snapshot is never rewritten
+            // retroactively, rozhodnutí 2026-07-22).
             'provider' => $carrier->key(),
             'weight_grams' => $weightGrams,
             // Only when the parcel IS one product (wave 3.8). Summing three
@@ -804,7 +835,7 @@ class OrderPlacer implements OrderPlacement
     /**
      * @return array<string, mixed>|null
      */
-    private function shippingSnapshot(?ShippingOption $option, Money $charged): ?array
+    private function shippingSnapshot(?ShippingOption $option, Money $charged, int $weightGrams): ?array
     {
         if ($option === null) {
             return null;
@@ -817,6 +848,13 @@ class OrderPlacer implements OrderPlacement
             'charged' => $charged->amount,
             'tax_rate_id' => $option->taxRateId(),
             'currency' => $charged->currency,
+            // Mirrors paymentSnapshot()'s top-level 'provider' below, carried
+            // there since wave 1.4. A carrier delivering to the shopper's own
+            // address has no pickup_point to nest this inside (task 1,
+            // home-delivery wave) — without a top-level copy it would have
+            // nowhere to record which driver ShipmentSubmitter must resolve.
+            'provider' => $option->provider(),
+            'weight_grams' => $weightGrams,
         ];
     }
 
