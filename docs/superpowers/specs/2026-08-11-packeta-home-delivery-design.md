@@ -1,4 +1,4 @@
-# Zásilkovna — doručení na adresu a rozlišení boxů
+# Zásilkovna — doručení na adresu
 
 **Datum:** 2026-08-11
 **Status:** approved
@@ -15,9 +15,12 @@ dopravce (PPL, DPD, GLS, Česká pošta a další podle země). Nájemce k tomu
 nepotřebuje novou smlouvu ani nové přihlašovací údaje — stačí mít službu zapnutou
 u Zásilkovny, kterou už používá.
 
-Zároveň jsou v katalogu výdejních míst **už dnes Z-BOXy**, protože sync bere z feedu
-všechna místa bez ohledu na typ. Nic je ale neodlišuje od poboček s obsluhou, takže
-si zákazník nemůže vybrat box a nájemce netuší, že je nabízí.
+> **Oprava 2026-08-11 (nález při implementaci):** tahle spec původně tvrdila, že
+> Z-BOXy už v katalogu jsou a chybí jen příznak. **Není to pravda** — voláme feed
+> `branch.json` (v4), který obsahuje jen pobočky; boxy má Zásilkovna ve zvláštním
+> feedu na jiném hostu a v jiné verzi API. Odlišení boxů proto z této vlny
+> **vypadlo** (rozhodnutí vlastníka) a je popsané v `docs/future/zasilkovna-z-boxy.md`.
+> Body níže označené *(vypuštěno)* se neimplementovaly.
 
 Alternativy (agregátor typu Balíkobot, přímé integrace PPL/DPD/GLS) jsou popsané
 v `docs/future/dopravci-agregator.md` a `docs/future/dopravci-prime-integrace.md`.
@@ -41,7 +44,7 @@ bez zásahu do checkoutu"), které je od vlny 2.5 nesplněné.
 
 - [ ] Zákazník si v pokladně zvolí doručení na svou adresu a objednávku dokončí bez JS
 - [ ] Nájemce takovou zásilku podá a vytiskne štítek ze stejné expediční fronty
-- [ ] Zákazník pozná box od pobočky a může si nechat vypsat jen boxy
+- [ ] ~~Zákazník pozná box od pobočky a může si nechat vypsat jen boxy~~ *(vypuštěno — viz oprava výše)*
 - [ ] `PickupPointCatalog::search()` a `PickupPointController` znají dopravce z košíku,
       ne z konstanty
 
@@ -119,7 +122,7 @@ absenci sáhne do `pickup_point` — objednávky založené před touto změnou 
 podat dál. **Bez migrace snímků:** doklad ani snímek se v tomto projektu nepřepisuje
 zpětně (rozhodnutí 2026-07-22), a čtení z obou míst je levnější než přepis historie.
 
-### Katalog výdejních míst
+### Katalog výdejních míst *(vypuštěno)*
 
 `pickup_points.type` — `branch` (pobočka s obsluhou) nebo `box` (samoobslužný
 Z-BOX). Plní `PickupPointSync` z feedu.
@@ -133,8 +136,7 @@ Zásilkovna přejmenuje pobočky.
 
 - Výběr způsobu dopravy beze změny — metoda s `requiresPickupPoint() === false`
   prostě nezobrazí výběr místa
-- U výdejních míst přibude přepínač „jen výdejní boxy" (server-rendered, bez JS,
-  jako celý zbytek výběru místa)
+- ~~U výdejních míst přepínač „jen výdejní boxy"~~ *(vypuštěno)*
 - Adresa pro doručení je ta, kterou zákazník už zadává — žádné druhé zadání
 
 ### Admin
@@ -148,7 +150,7 @@ Zásilkovna přejmenuje pobočky.
 2. Objednávka na adresu jde podat z expediční fronty a vytisknout štítek.
 3. Objednávka na výdejní místo se chová přesně jako dnes (žádná regrese).
 4. Objednávka založená **před** touto změnou jde dál podat.
-5. Zákazník si může nechat vypsat jen boxy, a u každého místa vidí, o který typ jde.
+5. ~~Zákazník si může nechat vypsat jen boxy, a u každého místa vidí, o který typ jde.~~ *(vypuštěno)*
 6. `PickupPointCatalog::search()` nevrátí místo cizího dopravce.
 7. Podání bez adresy u dopravce doručujícího na adresu selže hlasitě, ne tiše.
 
