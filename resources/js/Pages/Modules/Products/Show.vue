@@ -1442,10 +1442,16 @@ const runVariantDelete = () => {
         </p>
 
         <ul v-else class="grid gap-4 sm:grid-cols-3 lg:grid-cols-4">
+          <!-- The green tint on the main image is a way of spotting it in the
+               grid, not the thing that says which it is: the label below every
+               tile says so in words, because a colour tells nothing to whoever
+               cannot see it (WCAG 1.4.1, same reasoning as the status tint in
+               the product listing). -->
           <li
             v-for="(image, index) in product.images"
             :key="image.id"
-            class="rounded-md border border-gray-200 p-2"
+            class="rounded-md border p-2"
+            :class="image.is_main ? 'border-green-300 bg-green-50' : 'border-gray-200'"
           >
             <!-- Never a bare alt="": these are content, and an empty alt tells
                  a screen reader the image carries nothing. Until the shop
