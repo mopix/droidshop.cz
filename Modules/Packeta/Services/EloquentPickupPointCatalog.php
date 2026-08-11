@@ -16,7 +16,7 @@ use Modules\Packeta\Models\PickupPoint;
  */
 final class EloquentPickupPointCatalog implements PickupPointCatalog
 {
-    public function search(string $query, int $limit = 20): Collection
+    public function search(string $carrier, string $query, int $limit = 20): Collection
     {
         $term = PickupPoint::normalise($query);
 
@@ -25,6 +25,7 @@ final class EloquentPickupPointCatalog implements PickupPointCatalog
         }
 
         return PickupPoint::query()
+            ->where('carrier', $carrier)
             ->where('is_active', true)
             ->where('search_text', 'like', '%'.$term.'%')
             ->orderBy('city')

@@ -13,11 +13,13 @@ use Illuminate\Support\Collection;
 interface PickupPointCatalog
 {
     /**
-     * Active points matching a free-text query (town, zip or name).
+     * Active points of one carrier matching a free-text query (town, zip or
+     * name). Carrier comes first, matching `find()` below — a second carrier
+     * catalogue must never leak into another's picker.
      *
      * @return Collection<int, PickupPoint>
      */
-    public function search(string $query, int $limit = 20): Collection;
+    public function search(string $carrier, string $query, int $limit = 20): Collection;
 
     /**
      * One active point by its carrier identifier, or null when the code is
