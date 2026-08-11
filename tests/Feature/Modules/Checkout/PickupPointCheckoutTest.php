@@ -139,6 +139,51 @@ class PickupPointCheckoutTest extends TestCase
         $page->assertDontSee('Vinohrady');
     }
 
+    /**
+     * Every other test in this file either never chooses a shipping method
+     * before opening the picker, or chooses the one Packeta method whose
+     * provider happens to equal PickupPointController::carrier()'s own
+     * fallback constant — so deleting the cart-derived lookup entirely and
+     * hardcoding `return ShippingMethod::PROVIDER_PACKETA;` would not turn
+     * any of them red. This seeds a second carrier under the built-in 'flat'
+     * provider (no driver needed — precisely why the brief forbids going
+     * through CarrierRegistry here), selects it on the cart, and proves the
+     * picker follows that choice instead of silently defaulting to packeta.
+     */
+    public function test_the_picker_follows_the_carts_chosen_carrier_not_the_fallback(): void
+    {
+        // Same city as the packeta 'Hlavní nádraží' point from setUp, but a
+        // different carrier — a picker that ignored the cart's selection and
+        // fell back to packeta would show that point instead of this one.
+        PickupPoint::create([
+            'carrier' => 'flat', 'code' => '5001', 'name' => 'Brno — Kurýrní bod',
+            'street' => 'Kurýrní 1', 'city' => 'Brno', 'zip' => '60400', 'country' => 'CZ',
+            'search_text' => PickupPoint::normalise('Brno — Kurýrní bod Kurýrní 1 Brno 60400'),
+            'is_active' => true,
+        ]);
+
+        $flat = $this->context->runAs($this->tenant, fn () => ShippingMethod::create([
+            'provider' => ShippingMethod::PROVIDER_FLAT,
+            'name' => 'Kurýr',
+            'price' => 9_900,
+            'is_active' => true,
+        ]));
+
+        $this->addToCart($this->makeProduct());
+        $token = $this->cartToken();
+
+        $this->withCookie('cart_token', $token)
+            ->post($this->url('/pokladna/doprava'), ['shipping_method_id' => $flat->id]);
+
+        $page = $this->withCookie('cart_token', $token)->get($this->url('/pokladna/vydejni-misto?q=Brno'));
+
+        $page->assertOk();
+        $page->assertSee('Kurýrní bod');
+        // The cart chose the flat carrier, not packeta — its Brno branch
+        // from setUp must not leak into another carrier's results.
+        $page->assertDontSee('Hlavní nádraží');
+    }
+
     public function test_choosing_a_point_stores_only_its_code(): void
     {
         $this->addToCart($this->makeProduct());

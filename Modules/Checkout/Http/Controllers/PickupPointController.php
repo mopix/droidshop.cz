@@ -114,10 +114,15 @@ class PickupPointController
      * so the picker still opens for a tenant who has not configured a
      * carrier's API password yet.
      *
-     * Nothing is chosen yet on a first visit to this page (the shopper can
-     * reach it before the shipping step), so this falls back to the one
-     * carrier the catalogue serves today. A second carrier will need this
-     * default resolved another way — nothing in this task adds one.
+     * No shipping method chosen yet is not a rare first-visit edge case: the
+     * "Vybrat výdejní místo" link is rendered under EVERY pickup-point option
+     * in the shipping list (checkout/shipping.blade.php), regardless of
+     * which one — if any — is currently selected, so a shopper reaches this
+     * page cold every time they open the picker from an option they have not
+     * yet submitted. That is the common path, not the exception, and it
+     * falls back to the one carrier the catalogue serves today. A second
+     * pickup-point carrier will need this default resolved another way —
+     * nothing in this task adds one.
      */
     private function carrier(CartShape $cart): string
     {
