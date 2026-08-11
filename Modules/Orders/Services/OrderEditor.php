@@ -265,6 +265,7 @@ class OrderEditor
             [$shippingOption, $shippingTotal] = $this->resolveShipping($shippingMethodId, $itemsTotal, $currency);
             [$paymentOption, $paymentFee] = $this->resolvePayment($paymentMethodId, $currency);
             $total = $itemsTotal->plus($shippingTotal)->plus($paymentFee);
+            $weightGrams = $this->resolveWeightGrams($newLines, $shippingOption);
 
             $vatSummary = $this->vatSummary(
                 $newLines,
@@ -287,7 +288,7 @@ class OrderEditor
                 'phone' => $phone,
                 'billing' => $billing,
                 'shipping' => $shipping,
-                'shipping_snapshot' => $this->shippingSnapshot($shippingOption, $shippingTotal),
+                'shipping_snapshot' => $this->shippingSnapshot($shippingOption, $shippingTotal, $weightGrams),
                 'payment_snapshot' => $this->paymentSnapshot($paymentOption, $paymentFee),
                 'items_total' => $itemsTotal,
                 'shipping_total' => $shippingTotal,
@@ -537,6 +538,12 @@ class OrderEditor
                 'tax_rate' => $product->catalogTaxRatePercent(),
                 'quantity' => $quantity,
                 'line_total' => $unitPrice->times($quantity),
+                // Read from the catalogue alongside everything else on this
+                // line, the same as Modules\Orders\Services\OrderPlacer::
+                // recomputeLines() does — createManual() sums this into the
+                // shipping snapshot's weight_grams (task 5 fix: this class
+                // never carried a weight to a carrier before).
+                'weight_grams' => $product->catalogWeightGrams() * $quantity,
             ];
         }
 
@@ -740,7 +747,7 @@ class OrderEditor
     /**
      * @return array<string, mixed>|null
      */
-    private function shippingSnapshot(?ShippingOption $option, Money $charged): ?array
+    private function shippingSnapshot(?ShippingOption $option, Money $charged, int $weightGrams): ?array
     {
         if ($option === null) {
             return null;
@@ -753,7 +760,39 @@ class OrderEditor
             'charged' => $charged->amount,
             'tax_rate_id' => $option->taxRateId(),
             'currency' => $charged->currency,
+            // Task 5 fix: this row was missing entirely before — a manually
+            // created order therefore had no way to be handed to ANY carrier
+            // driver (Modules\Packeta\Services\ShipmentSubmitter::submit()
+            // resolves an empty provider and CarrierError::notConfigured()
+            // fires every time, home delivery or branch pickup alike).
+            // Mirrors Modules\Orders\Services\OrderPlacer::shippingSnapshot()'s
+            // own top-level 'provider'/'weight_grams' pair exactly, so a
+            // manual order and a storefront one stay indistinguishable to
+            // every downstream reader — this class's whole stated purpose.
+            'provider' => $option->provider(),
+            'weight_grams' => $weightGrams,
         ];
+    }
+
+    /**
+     * The total weight to hand a carrier, from the lines actually sold —
+     * mirrors Modules\Orders\Services\OrderPlacer::resolveWeightGrams()
+     * exactly (task 5 fix): a manual order with every product at 0g falls
+     * back to the shipping method's own configured default, then to 1000g,
+     * the same as a storefront order does, rather than handing a carrier a
+     * literal zero.
+     *
+     * @param  list<array{weight_grams:int}>  $lines
+     */
+    private function resolveWeightGrams(array $lines, ?ShippingOption $shipping): int
+    {
+        $weightGrams = array_sum(array_column($lines, 'weight_grams'));
+
+        if ($weightGrams <= 0) {
+            $weightGrams = $shipping?->defaultWeightGrams() ?? 1000;
+        }
+
+        return $weightGrams;
     }
 
     /**

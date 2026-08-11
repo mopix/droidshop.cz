@@ -8,7 +8,7 @@ use Illuminate\Support\Collection;
 
 final class NullPickupPointCatalog implements PickupPointCatalog
 {
-    public function search(string $query, int $limit = 20): Collection
+    public function search(string $carrier, string $query, int $limit = 20): Collection
     {
         return new Collection;
     }

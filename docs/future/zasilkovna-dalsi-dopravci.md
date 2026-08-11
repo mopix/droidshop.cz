@@ -1,5 +1,7 @@
 # Další dopravci a co je pro ně potřeba dodělat
 
+> **Aktualizace 2026-08-12:** body 1 a 2 níže jsou **hotové** (vlna „doručení na adresu", `docs/as-is/2026-08-11-packeta-home-delivery.md`). `PickupPointCatalog::search()` má parametr dopravce, `PickupPointController` si dopravce odvozuje z vybrané metody, a `provider`/`weight_grams`/`dimensions_mm` sedí na top-level `shipping_snapshot` s vnořeným čtením jako trvalou zálohou. Akceptační kritérium §16.5 je tím splněné. Platí dál bod 3 (odložené věci) — s tím, že **adresné doručení kurýrem už hotové je**.
+
 Vzniklo při uzavírání vlny 2.5 (Zásilkovna). Architektura je na víc dopravců postavená — `CarrierRegistry`, `Carrier`, `PickupPointCatalog` a `ShipmentBook` jsou jádrové kontrakty a druhý driver je „jen" další arm v registry. Tři místa ale zůstala navázaná na Zásilkovnu natvrdo a musí se dodělat dřív, než přijde Balíkovna, PPL nebo DPD.
 
 ## 1. Checkout se na dvou místech ptá natvrdo

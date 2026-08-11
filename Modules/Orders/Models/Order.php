@@ -190,6 +190,11 @@ class Order extends Model implements OrderView
         return $this->billing ?? [];
     }
 
+    public function orderShippingAddress(): ?array
+    {
+        return $this->shipping;
+    }
+
     public function orderVatSummary(): array
     {
         return $this->vat_summary ?? [];

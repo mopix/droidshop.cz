@@ -116,10 +116,10 @@ class OrderShipmentBlockTest extends TestCase
         ];
     }
 
-    private function enableFakeCarrier(): void
+    private function enableFakeCarrier(string $provider = ShippingMethod::PROVIDER_PACKETA): void
     {
         $registry = new FakeCarrierRegistry;
-        $registry->enable(ShippingMethod::PROVIDER_PACKETA);
+        $registry->enable($provider);
         $this->app->instance(CarrierRegistry::class, $registry);
     }
 
@@ -149,6 +149,59 @@ class OrderShipmentBlockTest extends TestCase
         $this->actingAs($this->owner)
             ->get($this->url('/'.$order->uuid))
             ->assertInertia(fn (AssertableInertia $page) => $page->where('pickupPoint', null));
+    }
+
+    // --- shippable (review finding C1) -----------------------------------------
+    //
+    // Whether the "Podat do Zásilkovny" button can appear at all is a
+    // server-computed flag, not derived from pickupPoint on the front end —
+    // a home-delivery order's snapshot carries a top-level 'provider' but has
+    // no pickup_point at all, so gating on pickupPoint !== null (the pre-fix
+    // behaviour) hid the button for it permanently, even on a brand new order
+    // with no shipment attempt yet.
+
+    public function test_shippable_is_true_for_a_fresh_home_delivery_order_with_no_pickup_point_or_shipment(): void
+    {
+        $this->activateModule($this->tenant, 'packeta');
+        $this->enableFakeCarrier(ShippingMethod::PROVIDER_PACKETA_HD);
+
+        $order = $this->makeOrder($this->tenant, [
+            'shipping_snapshot' => ['provider' => ShippingMethod::PROVIDER_PACKETA_HD, 'weight_grams' => 500],
+        ]);
+
+        $this->actingAs($this->owner)
+            ->get($this->url('/'.$order->uuid))
+            ->assertOk()
+            ->assertInertia(fn (AssertableInertia $page) => $page
+                ->component('Modules/Orders/Show')
+                ->where('pickupPoint', null)
+                ->where('shipment', null)
+                ->where('shippable', true)
+                ->where('can.ship', true)
+            );
+    }
+
+    /**
+     * The order's OWN provider must resolve, not merely "some carrier is
+     * configured somewhere" — a shop running branch pickup only must not
+     * offer a submit button on a home-delivery order it cannot actually hand
+     * to anyone (e.g. one placed before packeta_hd was configured, or while
+     * that shipping method is since disabled).
+     */
+    public function test_shippable_is_false_when_the_orders_own_provider_does_not_resolve(): void
+    {
+        $this->activateModule($this->tenant, 'packeta');
+        $this->enableFakeCarrier(ShippingMethod::PROVIDER_PACKETA); // only branch pickup is configured
+
+        $order = $this->makeOrder($this->tenant, [
+            'shipping_snapshot' => ['provider' => ShippingMethod::PROVIDER_PACKETA_HD, 'weight_grams' => 500],
+        ]);
+
+        $this->actingAs($this->owner)
+            ->get($this->url('/'.$order->uuid))
+            ->assertInertia(fn (AssertableInertia $page) => $page
+                ->where('shippable', false)
+            );
     }
 
     // --- shipment -------------------------------------------------------------

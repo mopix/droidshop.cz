@@ -7,6 +7,7 @@ use App\Models\Tenant;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use Inertia\Testing\AssertableInertia;
 use Modules\Shipping\Models\ShippingMethod;
 use Modules\Shipping\Services\ShippingMethodWriter;
@@ -157,6 +158,12 @@ class ShippingCredentialsTest extends TestCase
 
     public function test_admin_props_never_carry_the_api_password(): void
     {
+        // Once a Packeta-family method has an api_key, opening the index
+        // page tries the partner-carrier feed too (task 5) — faked here so
+        // this test never makes a real network call, and its own result is
+        // irrelevant to what this test is proving.
+        Http::fake();
+
         $this->actingAs($this->owner)
             ->post($this->url('/zpusoby-dopravy'), $this->payload())
             ->assertRedirect();
@@ -201,6 +208,9 @@ class ShippingCredentialsTest extends TestCase
             'eshop' => 'stray-eshop',
             'default_weight_g' => 750,
             'api_password' => 'stray-password',
+            // packeta_hd's own field (task 5) — the same "unguarded form"
+            // scenario this test already covers for the older Packeta ones.
+            'carrier_id' => 'stray-carrier',
         ];
 
         $this->actingAs($this->owner)
@@ -219,5 +229,140 @@ class ShippingCredentialsTest extends TestCase
             ->put($this->url('/zpusoby-dopravy/'.$method->id), $strayFields)
             ->assertRedirect()
             ->assertSessionHasNoErrors();
+    }
+
+    // --- packeta_hd (home delivery, task 5) ----------------------------------
+
+    /**
+     * @param  array<string, mixed>  $overrides
+     * @return array<string, mixed>
+     */
+    private function homeDeliveryPayload(array $overrides = []): array
+    {
+        return [
+            'provider' => ShippingMethod::PROVIDER_PACKETA_HD,
+            'name' => 'Zásilkovna – doručení na adresu',
+            'price' => 9900,
+            'is_active' => true,
+            'api_password' => 'super-secret-password',
+            'api_key' => 'key-123',
+            'eshop' => 'droidshop-demo',
+            'default_weight_g' => 1000,
+            'carrier_id' => '106',
+            ...$overrides,
+        ];
+    }
+
+    public function test_a_shipping_method_can_be_stored_with_the_packeta_hd_provider_and_its_own_carrier_id(): void
+    {
+        Http::fake();
+
+        $this->actingAs($this->owner)
+            ->post($this->url('/zpusoby-dopravy'), $this->homeDeliveryPayload())
+            ->assertRedirect();
+
+        $method = $this->context->runAs(
+            $this->tenant,
+            fn () => ShippingMethod::query()->where('provider', ShippingMethod::PROVIDER_PACKETA_HD)->firstOrFail(),
+        );
+
+        $this->assertSame('106', $method->settings['carrier_id']);
+        $this->assertSame('106', $method->packetaCarrierId());
+        // eshop/api_password now resolve through the same widened accessors
+        // branch pickup already used (task 5) — proof the widening actually
+        // reaches this row, not just that the setting was saved.
+        $this->assertSame('droidshop-demo', $method->packetaEshop());
+        $this->assertTrue($method->apiPasswordSet());
+    }
+
+    public function test_creating_a_home_delivery_method_without_a_carrier_id_is_refused(): void
+    {
+        Http::fake();
+
+        $this->actingAs($this->owner)
+            ->post($this->url('/zpusoby-dopravy'), $this->homeDeliveryPayload(['carrier_id' => null]))
+            ->assertSessionHasErrors('carrier_id');
+    }
+
+    /**
+     * Branch pickup (PROVIDER_PACKETA) has no carrier to name — the field
+     * must stay optional for it, or a tenant who never touches home
+     * delivery would be blocked on an unrelated field.
+     */
+    public function test_a_plain_packeta_method_does_not_require_a_carrier_id(): void
+    {
+        Http::fake();
+
+        $this->actingAs($this->owner)
+            ->post($this->url('/zpusoby-dopravy'), $this->payload())
+            ->assertRedirect()
+            ->assertSessionHasNoErrors();
+    }
+
+    public function test_a_home_delivery_methods_admin_props_expose_its_carrier_id_and_hide_the_password(): void
+    {
+        Http::fake();
+
+        $this->actingAs($this->owner)
+            ->post($this->url('/zpusoby-dopravy'), $this->homeDeliveryPayload())
+            ->assertRedirect();
+
+        $this->actingAs($this->owner)
+            ->get($this->url())
+            ->assertInertia(fn (AssertableInertia $page) => $page
+                ->component('Modules/Shipping/Index')
+                ->where('shippingMethods.0.provider', ShippingMethod::PROVIDER_PACKETA_HD)
+                ->where('shippingMethods.0.has_api_password', true)
+                ->where('shippingMethods.0.packeta_carrier_id', '106')
+                ->missing('shippingMethods.0.settings')
+            )
+            ->assertDontSee('super-secret-password');
+    }
+
+    /**
+     * The select is filled from a real feed call (task 5 brief) — proven
+     * here end to end through the admin route, not just at the service
+     * level (PacketaCarrierCatalogTest covers that in isolation).
+     */
+    public function test_the_index_exposes_the_partner_carrier_list_when_the_feed_succeeds(): void
+    {
+        Http::fake(['pickup-point.api.packeta.com/*' => Http::response(
+            '[{"id":"106","name":"CZ Zásilkovna domů HD","available":"true","country":"cz","currency":"CZK"}]'
+        )]);
+
+        $this->actingAs($this->owner)
+            ->post($this->url('/zpusoby-dopravy'), $this->homeDeliveryPayload())
+            ->assertRedirect();
+
+        $this->actingAs($this->owner)
+            ->get($this->url())
+            ->assertInertia(fn (AssertableInertia $page) => $page
+                ->component('Modules/Shipping/Index')
+                ->where('packetaCarriers', [
+                    ['id' => '106', 'name' => 'CZ Zásilkovna domů HD', 'country' => 'CZ', 'currency' => 'CZK'],
+                ])
+            );
+    }
+
+    /**
+     * A tenant who already knows their carrier id must not be blocked by our
+     * inability to reach Packeta's feed (task brief) — the admin screen
+     * itself must still render, with a null list the form degrades on.
+     */
+    public function test_the_index_exposes_a_null_carrier_list_when_the_feed_is_unreachable(): void
+    {
+        Http::fake(['pickup-point.api.packeta.com/*' => Http::response('', 500)]);
+
+        $this->actingAs($this->owner)
+            ->post($this->url('/zpusoby-dopravy'), $this->homeDeliveryPayload())
+            ->assertRedirect();
+
+        $this->actingAs($this->owner)
+            ->get($this->url())
+            ->assertOk()
+            ->assertInertia(fn (AssertableInertia $page) => $page
+                ->component('Modules/Shipping/Index')
+                ->where('packetaCarriers', null)
+            );
     }
 }

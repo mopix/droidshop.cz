@@ -139,6 +139,110 @@ class PickupPointCheckoutTest extends TestCase
         $page->assertDontSee('Vinohrady');
     }
 
+    /**
+     * Every other test in this file either never chooses a shipping method
+     * before opening the picker, or chooses the one Packeta method whose
+     * provider happens to equal PickupPointController::carrier()'s own
+     * fallback constant — so deleting the cart-derived lookup entirely and
+     * hardcoding `return ShippingMethod::PROVIDER_PACKETA;` would not turn
+     * any of them red. This seeds a second carrier under the built-in 'flat'
+     * provider (no driver needed — precisely why the brief forbids going
+     * through CarrierRegistry here), selects it on the cart, and proves the
+     * picker follows that choice instead of silently defaulting to packeta.
+     */
+    public function test_the_picker_follows_the_carts_chosen_carrier_not_the_fallback(): void
+    {
+        // Same city as the packeta 'Hlavní nádraží' point from setUp, but a
+        // different carrier — a picker that ignored the cart's selection and
+        // fell back to packeta would show that point instead of this one.
+        PickupPoint::create([
+            'carrier' => 'flat', 'code' => '5001', 'name' => 'Brno — Kurýrní bod',
+            'street' => 'Kurýrní 1', 'city' => 'Brno', 'zip' => '60400', 'country' => 'CZ',
+            'search_text' => PickupPoint::normalise('Brno — Kurýrní bod Kurýrní 1 Brno 60400'),
+            'is_active' => true,
+        ]);
+
+        $flat = $this->context->runAs($this->tenant, fn () => ShippingMethod::create([
+            'provider' => ShippingMethod::PROVIDER_FLAT,
+            'name' => 'Kurýr',
+            'price' => 9_900,
+            'is_active' => true,
+        ]));
+
+        $this->addToCart($this->makeProduct());
+        $token = $this->cartToken();
+
+        $this->withCookie('cart_token', $token)
+            ->post($this->url('/pokladna/doprava'), ['shipping_method_id' => $flat->id]);
+
+        $page = $this->withCookie('cart_token', $token)->get($this->url('/pokladna/vydejni-misto?q=Brno'));
+
+        $page->assertOk();
+        $page->assertSee('Kurýrní bod');
+        // The cart chose the flat carrier, not packeta — its Brno branch
+        // from setUp must not leak into another carrier's results.
+        $page->assertDontSee('Hlavní nádraží');
+    }
+
+    /**
+     * Review finding I2: the "Vybrat výdejní místo" link sits under EVERY
+     * pickup-point option in the shipping list (checkout/shipping.blade.php)
+     * regardless of which one — if any — the cart currently has stored. A
+     * shop offering both Zásilkovna pickup and Zásilkovna home delivery lets
+     * a shopper submit "doručení na adresu" (cart now holds packeta_hd) and
+     * then open the picker under the SEPARATE, not-yet-submitted
+     * pickup-point option. Before this fix the picker derived its carrier
+     * ONLY from the cart's stored method — packeta_hd, which has no pickup
+     * points at all — so the search always came back empty and the shopper
+     * could never select a point. The link now carries the clicked option's
+     * OWN id (?shipping_method_id=…), which this test asserts actually
+     * reaches and decides the search.
+     */
+    public function test_the_picker_works_for_a_pickup_option_after_a_different_carrier_is_already_chosen(): void
+    {
+        $packeta = $this->makePacketaShipping();
+        $this->carriers()->enable(ShippingMethod::PROVIDER_PACKETA);
+
+        $homeDelivery = $this->context->runAs($this->tenant, fn () => ShippingMethod::create([
+            'provider' => ShippingMethod::PROVIDER_PACKETA_HD,
+            'name' => 'Doručení domů',
+            'price' => 9_900,
+            'is_active' => true,
+        ]));
+        $this->carriers()->enable(ShippingMethod::PROVIDER_PACKETA_HD);
+
+        $this->addToCart($this->makeProduct());
+        $token = $this->cartToken();
+
+        // The shopper submits home delivery first — the cart's OWN stored
+        // shipping method is now packeta_hd, not the pickup-point one.
+        $this->withCookie('cart_token', $token)
+            ->post($this->url('/pokladna/doprava'), ['shipping_method_id' => $homeDelivery->id]);
+
+        $cart = $this->context->runAs($this->tenant, fn () => Cart::query()->firstOrFail());
+        $this->assertSame($homeDelivery->id, $cart->shipping_method_id);
+
+        // They change their mind and open the picker under the SEPARATE
+        // pickup-point option, carrying that option's own id — exactly what
+        // shipping.blade.php now renders on the link.
+        $page = $this->withCookie('cart_token', $token)
+            ->get($this->url('/pokladna/vydejni-misto?q=Brno&shipping_method_id='.$packeta->id));
+
+        $page->assertOk();
+        $page->assertSee('Brno — Hlavní nádraží');
+
+        $response = $this->withCookie('cart_token', $token)->post($this->url('/pokladna/vydejni-misto'), [
+            'pickup_point_code' => '1001',
+            'shipping_method_id' => $packeta->id,
+        ]);
+
+        $response->assertRedirect($this->url('/pokladna/doprava'));
+        $response->assertSessionDoesntHaveErrors();
+
+        $cart = $this->context->runAs($this->tenant, fn () => Cart::query()->firstOrFail());
+        $this->assertSame('1001', $cart->pickup_point_code);
+    }
+
     public function test_choosing_a_point_stores_only_its_code(): void
     {
         $this->addToCart($this->makeProduct());

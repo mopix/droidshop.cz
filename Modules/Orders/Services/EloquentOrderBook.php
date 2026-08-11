@@ -109,16 +109,27 @@ class EloquentOrderBook implements OrderBook
             return new Collection;
         }
 
-        // The provider key sits inside the JSON snapshot, nested under
-        // pickup_point (only carriers that deliver to a branch have one —
-        // see Order::orderShippingSnapshot()'s docblock), so the path has to
-        // be walked with Eloquent's `->` JSON operator rather than a plain
-        // column match. Cancelled orders are excluded: nothing is left to
-        // hand over once an order was called off, so a cancelled order must
-        // never surface as something the shop still owes the carrier.
+        // The provider key sits at the top level of the JSON snapshot since
+        // the home-delivery wave (OrderPlacer::shippingSnapshot()) — a
+        // carrier delivering to the shopper's own address has no
+        // pickup_point to nest it inside. An order placed before that wave
+        // only ever wrote it nested under pickup_point (only carriers that
+        // deliver to a branch had one — see Order::orderShippingSnapshot()'s
+        // docblock), and an order snapshot is never rewritten retroactively
+        // (rozhodnutí 2026-07-22), so both paths are matched with an `orWhere`
+        // rather than trusting the top-level key alone (review finding C1 —
+        // that alone silently dropped every pre-wave order from this read,
+        // and every home-delivery order from the pre-fix equivalent).
+        // Cancelled orders are excluded: nothing is left to hand over once an
+        // order was called off, so a cancelled order must never surface as
+        // something the shop still owes the carrier.
         return Order::query()
             ->where('fulfillment_status', '!=', Order::FULFILLMENT_CANCELLED)
-            ->where('shipping_snapshot->pickup_point->provider', $provider)
+            ->where(function (Builder $query) use ($provider): void {
+                $query
+                    ->where('shipping_snapshot->provider', $provider)
+                    ->orWhere('shipping_snapshot->pickup_point->provider', $provider);
+            })
             ->oldest('placed_at')
             ->get();
     }

@@ -19,6 +19,7 @@ use Modules\Orders\Models\Order;
 use Modules\Orders\Models\OrderEvent;
 use Modules\Products\Models\Product;
 use Modules\Products\Services\ProductWriter;
+use Modules\Shipping\Models\ShippingMethod;
 use Tests\Concerns\ActivatesModules;
 use Tests\TestCase;
 
@@ -358,6 +359,88 @@ class OrderEditTest extends TestCase
 
         // Stock was taken exactly like any other order.
         $this->assertSame(8, $this->stockOf($product));
+    }
+
+    /**
+     * Task 5 fix: before this, OrderEditor::shippingSnapshot() wrote no
+     * `provider`/`weight_grams` at all — a manually created order could
+     * never be handed to ANY carrier driver, because Modules\Packeta\
+     * Services\ShipmentSubmitter::submit() resolves an empty provider and
+     * CarrierError::notConfigured() fires every time. Asserted directly on
+     * the snapshot shape here; the packeta_hd end-to-end proof (an actual
+     * submit() succeeding) lives in ShipmentSubmitterTest, which already
+     * covers the storefront path this bug did not touch.
+     */
+    public function test_a_manual_orders_shipping_snapshot_carries_the_provider_and_weight(): void
+    {
+        $this->activateModule($this->tenant, 'shipping');
+
+        $shipping = $this->context->runAs($this->tenant, fn () => ShippingMethod::create([
+            'provider' => ShippingMethod::PROVIDER_FLAT,
+            'name' => 'Kurýr',
+            'price' => 9900,
+            'is_active' => true,
+        ]));
+
+        $product = $this->makeProduct(['price' => 25000, 'stock_qty' => 10, 'weight_g' => 300]);
+
+        $this->actingAs($this->owner)
+            ->post($this->url(''), [
+                'items' => [['product_id' => $product->id, 'quantity' => 2]],
+                'email' => 'objednavka@example.cz',
+                'billing' => $this->billing(),
+                'shipping_method_id' => $shipping->id,
+            ])
+            ->assertRedirect();
+
+        $this->context->runAs($this->tenant, function () use ($shipping) {
+            $order = Order::query()->firstOrFail();
+
+            $this->assertNotNull($order->shipping_snapshot);
+            $this->assertSame(ShippingMethod::PROVIDER_FLAT, $order->shipping_snapshot['provider']);
+            // 300g × 2 units — read from the catalogue, not guessed.
+            $this->assertSame(600, $order->shipping_snapshot['weight_grams']);
+            $this->assertSame($shipping->id, $order->shipping_snapshot['id']);
+        });
+    }
+
+    /**
+     * A product with no weight at all falls back to the shipping method's
+     * own configured default, then to 1000g — the exact fallback chain
+     * OrderPlacer::resolveWeightGrams() already applies for a storefront
+     * order, mirrored here (resolveWeightGrams() in OrderEditor) so a manual
+     * order never hands a carrier a literal zero.
+     */
+    public function test_a_manual_orders_weight_falls_back_to_the_shipping_methods_default_when_every_product_carries_none(): void
+    {
+        $this->activateModule($this->tenant, 'shipping');
+
+        $shipping = $this->context->runAs($this->tenant, fn () => ShippingMethod::create([
+            'provider' => ShippingMethod::PROVIDER_FLAT,
+            'name' => 'Kurýr',
+            'price' => 9900,
+            'is_active' => true,
+        ]));
+
+        $product = $this->makeProduct(['price' => 25000, 'stock_qty' => 10, 'weight_g' => 0]);
+
+        $this->actingAs($this->owner)
+            ->post($this->url(''), [
+                'items' => [['product_id' => $product->id, 'quantity' => 1]],
+                'email' => 'objednavka@example.cz',
+                'billing' => $this->billing(),
+                'shipping_method_id' => $shipping->id,
+            ])
+            ->assertRedirect();
+
+        $this->context->runAs($this->tenant, function () {
+            $order = Order::query()->firstOrFail();
+
+            // PROVIDER_FLAT has no Packeta default_weight_g setting, so this
+            // falls all the way through to the last-resort 1000g, exactly
+            // like OrderPlacer's own fallback.
+            $this->assertSame(1000, $order->shipping_snapshot['weight_grams']);
+        });
     }
 
     public function test_manual_order_creation_requires_the_edit_permission(): void

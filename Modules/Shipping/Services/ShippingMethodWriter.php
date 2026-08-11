@@ -60,7 +60,11 @@ class ShippingMethodWriter
     {
         $provider = $attributes['provider'] ?? $existing?->provider();
 
-        if ($provider === ShippingMethod::PROVIDER_PACKETA) {
+        // Both Packeta-family providers fold the same credential shape into
+        // settings (task 5) — branch pickup and address delivery are
+        // separate rows, each with its own api_key/eshop/api_password, never
+        // shared (2026-08-11 decision).
+        if (in_array($provider, [ShippingMethod::PROVIDER_PACKETA, ShippingMethod::PROVIDER_PACKETA_HD], true)) {
             return $this->foldSettings($attributes, $existing);
         }
 
@@ -73,10 +77,11 @@ class ShippingMethodWriter
         // Packeta credentials are not table columns — foldSettings() is the
         // only place that ever folds them into settings. The request rules
         // still accept them for a flat/pickup method (they are nullable, not
-        // scoped to provider=packeta), and the model has no $fillable guard.
-        // Left in place, a stray api_key/eshop/default_weight_g/api_password
-        // would reach create()/fill() and fail as an unknown column.
-        unset($attributes['api_key'], $attributes['eshop'], $attributes['default_weight_g'], $attributes['api_password']);
+        // scoped to the Packeta family), and the model has no $fillable
+        // guard. Left in place, a stray api_key/eshop/default_weight_g/
+        // api_password/carrier_id would reach create()/fill() and fail as an
+        // unknown column.
+        unset($attributes['api_key'], $attributes['eshop'], $attributes['default_weight_g'], $attributes['api_password'], $attributes['carrier_id']);
 
         return $attributes;
     }
@@ -97,6 +102,12 @@ class ShippingMethodWriter
             'api_key' => (string) ($attributes['api_key'] ?? ''),
             'eshop' => (string) ($attributes['eshop'] ?? ''),
             'default_weight_g' => (int) ($attributes['default_weight_g'] ?? 1000),
+            // Only meaningful for PROVIDER_PACKETA_HD (ShippingMethod::
+            // packetaCarrierId() reads it back scoped to that provider
+            // alone) — folded here regardless of provider anyway, the same
+            // as default_weight_g above, rather than branching this method
+            // on which Packeta-family provider it is.
+            'carrier_id' => (string) ($attributes['carrier_id'] ?? ''),
         ];
 
         $submitted = trim((string) ($attributes['api_password'] ?? ''));
@@ -111,7 +122,7 @@ class ShippingMethodWriter
             }
         }
 
-        unset($attributes['api_key'], $attributes['eshop'], $attributes['default_weight_g'], $attributes['api_password']);
+        unset($attributes['api_key'], $attributes['eshop'], $attributes['default_weight_g'], $attributes['api_password'], $attributes['carrier_id']);
 
         $attributes['settings'] = $settings;
 

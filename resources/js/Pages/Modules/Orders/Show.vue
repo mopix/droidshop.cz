@@ -101,6 +101,12 @@ type OrderDetail = {
 const props = defineProps<{
   order: OrderDetail
   pickupPoint: PickupPoint
+  // Server-computed (review finding C1): whether this order's OWN carrier —
+  // its shipping snapshot's provider — still resolves to a running,
+  // configured driver right now. Never derived from pickupPoint here, which
+  // is always null for a home-delivery order (no branch at all) and would
+  // hide the submit button for one even though a driver is available.
+  shippable: boolean
   shipment: ShipmentDetail
   can: { edit: boolean; cancel: boolean; issueDocument: boolean; creditNote: boolean; proforma: boolean; ship: boolean }
 }>()
@@ -277,7 +283,7 @@ const shipmentStatusLabel = computed(
 // either click would just no-op against the carrier's own compare-and-swap
 // claim.
 const canSubmitShipment = computed(
-  () => props.can.ship && props.pickupPoint !== null && (props.shipment === null || props.shipment.resubmittable),
+  () => props.can.ship && props.shippable && (props.shipment === null || props.shipment.resubmittable),
 )
 
 // Printing a label or cancelling only make sense once the carrier actually
@@ -551,8 +557,14 @@ const formatAddress = (address: Address) => {
         </section>
 
         <!-- ===================== Shipping (Zásilkovna) ===================== -->
+        <!--
+          `shippable` added to the guard (review finding C1): a fresh
+          home-delivery order has neither a pickup point nor a shipment row
+          yet, so the block used to disappear entirely — hiding the submit
+          button on the one order it was meant to appear for first.
+        -->
         <section
-          v-if="pickupPoint || shipment"
+          v-if="pickupPoint || shipment || shippable"
           aria-labelledby="shipping-heading"
           class="rounded-lg border border-gray-200 bg-white p-4 shadow-sm"
         >

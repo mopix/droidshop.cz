@@ -42,6 +42,56 @@ final class PacketaClient
      */
     public function labelsPdf(array $packetIds, string $format): string
     {
+        return $this->packetLabelsPdf('packetsLabelsPdf', $packetIds, $format);
+    }
+
+    /**
+     * A different endpoint from labelsPdf() — Packeta's own branch-delivery
+     * label call cannot print a courier-delivery label, because the two
+     * carry different data (a courier label needs the courier number
+     * packetCourierNumber() below produces; a branch label does not).
+     *
+     * @param  list<string>  $packetIds
+     */
+    public function courierLabelPdf(array $packetIds, string $format): string
+    {
+        return $this->packetLabelsPdf('packetCourierLabelPdf', $packetIds, $format);
+    }
+
+    /**
+     * Orders the parcel with the partner courier — the step that turns a
+     * packet Packeta merely knows about into one the courier will actually
+     * come and collect. Part of submission, not printing: a courier label
+     * cannot exist without this number, so a caller that skips this and goes
+     * straight to courierLabelPdf() would get a carrier fault instead of a
+     * PDF, with no way to tell why (Modules\Packeta\Services\
+     * PacketaHomeDelivery::submit() calls this before returning).
+     *
+     * @return string the courier's own tracking number for this parcel
+     */
+    public function packetCourierNumber(string $packetId): string
+    {
+        $xml = $this->request('packetCourierNumber', '<packetId>'.htmlspecialchars($packetId, ENT_XML1).'</packetId>');
+
+        $number = (string) ($xml->result ?? '');
+
+        if ($number === '') {
+            throw CarrierError::rejected('packeta', 'kurýr nevrátil číslo zásilky');
+        }
+
+        return $number;
+    }
+
+    public function cancelPacket(string $packetId): void
+    {
+        $this->request('cancelPacket', '<packetId>'.htmlspecialchars($packetId, ENT_XML1).'</packetId>');
+    }
+
+    /**
+     * @param  list<string>  $packetIds
+     */
+    private function packetLabelsPdf(string $method, array $packetIds, string $format): string
+    {
         $body = '<packetIds>';
 
         foreach ($packetIds as $index => $packetId) {
@@ -50,7 +100,7 @@ final class PacketaClient
 
         $body .= '</packetIds><format>'.htmlspecialchars($format, ENT_XML1).'</format><offset>0</offset>';
 
-        $xml = $this->request('packetsLabelsPdf', $body);
+        $xml = $this->request($method, $body);
 
         $pdf = base64_decode((string) ($xml->result ?? ''), true);
 
@@ -59,11 +109,6 @@ final class PacketaClient
         }
 
         return $pdf;
-    }
-
-    public function cancelPacket(string $packetId): void
-    {
-        $this->request('cancelPacket', '<packetId>'.htmlspecialchars($packetId, ENT_XML1).'</packetId>');
     }
 
     /**

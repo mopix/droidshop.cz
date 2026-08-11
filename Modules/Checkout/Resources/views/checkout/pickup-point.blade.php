@@ -28,16 +28,25 @@
             — the widget button must carry a valid token on its own.
         --}}
         <div class="mt-6" data-packeta-widget data-api-key="{{ $widgetApiKey }}"
-             data-action="{{ route('storefront.checkout.choosePickupPoint') }}" aria-live="polite" hidden>
+             data-action="{{ route('storefront.checkout.choosePickupPoint', $shippingMethodId !== null ? ['shipping_method_id' => $shippingMethodId] : []) }}" aria-live="polite" hidden>
             @csrf
             <button type="button" data-packeta-open class="btn btn-outline">Vybrat na mapě</button>
         </div>
     @endif
 
+    {{--
+        shipping_method_id (review finding I2) carries which option opened
+        this picker through the search round trip — without it, searching
+        would fall back to deriving the carrier from the cart's currently
+        stored shipping method, which can be a different option entirely.
+    --}}
     <form method="GET" action="{{ route('storefront.checkout.pickupPoint') }}" class="mt-6 flex gap-2">
         <label for="q" class="sr-only">Hledat výdejní místo</label>
         <input id="q" name="q" value="{{ $query }}" placeholder="Město, PSČ nebo název"
                class="field-input mt-0 flex-1">
+        @if ($shippingMethodId !== null)
+            <input type="hidden" name="shipping_method_id" value="{{ $shippingMethodId }}">
+        @endif
         <button type="submit" class="btn btn-primary">Hledat</button>
     </form>
 
@@ -48,6 +57,9 @@
     @if ($points->isNotEmpty())
         <form method="POST" action="{{ route('storefront.checkout.choosePickupPoint') }}" class="mt-6 space-y-4">
             @csrf
+            @if ($shippingMethodId !== null)
+                <input type="hidden" name="shipping_method_id" value="{{ $shippingMethodId }}">
+            @endif
 
             <fieldset>
                 <legend class="text-base font-medium text-slate-900">Vyberte místo</legend>

@@ -116,6 +116,48 @@ export function seedVariantProduct(slug = 'e2e-varianty'): string {
 }
 
 /**
+ * Creates a packeta_hd shipping method for the demo shop — the address-
+ * delivery driver the no-JS purchase test exercises.
+ *
+ * carrier_id is now load-bearing too (fix-wave review, minor finding):
+ * EloquentCarrierRegistry::packetaHomeDelivery() rejects a blank carrier id
+ * — from the method's own settings OR the platform config fallback, which
+ * defaults to '' (PACKETA_HOME_DELIVERY_CARRIER_ID is unset for this suite,
+ * same as production until someone configures it) — as "carrier not
+ * configured", the same as a missing password. Before that fix, an empty
+ * carrier id silently reached Packeta's createPacket() as `addressId`; this
+ * fixture used to rely on exactly that gap. Submitting the parcel to Packeta
+ * itself is still not part of what checkout proves — that only ever happens
+ * later, from the admin's expedition queue — so this suite has no reason to
+ * fake an outbound HTTP call the way the PHPUnit suite does with Http::fake.
+ *
+ * Idempotent: re-running the suite reuses the method rather than piling up
+ * duplicates (mirrors seedVariantProduct's own guard).
+ */
+export function seedHomeDeliveryShipping(): void {
+  artisanEval(`
+    $t = App\\Models\\Tenant::whereHas('domains', fn($q) => $q->where('domain', 'obchod.${HOST}'))->firstOrFail();
+    app(App\\Core\\Tenancy\\TenantContext::class)->runAs($t, function () {
+      if (Modules\\Shipping\\Models\\ShippingMethod::where('provider', 'packeta_hd')->exists()) {
+        return;
+      }
+
+      app(Modules\\Shipping\\Services\\ShippingMethodWriter::class)->create([
+        'provider' => 'packeta_hd',
+        'name' => 'Zásilkovna – doručení na adresu',
+        'price' => 9900,
+        'is_active' => true,
+        'api_key' => 'e2e-key',
+        'eshop' => 'e2e-eshop',
+        'api_password' => 'e2e-password',
+        'carrier_id' => '106',
+        'default_weight_g' => 1000,
+      ]);
+    });
+  `)
+}
+
+/**
  * Signs in as the shop's owner.
  *
  * Through the real form rather than a session shortcut: the login screen is

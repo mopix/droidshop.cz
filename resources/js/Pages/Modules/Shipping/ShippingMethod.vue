@@ -20,21 +20,34 @@ export type ShippingMethodRow = {
     zip?: string | null
     opening_hours?: string | null
   } | null
-  /** Zásilkovna (Packeta). api_key and eshop are not secret and are shown. */
+  /** Zásilkovna (Packeta family — branch pickup and home delivery both use
+   *  these; api_key and eshop are not secret and are shown. */
   packeta_api_key?: string | null
   packeta_eshop?: string | null
   packeta_default_weight_g?: number | null
   /** The Packeta API password is a credential: only its presence is exposed. */
   has_api_password?: boolean
+  /** packeta_hd only — the partner carrier (PPL/DPD/GLS/Česká pošta) id. */
+  packeta_carrier_id?: string | null
 }
 
 type TaxRate = { id: number; name: string; percent: number }
+
+/** One row of Packeta's own partner-carrier feed (task 5). */
+export type PacketaCarrier = { id: string; name: string; country: string; currency: string }
 
 const props = defineProps<{
   show: boolean
   /** null = create, otherwise edit that method. */
   method: ShippingMethodRow | null
   taxRates: TaxRate[]
+  /**
+   * Packeta's partner-carrier list to fill the carrier_id select — null when
+   * it could not be fetched (no key configured yet, the feed unreachable, an
+   * unexpected shape). A tenant who already knows their carrier id must not
+   * be blocked by that: null falls back to a plain text field instead.
+   */
+  packetaCarriers: PacketaCarrier[] | null
 }>()
 
 const emit = defineEmits<{ (e: 'close'): void }>()
@@ -42,6 +55,13 @@ const emit = defineEmits<{ (e: 'close'): void }>()
 const PROVIDER_PICKUP = 'pickup'
 const PROVIDER_FLAT = 'flat'
 const PROVIDER_PACKETA = 'packeta'
+/**
+ * Zásilkovna delivering to the shopper's own address through a partner
+ * carrier, rather than to a branch — its own provider and its own row
+ * (Modules\Shipping\Models\ShippingMethod::PROVIDER_PACKETA_HD), the same
+ * split PROVIDER_PICKUP/PROVIDER_FLAT already have.
+ */
+const PROVIDER_PACKETA_HD = 'packeta_hd'
 
 // The shop enters money in korunas, exactly as the product card does (wave 3.8); the
 // integer travels to the server untouched and never becomes a float.
@@ -60,13 +80,16 @@ const build = () => ({
     zip: props.method?.settings?.zip ?? '',
     opening_hours: props.method?.settings?.opening_hours ?? '',
   },
-  // Zásilkovna. api_key and eshop are not secret and are pre-filled;
+  // Zásilkovna (both providers — branch pickup and home delivery — share
+  // this shape). api_key and eshop are not secret and are pre-filled;
   // api_password is a credential, handled like the Comgate secret (empty =
   // keep the stored one).
   api_key: props.method?.packeta_api_key ?? '',
   eshop: props.method?.packeta_eshop ?? '',
   default_weight_g: props.method?.packeta_default_weight_g ?? null,
   api_password: '',
+  // packeta_hd only — the partner carrier the parcel is handed to.
+  carrier_id: props.method?.packeta_carrier_id ?? '',
 })
 
 const form = useForm(build())
@@ -79,11 +102,13 @@ form.transform((data) => {
     settings: data.provider === PROVIDER_PICKUP ? data.settings : null,
   }
 
-  // Packeta credentials belong to that provider only. ShippingMethod has no
+  const isPacketaFamily = data.provider === PROVIDER_PACKETA || data.provider === PROVIDER_PACKETA_HD
+
+  // Packeta credentials belong to that family only. ShippingMethod has no
   // $fillable guard, so stray api_key/eshop/default_weight_g reaching the
   // writer for a flat/pickup method would hit an "Unknown column" SQL error —
   // these are not table columns, only settings the writer folds for packeta.
-  if (data.provider !== PROVIDER_PACKETA) {
+  if (!isPacketaFamily) {
     delete out.api_key
     delete out.eshop
     delete out.default_weight_g
@@ -94,6 +119,12 @@ form.transform((data) => {
     // server keeps the one it holds. On create, dropping it lets the
     // required rule fire.
     delete out.api_password
+  }
+
+  // carrier_id belongs to home delivery alone — branch pickup has no
+  // partner carrier to name.
+  if (data.provider !== PROVIDER_PACKETA_HD) {
+    delete out.carrier_id
   }
 
   return out
@@ -118,11 +149,32 @@ watch(
 
 const isPickup = computed(() => form.provider === PROVIDER_PICKUP)
 const isPacketa = computed(() => form.provider === PROVIDER_PACKETA)
+const isPacketaHd = computed(() => form.provider === PROVIDER_PACKETA_HD)
+const isPacketaFamily = computed(() => isPacketa.value || isPacketaHd.value)
 const isEdit = computed(() => props.method !== null)
 const passwordAlreadySet = computed(() => props.method?.has_api_password ?? false)
 const showPasswordInput = computed(
-  () => isPacketa.value && (!passwordAlreadySet.value || changingPassword.value),
+  () => isPacketaFamily.value && (!passwordAlreadySet.value || changingPassword.value),
 )
+// The feed (task 5) already excludes unavailable carriers, so an empty array
+// is indistinguishable from "could not be fetched" here — both fall back to
+// the text field the same way a null list does.
+const hasPacketaCarrierOptions = computed(() => (props.packetaCarriers?.length ?? 0) > 0)
+// A previously stored id that the current feed no longer lists (typed in by
+// hand while the feed was down, or a country/account whose feed changed) is
+// appended rather than dropped — a <select> whose model does not match any
+// <option> looks unselected even though nothing was actually lost, and that
+// reads as "the setting silently vanished" to whoever opens the form next.
+const packetaCarrierOptions = computed(() => {
+  const carriers = props.packetaCarriers ?? []
+  const storedId = form.carrier_id
+
+  if (!storedId || carriers.some((carrier) => carrier.id === storedId)) {
+    return carriers
+  }
+
+  return [...carriers, { id: storedId, name: `Id ${storedId} (mimo aktuální seznam)`, country: '', currency: '' }]
+})
 const titleId = 'shipping-form-title'
 
 const money = (haler: number) =>
@@ -161,7 +213,8 @@ const submit = () => {
           >
             <option :value="PROVIDER_FLAT">Dopravce (pevná cena)</option>
             <option :value="PROVIDER_PICKUP">Osobní odběr</option>
-            <option :value="PROVIDER_PACKETA">Zásilkovna</option>
+            <option :value="PROVIDER_PACKETA">Zásilkovna — výdejní místo</option>
+            <option :value="PROVIDER_PACKETA_HD">Zásilkovna — doručení na adresu</option>
           </select>
           <p v-if="form.errors.provider" class="mt-1 text-sm text-red-700">{{ form.errors.provider }}</p>
         </div>
@@ -359,11 +412,15 @@ const submit = () => {
         </div>
       </fieldset>
 
-      <!-- Zásilkovna (Packeta). api_key and eshop are not secret and are
-           shown; api_password is a credential, stored encrypted and never
-           handed back — changing it means typing it again. -->
-      <fieldset v-show="isPacketa" class="mt-6 rounded-md border border-gray-200 p-4">
-        <legend class="px-1 text-sm font-medium text-gray-700">Nastavení Zásilkovny</legend>
+      <!-- Zásilkovna (both providers). api_key and eshop are not secret and
+           are shown; api_password is a credential, stored encrypted and
+           never handed back — changing it means typing it again. Each
+           method enters its own credentials independently, even when a
+           tenant runs both providers (2026-08-11 decision: not shared). -->
+      <fieldset v-show="isPacketaFamily" class="mt-6 rounded-md border border-gray-200 p-4">
+        <legend class="px-1 text-sm font-medium text-gray-700">
+          {{ isPacketaHd ? 'Nastavení Zásilkovny — doručení na adresu' : 'Nastavení Zásilkovny' }}
+        </legend>
 
         <div class="grid gap-4 sm:grid-cols-2">
           <div>
@@ -374,7 +431,7 @@ const submit = () => {
               type="text"
               maxlength="64"
               autocomplete="off"
-              :required="isPacketa"
+              :required="isPacketaFamily"
               class="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-gray-900 focus:ring-gray-900"
               aria-describedby="s-packeta-api-key-hint"
               :aria-invalid="form.errors.api_key ? 'true' : undefined"
@@ -393,7 +450,7 @@ const submit = () => {
               type="text"
               maxlength="64"
               autocomplete="off"
-              :required="isPacketa"
+              :required="isPacketaFamily"
               class="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-gray-900 focus:ring-gray-900"
               aria-describedby="s-packeta-eshop-hint"
               :aria-invalid="form.errors.eshop ? 'true' : undefined"
@@ -427,6 +484,49 @@ const submit = () => {
             </p>
           </div>
 
+          <!-- packeta_hd only: which partner carrier (PPL/DPD/GLS/Česká
+               pošta) the parcel goes through. Filled from Packeta's own feed
+               when it loaded (task 5); a null/empty list degrades to a plain
+               text field for the id — a tenant who already knows it must
+               never be blocked by our inability to list them. -->
+          <div v-show="isPacketaHd">
+            <label for="s-packeta-carrier" class="block text-sm font-medium text-gray-700">Partnerský dopravce</label>
+            <select
+              v-if="hasPacketaCarrierOptions"
+              id="s-packeta-carrier"
+              v-model="form.carrier_id"
+              :required="isPacketaHd"
+              class="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-gray-900 focus:ring-gray-900"
+              aria-describedby="s-packeta-carrier-hint"
+              :aria-invalid="form.errors.carrier_id ? 'true' : undefined"
+            >
+              <option value="" disabled>— vyberte dopravce —</option>
+              <option v-for="carrier in packetaCarrierOptions" :key="carrier.id" :value="carrier.id">
+                {{ carrier.name }}<template v-if="carrier.country"> ({{ carrier.country }}, {{ carrier.currency }})</template>
+              </option>
+            </select>
+            <template v-else>
+              <input
+                id="s-packeta-carrier"
+                v-model="form.carrier_id"
+                type="text"
+                maxlength="20"
+                autocomplete="off"
+                :required="isPacketaHd"
+                class="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-gray-900 focus:ring-gray-900"
+                aria-describedby="s-packeta-carrier-hint"
+                :aria-invalid="form.errors.carrier_id ? 'true' : undefined"
+              />
+              <p class="mt-1 text-sm text-amber-700">
+                Seznam dopravců se nepodařilo načíst ze Zásilkovny — zadejte id dopravce ručně.
+              </p>
+            </template>
+            <p id="s-packeta-carrier-hint" class="mt-1 text-sm text-gray-600">
+              Id partnerského dopravce z klientské sekce Zásilkovny (PPL, DPD, GLS, Česká pošta…).
+            </p>
+            <p v-if="form.errors.carrier_id" class="mt-1 text-sm text-red-700">{{ form.errors.carrier_id }}</p>
+          </div>
+
           <div>
             <div v-if="passwordAlreadySet && !changingPassword" class="flex flex-wrap items-center gap-3">
               <p class="text-sm text-gray-700">Heslo API je uloženo.</p>
@@ -447,7 +547,7 @@ const submit = () => {
                 type="password"
                 maxlength="255"
                 autocomplete="off"
-                :required="isPacketa && !passwordAlreadySet"
+                :required="isPacketaFamily && !passwordAlreadySet"
                 class="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-gray-900 focus:ring-gray-900"
                 aria-describedby="s-packeta-password-hint"
                 :aria-invalid="form.errors.api_password ? 'true' : undefined"

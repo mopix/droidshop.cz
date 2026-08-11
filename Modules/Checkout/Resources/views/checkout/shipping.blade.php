@@ -52,14 +52,25 @@
 
                         @if (in_array($option->id(), $pickupPointOptionIds, true))
                             <div class="ml-7 mt-2 text-sm">
+                                {{--
+                                    shipping_method_id names THIS option, not
+                                    whatever the cart currently has stored —
+                                    the two can differ (a shopper who already
+                                    submitted a different delivery method and
+                                    is now opening the picker under an option
+                                    they have not yet submitted). Without it
+                                    the picker searched under the wrong
+                                    carrier and found nothing (review finding
+                                    I2).
+                                --}}
                                 @if ($pickupPoint !== null)
                                     <p class="text-slate-700">
                                         <span class="font-medium">{{ $pickupPoint->pointName() }}</span>,
                                         {{ $pickupPoint->pointStreet() }}, {{ $pickupPoint->pointZip() }} {{ $pickupPoint->pointCity() }}
                                     </p>
-                                    <a href="{{ route('storefront.checkout.pickupPoint') }}" class="text-brand underline">Změnit výdejní místo</a>
+                                    <a href="{{ route('storefront.checkout.pickupPoint', ['shipping_method_id' => $option->id()]) }}" class="text-brand underline">Změnit výdejní místo</a>
                                 @else
-                                    <a href="{{ route('storefront.checkout.pickupPoint') }}" class="text-brand underline">Vybrat výdejní místo</a>
+                                    <a href="{{ route('storefront.checkout.pickupPoint', ['shipping_method_id' => $option->id()]) }}" class="text-brand underline">Vybrat výdejní místo</a>
                                 @endif
                             </div>
                         @endif

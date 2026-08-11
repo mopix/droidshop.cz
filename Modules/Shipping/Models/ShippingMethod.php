@@ -31,6 +31,15 @@ class ShippingMethod extends Model implements ShippingOption
 
     public const PROVIDER_PACKETA = 'packeta';
 
+    /**
+     * Zásilkovna delivering to the shopper's own address through a partner
+     * carrier (PPL/DPD/GLS/Česká pošta) rather than to a branch — a separate
+     * shipping_methods row from PROVIDER_PACKETA, with its own credentials
+     * and price, exactly like PROVIDER_PICKUP and PROVIDER_FLAT are separate
+     * rows rather than a flag on one.
+     */
+    public const PROVIDER_PACKETA_HD = 'packeta_hd';
+
     protected $guarded = [];
 
     protected $hidden = ['settings'];
@@ -100,12 +109,28 @@ class ShippingMethod extends Model implements ShippingOption
     }
 
     /**
+     * Whether this row's provider is one of the Packeta family — branch
+     * pickup (PROVIDER_PACKETA) or address delivery through a partner
+     * carrier (PROVIDER_PACKETA_HD). Both keep their credentials in the same
+     * settings shape (api_key/eshop/api_password/default_weight_g), each on
+     * its own row (2026-08-11 decision: not shared, the tenant enters them
+     * twice) — so one guard serves both rather than duplicating every
+     * accessor below (task 5, home-delivery wave: these were hard-scoped to
+     * PROVIDER_PACKETA alone until this widening).
+     */
+    private function isPacketaFamily(): bool
+    {
+        return in_array($this->provider(), [self::PROVIDER_PACKETA, self::PROVIDER_PACKETA_HD], true);
+    }
+
+    /**
      * The Packeta API key — not a secret, shown in the admin so the shop can
-     * see which account is wired. Null for any other provider.
+     * see which account is wired. Null for any provider outside the Packeta
+     * family.
      */
     public function packetaApiKey(): ?string
     {
-        if ($this->provider() !== self::PROVIDER_PACKETA) {
+        if (! $this->isPacketaFamily()) {
             return null;
         }
 
@@ -115,11 +140,12 @@ class ShippingMethod extends Model implements ShippingOption
     }
 
     /**
-     * The Packeta eshop identifier — not a secret. Null for any other provider.
+     * The Packeta eshop identifier — not a secret. Null for any provider
+     * outside the Packeta family.
      */
     public function packetaEshop(): ?string
     {
-        if ($this->provider() !== self::PROVIDER_PACKETA) {
+        if (! $this->isPacketaFamily()) {
             return null;
         }
 
@@ -133,7 +159,7 @@ class ShippingMethod extends Model implements ShippingOption
      */
     public function packetaDefaultWeightG(): ?int
     {
-        if ($this->provider() !== self::PROVIDER_PACKETA) {
+        if (! $this->isPacketaFamily()) {
             return null;
         }
 
@@ -149,6 +175,22 @@ class ShippingMethod extends Model implements ShippingOption
      */
     public function apiPasswordSet(): bool
     {
-        return $this->provider() === self::PROVIDER_PACKETA && filled($this->settings['api_password'] ?? null);
+        return $this->isPacketaFamily() && filled($this->settings['api_password'] ?? null);
+    }
+
+    /**
+     * The partner carrier's own catalog id (PPL/DPD/GLS/Česká pošta) that
+     * PROVIDER_PACKETA_HD delivers through — never meaningful for branch
+     * pickup, which has no partner carrier to name.
+     */
+    public function packetaCarrierId(): ?string
+    {
+        if ($this->provider() !== self::PROVIDER_PACKETA_HD) {
+            return null;
+        }
+
+        $carrierId = $this->settings['carrier_id'] ?? null;
+
+        return is_string($carrierId) && $carrierId !== '' ? $carrierId : null;
     }
 }

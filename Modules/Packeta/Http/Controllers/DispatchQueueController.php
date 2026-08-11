@@ -4,11 +4,12 @@ namespace Modules\Packeta\Http\Controllers;
 
 use App\Core\Orders\Contracts\OrderBook;
 use App\Core\Orders\Contracts\OrderView;
+use App\Core\Shipping\Contracts\CarrierRegistry;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Inertia\Inertia;
 use Inertia\Response;
 use Modules\Packeta\Models\Shipment;
-use Modules\Shipping\Models\ShippingMethod;
 
 /**
  * The dispatch queue: orders waiting to be handed to Zásilkovna (wave 2.5).
@@ -39,7 +40,10 @@ use Modules\Shipping\Models\ShippingMethod;
  */
 class DispatchQueueController
 {
-    public function __construct(private readonly OrderBook $orders) {}
+    public function __construct(
+        private readonly OrderBook $orders,
+        private readonly CarrierRegistry $carriers,
+    ) {}
 
     public function index(Request $request): Response
     {
@@ -74,7 +78,23 @@ class DispatchQueueController
      */
     private function pending(): array
     {
-        $candidates = $this->orders->forShippingProvider(ShippingMethod::PROVIDER_PACKETA);
+        // Review finding C1: this used to ask forShippingProvider() for the
+        // single constant PROVIDER_PACKETA, so a home-delivery order — whose
+        // snapshot carries PROVIDER_PACKETA_HD — matched nothing and could
+        // never be handed to a carrier from this screen. CarrierRegistry::
+        // available() is the same list checkout and the admin already treat
+        // as "this tenant's configured Packeta-family providers" (see
+        // EloquentCarrierRegistry), so a third provider added there is
+        // covered here without another edit.
+        // Each forShippingProvider() call is individually oldest-first, but
+        // merging two already-sorted lists does not keep that order —
+        // re-sorted once across all providers combined so a branch and a
+        // home-delivery order placed back to back still queue in the order
+        // they were placed.
+        $candidates = (new Collection($this->carriers->available()))
+            ->flatMap(fn (string $provider) => $this->orders->forShippingProvider($provider))
+            ->sortBy(fn (OrderView $order) => $order->orderPlacedAt())
+            ->values();
 
         if ($candidates->isEmpty()) {
             return [];

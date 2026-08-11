@@ -10,6 +10,17 @@ return [
 
     'api_url' => env('PACKETA_API_URL', 'https://www.zasilkovna.cz/api/rest'),
 
+    // Fallback default for Packeta's own catalog id for the partner carrier
+    // (PPL/DPD/GLS/Česká pošta) home delivery brokers through — used ONLY
+    // when a tenant's packeta_hd shipping method has not set its own
+    // settings['carrier_id'] yet (review finding, task 4: which partner
+    // carrier depends on the tenant's own contract with them, so the
+    // method's own setting is the actual authority, read by
+    // Modules\Packeta\Services\EloquentCarrierRegistry::packetaHomeDelivery()
+    // — this key never wins over it, only fills the gap before the tenant
+    // configures one).
+    'home_delivery_carrier_id' => env('PACKETA_HOME_DELIVERY_CARRIER_ID', ''),
+
     'timeout' => (int) env('PACKETA_TIMEOUT', 30),
 
     // A feed answer with fewer points than this is treated as broken and is
@@ -18,6 +29,40 @@ return [
     'feed_min_points' => (int) env('PACKETA_FEED_MIN_POINTS', 100),
 
     'tracking_url' => env('PACKETA_TRACKING_URL', 'https://tracking.packeta.com/cs/?id={barcode}'),
+
+    // The partner-carrier catalogue (PPL/DPD/GLS/Česká pošta, task 5) —
+    // fills the packeta_hd carrier_id select in the shipping method admin
+    // screen. A different host and API version than feed_url above (Packeta
+    // documents them separately: docs/home-delivery/carriers.mdx), so this
+    // is its own key rather than reusing feed_url's pattern.
+    'carrier_feed_url' => env('PACKETA_CARRIER_FEED_URL', 'https://pickup-point.api.packeta.com/v5/{key}/carrier.json?lang=cs'),
+
+    // A day, not an hour: partner carriers are few and change rarely (task
+    // 5 brief) — a daily cron would be machinery for no gain, and this TTL
+    // is the whole substitute for one. Keyed per api key in
+    // PacketaCarrierCatalog, so a rotated key never serves a stale answer
+    // fetched under the old one.
+    'carrier_feed_ttl_seconds' => (int) env('PACKETA_CARRIER_FEED_TTL_SECONDS', 86400),
+
+    // Review finding I5: PacketaCarrierCatalog::forTenant() used to reuse
+    // the submission timeout ('timeout' above, 30s) for this read — but this
+    // call happens synchronously every time the shipping settings screen
+    // loads, not once per parcel, so a slow or dead feed stalled the screen
+    // for 30 seconds on EVERY reload. A few seconds is plenty for "list
+    // partner carriers"; nobody's parcel depends on this call succeeding
+    // quickly the way a real submission does.
+    'carrier_feed_read_timeout' => (int) env('PACKETA_CARRIER_FEED_READ_TIMEOUT', 5),
+
+    // How long a FAILED fetch is remembered before the next screen load
+    // tries again — deliberately much shorter than carrier_feed_ttl_seconds
+    // above, which is only for a genuine list of carriers. Without this, a
+    // failure was never cached at all (by design: a tenant who just fixed
+    // their key must see it on the very next load), which combined with the
+    // 30s timeout this was hanging on meant every reload during an outage
+    // re-ran the full slow call. A short negative cache keeps that
+    // near-immediacy while sparing every retry inside the window a second
+    // multi-second wait.
+    'carrier_feed_failure_ttl_seconds' => (int) env('PACKETA_CARRIER_FEED_FAILURE_TTL_SECONDS', 45),
 
     // How long a shipment may sit claimed (status `submitting`) before a later
     // attempt is allowed to reclaim it and call the carrier again (wave 2.5,

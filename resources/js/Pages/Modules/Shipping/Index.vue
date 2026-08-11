@@ -3,7 +3,7 @@ import { ref } from 'vue'
 import { Link, router } from '@inertiajs/vue3'
 import AdminLayout from '@/Layouts/AdminLayout.vue'
 import ConfirmDialog from '@/Components/Ui/ConfirmDialog.vue'
-import ShippingMethodForm, { type ShippingMethodRow } from './ShippingMethod.vue'
+import ShippingMethodForm, { type PacketaCarrier, type ShippingMethodRow } from './ShippingMethod.vue'
 import PaymentMethodForm, { type PaymentMethodRow } from './PaymentMethod.vue'
 
 type TaxRate = { id: number; name: string; percent: number }
@@ -12,12 +12,14 @@ const props = defineProps<{
   shippingMethods: ShippingMethodRow[]
   paymentMethods: PaymentMethodRow[]
   taxRates: TaxRate[]
+  packetaCarriers: PacketaCarrier[] | null
 }>()
 
 const SHIPPING_PROVIDERS: Record<string, string> = {
   pickup: 'Osobní odběr',
   flat: 'Dopravce (pevná cena)',
-  packeta: 'Zásilkovna',
+  packeta: 'Zásilkovna — výdejní místo',
+  packeta_hd: 'Zásilkovna — doručení na adresu',
 }
 
 const PAYMENT_PROVIDERS: Record<string, string> = {
@@ -300,6 +302,7 @@ const confirmDeletePayment = () => {
       :show="shippingFormOpen"
       :method="shippingEditing"
       :tax-rates="taxRates"
+      :packeta-carriers="packetaCarriers"
       @close="shippingFormOpen = false"
     />
     <PaymentMethodForm

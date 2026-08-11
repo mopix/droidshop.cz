@@ -25,7 +25,7 @@ class CarrierContractsTest extends TestCase
     {
         $catalog = $this->app->make(PickupPointCatalog::class);
 
-        $this->assertTrue($catalog->search('Brno')->isEmpty());
+        $this->assertTrue($catalog->search('packeta', 'Brno')->isEmpty());
         $this->assertNull($catalog->find('packeta', '12345'));
     }
 
