@@ -21,6 +21,20 @@ npm run dev            # terminál 2
 
 Více: [`docs/SETUP.md`](docs/SETUP.md).
 
+## Agentské pluginy (Claude Code)
+
+Marketplace `marketingskills` je registrovaný v [`.claude/settings.json`](.claude/settings.json), plugin je **vypnutý** —
+zapíná se jen na marketingovou práci, aby 48 skills nezabíralo kontext běžné session:
+
+```bash
+claude plugin enable  marketing-skills@marketingskills --scope project   # před marketingovou prací
+claude plugin disable marketing-skills@marketingskills --scope project   # po ní
+```
+
+Zapnuté dává skills `/product-marketing`, `/cro`, `/copywriting`, `/seo-audit`, `/pricing`, `/launch`, `/emails` a další.
+Kontext produktu, který všechny čtou první: [`.agents/product-marketing.md`](.agents/product-marketing.md) — commitovaný,
+aktualizuje se přes `/product-marketing`. Skills píšou anglicky, český výstup si vyžádej v zadání.
+
 ## Stack (aktuálně)
 
 Laravel 13 · Vue 3 · Inertia · Tailwind · PHPUnit · Breeze

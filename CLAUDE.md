@@ -156,17 +156,10 @@ Po milestone: [`docs/as-is/`](docs/as-is/) ([`.claude/rules/as-is-on-milestone.m
 
 ## Marketing (volitelný plugin, default vypnutý)
 
-Marketplace `marketingskills` je registrovaný v `.claude/settings.json`, plugin **není** zapnutý — zapíná se jen na
-marketingovou práci, aby 48 skills nezaplňovalo kontext běžné session:
-
-```
-claude plugin enable  marketing-skills@marketingskills --scope project
-claude plugin disable marketing-skills@marketingskills --scope project
-```
-
-Kontext produktu (čtou ho všechny marketing skills): [`.agents/product-marketing.md`](.agents/product-marketing.md) — draft v1,
-ceny a metriky neověřené. Aktualizace přes `/product-marketing`. Užitečné: `/cro`, `/copywriting`, `/seo-audit`, `/pricing`,
-`/launch`, `/emails`. Výstup chtěj česky, skills píšou anglicky.
+Marketplace `marketingskills` registrovaný v `.claude/settings.json`, plugin **není** zapnutý — zapíná ho uživatel jen na
+marketingovou práci. Příkazy a seznam skills: [`README.md`](README.md#agentské-pluginy-claude-code).
+Kontext produktu, který marketing skills čtou první: [`.agents/product-marketing.md`](.agents/product-marketing.md) — draft v1,
+ceny a metriky neověřené.
 
 ## Omezení agenta
 - Při nové funkci se zeptej na role / viditelnost

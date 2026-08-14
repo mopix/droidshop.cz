@@ -47,3 +47,4 @@ Pravidla: [`DOCUMENTATION-LAYERS.md`](DOCUMENTATION-LAYERS.md).
 - [`.claude/rules/documentation-layers.md`](../.claude/rules/documentation-layers.md)
 - [`.claude/rules/as-is-on-milestone.md`](../.claude/rules/as-is-on-milestone.md)
 - [`.claude/skills/versioning/SKILL.md`](../.claude/skills/versioning/SKILL.md)
+- [`../README.md`](../README.md#agentské-pluginy-claude-code) — zapnutí/vypnutí marketing pluginu + [`.agents/product-marketing.md`](../.agents/product-marketing.md)
