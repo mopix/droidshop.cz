@@ -17,10 +17,18 @@ Pravidla: [`DOCUMENTATION-LAYERS.md`](DOCUMENTATION-LAYERS.md).
 | Plán | [`superpowers/plans/`](superpowers/plans/) | Jak sprint zrealizujeme |
 | Chyby / incidenty | [`superpowers/errors/`](superpowers/errors/) | Bugy, root cause, prevence |
 | As-is (realita) | [`as-is/`](as-is/) | Jak to po implementaci opravdu je |
+| **Rozhodnutí** | [`decisions/`](decisions/) | **Proč** je to udělané takhle — a co se stane, když se to udělá jinak |
+
+## Rozhodnutí
+
+- [`decisions/`](decisions/) — 206 architektonických rozhodnutí po oblastech. **Před zásahem do
+  oblasti si přečti její soubor** — většina položek popisuje past, do které se už jednou šláplo.
+  Do 2026-08-14 tahle sbírka žila v `CLAUDE.md` a stála 125 KB kontextu při každé session.
 
 ## As-is
 
-- [`as-is/STATUS.md`](as-is/STATUS.md) — stav oblastí (zatím bootstrap)
+- [`as-is/STATUS.md`](as-is/STATUS.md) — stav oblastí
+- [`as-is/2026-08-14-prehled-vln.md`](as-is/2026-08-14-prehled-vln.md) — prozaický přehled vln 0.1–3.9
 
 ## Ostatní složky
 
