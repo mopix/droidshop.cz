@@ -11,6 +11,34 @@ Pravidla: [`.claude/skills/versioning/SKILL.md`](.claude/skills/versioning/SKILL
 
 > CHANGELOG vede milníky (minor/major). Detail patchů je v `git log`.
 
+## [0.47.0] – 2026-08-14
+
+**Úklid agentského kontextu.** Plán `docs/superpowers/plans/2026-08-14-claude-md-diet.md`. Žádná změna produkčního kódu, žádná migrace, žádný build.
+
+### `CLAUDE.md` stál 39 000 tokenů při každé session
+Sekce Rozhodnutí narostla na 125 KB, sekce Nuance projektu na 17,6 KB — dohromady 91 % souboru, který se agentovi načítá do kontextu při každém spuštění, ať dělá cokoli. Drtivá většina těch 206 položek popisuje uzavřené vlny, které při běžné práci nikdo nepotřebuje mít před očima.
+
+Rozhodnutí se přestěhovala do `docs/decisions/`, rozdělená po deseti oblastech a **beze změny textu** — jde o přemístění, ne redukci. Ověřeno mechanicky: seřazený seznam položek z původního souboru je identický se seznamem z nových, byte po bajtu. Prozaický přehled vln je archivovaný v `docs/as-is/2026-08-14-prehled-vln.md`, rovněž beze změny.
+
+`CLAUDE.md` teď nese jen živá pravidla a index, který říká imperativně: *než sáhneš na kód v oblasti, přečti si její soubor*. To je podstatné — většina těch položek nepopisuje preferenci, ale past, do které se v projektu už jednou šláplo.
+
+| | Před | Po |
+|---|---|---|
+| `CLAUDE.md` | 155 507 B | 15 544 B |
+| Trvalý kontext (`CLAUDE.md` + `.claude/rules/`) | ~169 000 B | 27 787 B |
+| Položek rozhodnutí | 206 | 206 |
+
+### Konfigurace popisovala cizí projekt
+Skill přístupnosti a agent `a11y-checker` byly celé psané pro **WooShop.cz** — jiný projekt, marketplace s prodejci, moderací a digitálními produkty ke stažení. Agent by tedy auditoval obrazovky, které tu neexistují, a minul by ty, které tu jsou. Přepsané na realitu DroidShopu: dvě UI vrstvy (Blade SSR storefront proti Inertia administraci), bez-JS cesta jako blokující kritérium, kontrast nad brandingem nájemce, cookie lišta s rovnocennými tlačítky, rich text editor.
+
+Stejnou vadou trpěli `ui-engineer`, `backend-engineer` a `qa-expert` — nabízeli SPA větev, Pinia, Fortify a Pest, tedy věci, které v projektu nejsou.
+
+### Mrtvá pravidla a skilly
+Smazáno `rules/frontend-spa.md` (načítalo se do kontextu, přestože `resources/app/` neexistuje) a skilly `vue-spa-development`, `pest-testing`, `fortify-auth` — ověřeno, že Fortify není v `composer.lock`, Pest nemá `tests/Pest.php` a SPA závislosti nejsou v `package.json`.
+
+### `settings.json` povoloval WordPress
+Allowlist obsahoval `wp plugin list`, `wp theme list`, `wp option get` a `Read(wp-config.php)` na Laravel projektu, zatímco `php artisan`, `pint` a `npm run e2e` v něm chyběly.
+
 ## [0.46.0] – 2026-08-12
 
 **Zásilkovna — doručení na adresu.** Uzavření vlny (`docs/as-is/2026-08-11-packeta-home-delivery.md`). 376 PHPUnit testů v dotčených oblastech, 83 E2E včetně nákupu na adresu bez JavaScriptu.
