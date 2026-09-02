@@ -84,6 +84,7 @@ const CORE_ENTRIES: Record<string, NavItem[]> = {
     { label: 'Zobrazení', route: 'admin.display.edit', icon: 'eye' },
     { label: 'Doména', route: 'admin.domain.edit', icon: 'globe' },
     { label: 'Vzhled', route: 'admin.appearance.edit', icon: 'palette' },
+    { label: 'Export dat', route: 'admin.export.show', icon: 'download' },
     // Reachable until now only from the banner that nags about it — a merchant
     // who filled it in once could not find it again.
     { label: 'Fakturační údaje', route: 'admin.billing.edit', icon: 'credit-card' },

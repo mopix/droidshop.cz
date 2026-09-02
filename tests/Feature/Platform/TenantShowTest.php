@@ -137,4 +137,53 @@ class TenantShowTest extends TestCase
 
         $this->get('http://kolo.droidshop/superadmin/tenanti/'.$tenant->uuid)->assertNotFound();
     }
+
+    public function test_superadmin_can_queue_a_data_export(): void
+    {
+        \Illuminate\Support\Facades\Queue::fake();
+
+        $tenant = Tenant::factory()->create();
+
+        $this->post($this->platformUrl('/superadmin/tenanti/'.$tenant->uuid.'/export'))
+            ->assertRedirect();
+
+        \Illuminate\Support\Facades\Queue::assertPushed(
+            \App\Jobs\ExportTenantData::class,
+            fn ($job): bool => $job->tenantId === $tenant->id,
+        );
+    }
+
+    public function test_a_second_export_for_the_same_tenant_is_refused(): void
+    {
+        \Illuminate\Support\Facades\Queue::fake();
+
+        $tenant = Tenant::factory()->create();
+
+        $this->post($this->platformUrl('/superadmin/tenanti/'.$tenant->uuid.'/export'));
+
+        $this->post($this->platformUrl('/superadmin/tenanti/'.$tenant->uuid.'/export'))
+            ->assertSessionHasErrors('export');
+
+        \Illuminate\Support\Facades\Queue::assertPushed(\App\Jobs\ExportTenantData::class, 1);
+    }
+
+    public function test_the_detail_reports_the_last_export(): void
+    {
+        $tenant = Tenant::factory()->create();
+
+        app(TenantContext::class)->runAs($tenant, fn () => \App\Models\JobLogEntry::create([
+            'type' => \App\Models\JobLogEntry::TYPE_EXPORT,
+            'status' => \App\Models\JobLogEntry::STATUS_FINISHED,
+            'progress' => 100,
+            'report' => ['rows' => 12, 'files' => 3],
+            'created_at' => now(),
+            'finished_at' => now(),
+        ]));
+
+        $this->get($this->detailUrl($tenant))
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->where('export.status', 'finished')
+                ->where('export.running', false));
+    }
 }

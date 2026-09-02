@@ -3,6 +3,7 @@
 use App\Http\Controllers\Tenant\AdminHomeController;
 use App\Http\Controllers\Tenant\AppearanceController;
 use App\Http\Controllers\Tenant\BillingProfileController;
+use App\Http\Controllers\Tenant\DataExportController;
 use App\Http\Controllers\Tenant\DomainController;
 use App\Http\Controllers\Tenant\ModuleSettingsController;
 use App\Http\Controllers\Tenant\ShopSettingsController;
@@ -41,6 +42,11 @@ Route::post('/admin/nastaveni/vzhled/cache', [AppearanceController::class, 'flus
 Route::get('/admin/nastaveni/moduly', [ModuleSettingsController::class, 'index'])->name('admin.settings.modules.index');
 Route::get('/admin/nastaveni/moduly/{module}', [ModuleSettingsController::class, 'edit'])->name('admin.settings.modules.edit');
 Route::patch('/admin/nastaveni/moduly/{module}', [ModuleSettingsController::class, 'update'])->name('admin.settings.modules.update');
+
+Route::get('/admin/nastaveni/export', [DataExportController::class, 'show'])->name('admin.export.show');
+Route::post('/admin/nastaveni/export', [DataExportController::class, 'store'])->name('admin.export.store');
+// Behind the session, not behind a signed URL — see the comment on download().
+Route::get('/admin/nastaveni/export/{job}', [DataExportController::class, 'download'])->name('admin.export.download');
 
 Route::get('/admin/nastaveni/domena', [DomainController::class, 'edit'])->name('admin.domain.edit');
 Route::post('/admin/nastaveni/domena', [DomainController::class, 'store'])->name('admin.domain.store');

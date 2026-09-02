@@ -21,6 +21,9 @@ use App\Core\Documents\NullDocumentIssuer;
 use App\Core\Documents\NullDocumentLedger;
 use App\Core\Domains\Contracts\DnsChecker;
 use App\Core\Domains\SystemDnsChecker;
+use App\Core\Export\Contracts\TenantExporter;
+use App\Core\Export\TenantDataExporter;
+use App\Core\Export\TenantTableRegistry;
 use App\Core\Limits\LimitsService;
 use App\Core\Mail\Contracts\MailService;
 use App\Core\Mail\MailLimitCounter;
@@ -63,6 +66,14 @@ class AppServiceProvider extends ServiceProvider
         // for the whole request or a counter registered here would be invisible
         // to the caller that checks the limit.
         $this->app->singleton(LimitsService::class);
+
+        // Singleton: the registry queries information_schema once and the
+        // answer cannot change inside a request.
+        $this->app->singleton(TenantTableRegistry::class);
+        $this->app->bind(
+            TenantExporter::class,
+            TenantDataExporter::class,
+        );
 
         // Scoped, not singleton: it memoises one tenant's time zone, and a
         // worker that survives more than one request would hand the second
