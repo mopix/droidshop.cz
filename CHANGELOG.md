@@ -11,6 +11,31 @@ Pravidla: [`.claude/skills/versioning/SKILL.md`](.claude/skills/versioning/SKILL
 
 > CHANGELOG vede milníky (minor/major). Detail patchů je v `git log`.
 
+## [0.48.0] – 2026-09-02
+
+**Uzavření technických mezer.** Plán `docs/superpowers/plans/2026-09-02-uzavreni-technickych-mezer.md`. Etapa A a bezpečnostní oprava; etapy B (fulltext) a C (odinstalace modulu) přijdou v dalších commitech téže vlny.
+
+### Nájemce se poprvé dostane ke svým datům
+Pojistka 4 z §4.2 chyběla od začátku a spec ji označuje jako nutnou před produkcí. Nájemce nemohl dostat kopii vlastních dat — ani pro žádost podle GDPR, ani při odchodu jinam, ani pro obnovu. Nově `tenant:export`, obrazovka „Export dat" pro majitele e-shopu a tlačítko na detailu nájemce v superadminu. Archiv je ZIP: `manifest.json`, `data/<tabulka>.json` a soubory z obou disků.
+
+Co je tenantovo, se odvozuje **ze schématu** (tabulka se sloupcem `tenant_id`), ne z traitu `BelongsToTenant`. Trait byl první nápad a byl by špatně: `ShopSettings` a `TenantTheme` ho záměrně nemají, pivoty `product_category` a `shipping_method_payment_method` nemají model vůbec. Trait najde 36 modelů, schéma 43 tabulek — sedm by z exportu vypadlo, aniž by to archiv přiznal.
+
+Manifest pojmenovává, co v archivu není: `customer_tokens` jsou živé přihlašovací údaje a hashe hesel jsou terč na offline lámání, který neodpovídá na žádnou otázku o tom, jaká data držíme.
+
+### `jobs_log` má po roce prvního zapisovatele
+Tabulka existuje od vlny 0.x a nikdo do ní nepsal ani z ní nečetl. Export je přesně ten dlouhý job, který podle §4.4 má nájemce vidět.
+
+### Dvě chyby, které našly testy
+Adresář `exports/` leží v tenantově prefixu, takže export zabalil předchozí export do nového — 5,9 MB se na druhý běh změnilo na 12 MB a dál by se to zdvojovalo. Stejný prefix se navíc počítal do kvóty, přestože zápis limit záměrně obchází; nájemce nejblíž limitu by byl ten, kdo se ke svým datům nedostane.
+
+### Odkaz jako klíč od databáze
+Stažení archivu je za přihlášením, ne za podepsanou URL. Platformní routa `storage.private` má jen `signed`, tedy žádnou autentizaci — u jedné faktury fér obchod, u archivu se všemi zákazníky e-shopu ne. Odkaz uniká historií prohlížeče, hlavičkou `Referer` i sdíleným screenshotem.
+
+### Otevřený redirect v obsahu psaném nájemcem
+`HtmlSanitizer::isSafeUrl` považoval za bezpečné cokoli začínající `/`, včetně `//evil.com` — prohlížeč to vyhodnotí jako `https://evil.com`. `BlockUrl::isSafe` ten guard měl, sanitizer ho nikdy nedostal; rozhodnutí se přestěhovalo do `App\Core\Html\UrlGuard`, který volají oba a zrcadlí ho editor. Duplikace byla příčina, ne detail.
+
+Původní návrh opravy propouštěl tabulátor: parser maže tab, CR a LF kdekoli v URL, takže `/<TAB>/evil.com` dorazí jako `//evil.com`. Reálně přitom unikal jen tvar `//evil.com` — zbylé dvě varianty tlumilo enkódování v `DOMDocument`, tedy vedlejší efekt serializace, ne guard.
+
 ## [0.47.0] – 2026-08-14
 
 **Úklid agentského kontextu.** Plán `docs/superpowers/plans/2026-08-14-claude-md-diet.md`. Žádná změna produkčního kódu, žádná migrace, žádný build.
