@@ -175,15 +175,21 @@ class HtmlSanitizer
 
     private function isSafeUrl(?string $url): bool
     {
-        $url = trim((string) $url);
+        $url = UrlGuard::normalise($url);
 
         if ($url === '') {
             return false;
         }
 
-        // Relative and anchor links carry no scheme and are fine.
-        if (str_starts_with($url, '/') || str_starts_with($url, '#')) {
+        // Anchor links carry no scheme and go nowhere.
+        if (str_starts_with($url, '#')) {
             return true;
+        }
+
+        // A leading slash is only fine while it stays on this host: `//evil.com`
+        // and `/\evil.com` both read as internal and both leave.
+        if (str_starts_with($url, '/')) {
+            return UrlGuard::isInternalPath($url);
         }
 
         $scheme = parse_url($url, PHP_URL_SCHEME);

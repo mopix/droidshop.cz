@@ -251,18 +251,23 @@ const linkInput = ref<HTMLInputElement | null>(null)
 const linkErrorId = `${props.id}-link-error`
 
 /**
- * Deliberately stricter than HtmlSanitizer::isSafeUrl on one point: the
- * server accepts anything starting with "/", including "//evil.com" and
- * "/\evil.com" — open redirects wearing an internal path. Rejecting those
- * here uses the same guard as BlockUrl::isSafe (decision 2026-07-26). The
- * divergence only ever runs in the safe direction: this refuses a value the
- * server would keep, so the merchant is never told "saved" when it was not.
+ * Mirrors App\Core\Html\UrlGuard + HtmlSanitizer::isSafeUrl. Keep the two in
+ * step: a value this accepts and the server drops means the merchant is told
+ * "saved" about a link that silently lost its href.
+ *
+ * The tab/CR/LF strip is not cosmetic — the URL parser removes those characters
+ * anywhere in a URL before resolving it, so "/<TAB>/evil.com" reaches the
+ * browser as "//evil.com".
  */
+function normaliseUrl(url: string): string {
+  return url.replace(/[\t\n\r]/g, '').trim()
+}
+
 function isSafeUrl(url: string): boolean {
-  const value = url.trim()
+  const value = normaliseUrl(url)
   if (value === '') return false
   if (value.startsWith('#')) return true
-  if (value.startsWith('/')) return !value.startsWith('//') && !value.startsWith('/\\')
+  if (value.startsWith('/')) return !value.startsWith('//') && !value.includes('\\')
 
   return /^(https?|mailto|tel):/i.test(value)
 }
@@ -278,14 +283,14 @@ function openLinkDialog() {
 }
 
 function applyLink() {
-  const value = linkUrl.value.trim()
+  const value = normaliseUrl(linkUrl.value)
 
-  // Same '//' / '/\\' branch isSafeUrl rejects on above, checked first so the
-  // message names the real reason: "//example.com" already starts with "/",
-  // so the generic "must start with ... or /" message below reads as wrong
-  // to whoever typed it — it looks satisfied and got refused anyway.
-  if (value.startsWith('//') || value.startsWith('/\\')) {
-    linkError.value = 'Adresa vypadající jako odkaz na cizí web (// nebo /\\) není povolená, i když začíná lomítkem.'
+  // Same branch isSafeUrl rejects on above, checked first so the message names
+  // the real reason: "//example.com" already starts with "/", so the generic
+  // "must start with ... or /" message below reads as wrong to whoever typed
+  // it — it looks satisfied and got refused anyway.
+  if (value.startsWith('/') && (value.startsWith('//') || value.includes('\\'))) {
+    linkError.value = 'Adresa vypadající jako odkaz na cizí web (// nebo \\) není povolená, i když začíná lomítkem.'
 
     return
   }
