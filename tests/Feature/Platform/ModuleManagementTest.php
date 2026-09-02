@@ -3,9 +3,14 @@
 namespace Tests\Feature\Platform;
 
 use App\Core\Modules\ModuleRegistry;
+use App\Core\Storage\FileStorage;
+use App\Core\Tenancy\TenantContext;
 use App\Models\Module;
 use App\Models\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
+use Modules\Discounts\Models\Discount;
 use Tests\Concerns\ActivatesModules;
 use Tests\Concerns\ActsAsPlatformAdmin;
 use Tests\TestCase;
@@ -19,6 +24,10 @@ class ModuleManagementTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+
+        // The purge exports before it deletes; keep those archives out of the repo.
+        Storage::fake(FileStorage::PUBLIC_DISK);
+        Storage::fake(FileStorage::PRIVATE_DISK);
 
         $this->usePlatformHost();
         $this->actingAsPlatformAdmin();
@@ -158,5 +167,64 @@ class ModuleManagementTest extends TestCase
         Tenant::factory()->withDomain('kolo.droidshop')->create();
 
         $this->get('http://kolo.droidshop/superadmin/moduly')->assertNotFound();
+    }
+
+    public function test_superadmin_can_purge_a_switched_off_modules_data(): void
+    {
+        // This class otherwise works with a fabricated 'blog' module; the purge
+        // rules are about real ones, so the deployed manifests have to be here.
+        $this->artisan('modules:sync')->assertSuccessful();
+
+        $tenant = Tenant::factory()->create();
+        $registry = app(ModuleRegistry::class);
+
+        $this->activateModule($tenant, 'discounts');
+
+        app(TenantContext::class)->runAs($tenant, fn () => Discount::create([
+            'name' => 'Sleva',
+            'code' => 'SLEVA10',
+            'type' => 'percent',
+            'value' => 100,
+            'active' => true,
+        ]));
+
+        $registry->deactivate($tenant, 'discounts');
+
+        $module = Module::where('key', 'discounts')->firstOrFail();
+
+        $this->delete($this->platformUrl('/superadmin/tenanti/'.$tenant->uuid.'/moduly/'.$module->key.'/data'))
+            ->assertRedirect();
+
+        $this->assertSame(0, DB::table('discounts')->where('tenant_id', $tenant->id)->count());
+    }
+
+    public function test_a_module_holding_legal_records_cannot_be_purged(): void
+    {
+        // This class otherwise works with a fabricated 'blog' module; the purge
+        // rules are about real ones, so the deployed manifests have to be here.
+        $this->artisan('modules:sync')->assertSuccessful();
+
+        $tenant = Tenant::factory()->create();
+        $module = Module::where('key', 'orders')->firstOrFail();
+
+        // Tax documents must be kept; the module never declares ModuleUninstall
+        // and the request must fail rather than fall through to a delete.
+        $this->delete($this->platformUrl('/superadmin/tenanti/'.$tenant->uuid.'/moduly/'.$module->key.'/data'))
+            ->assertSessionHasErrors('module');
+    }
+
+    public function test_a_running_module_cannot_be_purged_over_http(): void
+    {
+        // This class otherwise works with a fabricated 'blog' module; the purge
+        // rules are about real ones, so the deployed manifests have to be here.
+        $this->artisan('modules:sync')->assertSuccessful();
+
+        $tenant = Tenant::factory()->create();
+        $this->activateModule($tenant, 'discounts');
+
+        $module = Module::where('key', 'discounts')->firstOrFail();
+
+        $this->delete($this->platformUrl('/superadmin/tenanti/'.$tenant->uuid.'/moduly/'.$module->key.'/data'))
+            ->assertSessionHasErrors('module');
     }
 }

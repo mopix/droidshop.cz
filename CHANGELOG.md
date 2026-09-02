@@ -11,9 +11,21 @@ Pravidla: [`.claude/skills/versioning/SKILL.md`](.claude/skills/versioning/SKILL
 
 > CHANGELOG vede milníky (minor/major). Detail patchů je v `git log`.
 
-## [0.48.0] – 2026-09-02
+## [0.48.0] – 2026-09-03
 
-**Uzavření technických mezer.** Plán `docs/superpowers/plans/2026-09-02-uzavreni-technickych-mezer.md`. Etapa A a bezpečnostní oprava; etapy B (fulltext) a C (odinstalace modulu) přijdou v dalších commitech téže vlny.
+**Uzavření technických mezer.** Plán `docs/superpowers/plans/2026-09-02-uzavreni-technickych-mezer.md`, as-is `docs/as-is/2026-09-03-export-a-odinstalace.md`. Bez migrace; `npm run build` kvůli dvěma obrazovkám.
+
+### Odinstalace modulu je opt-in, ne schopnost
+Deaktivace data **zachovává** a zůstává výchozí, protože je vratná. Odinstalace je to druhé a nevratné — a mapa cizích klíčů ukázala, že většina modulů ji mít nesmí: `documents.order_id` míří do `orders` a daňové doklady se archivují deset let. Modul, který nedeklaruje `ModuleUninstall`, odinstalovat nejde; první dva, které ho deklarují, jsou `discounts` a `feeds`. Seznam tabulek je deklarativní, mazání i transakci vlastní registry — patnáct modulů by jinak každý zvlášť mohlo zapomenout `where tenant_id`.
+
+Export mazaných tabulek se před smazáním **provede**, ne nabídne: „upozornili jsme, ať si to zazálohuje" není cesta zpět.
+
+Z téže mapy vyšla i dobrá zpráva: `order_items` nemá cizí klíč na `products`, objednávky nesou snímek.
+
+### Fulltext podruhé zamítnut a `STATUS.md` už to nebude popírat
+Etapa vlny přepsala hledání na FULLTEXT index a byla zrušena. Práce byla zbytečná — `docs/decisions/02` ten přepis zamítá od 2026-08-05 po měření (3,2 ms na base tarifu, 31 ms na stropu premium) a jmenuje i `innodb_ft_min_token_size`, na který pokus narazil znovu. Spustil ji `STATUS.md`, kde hledání stálo jako otevřený dluh se slovy „Přepis = vlna 3.2". **Ten rozpor je skutečná vada** a je opravený: STATUS teď odkazuje na rozhodnutí, místo aby s ním soupeřil.
+
+Pokus přinesl jedno nové zjištění, zapsané jako dodatek: InnoDB neaktualizuje FULLTEXT index do commitu, takže `MATCH` nevidí řádek vložený v transakci, zatímco `LIKE` ano. Celá sada jede na `RefreshDatabase`, takže cena fulltextu není „přepsat dotaz", ale přepsat testovací strategii.
 
 ### Nájemce se poprvé dostane ke svým datům
 Pojistka 4 z §4.2 chyběla od začátku a spec ji označuje jako nutnou před produkcí. Nájemce nemohl dostat kopii vlastních dat — ani pro žádost podle GDPR, ani při odchodu jinam, ani pro obnovu. Nově `tenant:export`, obrazovka „Export dat" pro majitele e-shopu a tlačítko na detailu nájemce v superadminu. Archiv je ZIP: `manifest.json`, `data/<tabulka>.json` a soubory z obou disků.

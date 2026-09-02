@@ -5,10 +5,13 @@ namespace Tests\Feature\Platform;
 use App\Core\Services\AuditLog;
 use App\Core\Storage\FileStorage;
 use App\Core\Tenancy\TenantContext;
+use App\Jobs\ExportTenantData;
+use App\Models\JobLogEntry;
 use App\Models\Module;
 use App\Models\Tenant;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Tests\Concerns\ActivatesModules;
 use Tests\Concerns\ActsAsPlatformAdmin;
@@ -140,22 +143,22 @@ class TenantShowTest extends TestCase
 
     public function test_superadmin_can_queue_a_data_export(): void
     {
-        \Illuminate\Support\Facades\Queue::fake();
+        Queue::fake();
 
         $tenant = Tenant::factory()->create();
 
         $this->post($this->platformUrl('/superadmin/tenanti/'.$tenant->uuid.'/export'))
             ->assertRedirect();
 
-        \Illuminate\Support\Facades\Queue::assertPushed(
-            \App\Jobs\ExportTenantData::class,
+        Queue::assertPushed(
+            ExportTenantData::class,
             fn ($job): bool => $job->tenantId === $tenant->id,
         );
     }
 
     public function test_a_second_export_for_the_same_tenant_is_refused(): void
     {
-        \Illuminate\Support\Facades\Queue::fake();
+        Queue::fake();
 
         $tenant = Tenant::factory()->create();
 
@@ -164,16 +167,16 @@ class TenantShowTest extends TestCase
         $this->post($this->platformUrl('/superadmin/tenanti/'.$tenant->uuid.'/export'))
             ->assertSessionHasErrors('export');
 
-        \Illuminate\Support\Facades\Queue::assertPushed(\App\Jobs\ExportTenantData::class, 1);
+        Queue::assertPushed(ExportTenantData::class, 1);
     }
 
     public function test_the_detail_reports_the_last_export(): void
     {
         $tenant = Tenant::factory()->create();
 
-        app(TenantContext::class)->runAs($tenant, fn () => \App\Models\JobLogEntry::create([
-            'type' => \App\Models\JobLogEntry::TYPE_EXPORT,
-            'status' => \App\Models\JobLogEntry::STATUS_FINISHED,
+        app(TenantContext::class)->runAs($tenant, fn () => JobLogEntry::create([
+            'type' => JobLogEntry::TYPE_EXPORT,
+            'status' => JobLogEntry::STATUS_FINISHED,
             'progress' => 100,
             'report' => ['rows' => 12, 'files' => 3],
             'created_at' => now(),

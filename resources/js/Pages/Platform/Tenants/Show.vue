@@ -49,6 +49,7 @@ type TenantModule = {
   enabled: boolean
   enabled_globally: boolean
   in_plan: boolean
+  supports_uninstall: boolean
 }
 
 type LimitUsage = {
@@ -234,6 +235,37 @@ const submitPlan = (url: string) => {
 
 const moduleForm = useForm<{ module: string }>({ module: '' })
 const moduleToDisable = ref<TenantModule | null>(null)
+
+/**
+ * Deleting a module's data is the one irreversible action on this screen, so
+ * it asks for the module's key to be typed out rather than for a click. The
+ * confirmation is not a formality: the same button sits next to "Vypnout",
+ * which is reversible.
+ */
+const moduleToPurge = ref<TenantModule | null>(null)
+const purgeConfirmation = ref('')
+const purgeError = ref('')
+
+function purgeModule(reason: string) {
+  const module = moduleToPurge.value
+
+  if (!module) return
+
+  if (reason.trim() !== module.key) {
+    purgeError.value = `Napište přesně „${module.key}“.`
+
+    return
+  }
+
+  router.delete(route('platform.tenants.modules.purge', [props.tenant.uuid, module.key]), {
+    preserveScroll: true,
+    onFinish: () => {
+      moduleToPurge.value = null
+      purgeConfirmation.value = ''
+      purgeError.value = ''
+    },
+  })
+}
 
 const enableModule = (url: string, module: TenantModule) => {
   moduleForm.module = module.key
@@ -656,6 +688,15 @@ const limitStateLabel = (limit: LimitUsage): string =>
               </p>
 
               <button
+                v-if="module.supports_uninstall"
+                type="button"
+                class="inline-flex items-center rounded-md border border-red-300 bg-white px-3 py-1.5 text-sm font-medium text-red-800 hover:bg-red-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-700 focus-visible:ring-offset-2"
+                @click="moduleToPurge = module"
+              >
+                Smazat data<span class="sr-only"> modulu {{ module.name }}</span>
+              </button>
+
+              <button
                 type="button"
                 :disabled="!module.in_plan || !module.enabled_globally || moduleForm.processing"
                 :aria-describedby="moduleBlockedReason(module) ? `module-reason-${module.key}` : undefined"
@@ -814,6 +855,28 @@ const limitStateLabel = (limit: LimitUsage): string =>
             route('platform.tenants.modules.destroy', [tenant.uuid, moduleToDisable.key]),
           )
       "
+    />
+
+    <ConfirmDialog
+      :show="moduleToPurge !== null"
+      title="Smazat data modulu"
+      :message="
+        moduleToPurge
+          ? `Data modulu „${moduleToPurge.name}“ budou z tohoto e-shopu nenávratně smazána. Před smazáním se automaticky vytvoří záloha, kterou nájemce najde v Exportu dat.`
+          : ''
+      "
+      confirm-label="Nenávratně smazat"
+      danger
+      require-reason
+      :reason-label="
+        moduleToPurge ? `Pro potvrzení napište „${moduleToPurge.key}“` : ''
+      "
+      :reason-error="purgeError"
+      @cancel="
+        moduleToPurge = null;
+        purgeError = ''
+      "
+      @confirm="purgeModule"
     />
 
     <!-- Impersonation -->

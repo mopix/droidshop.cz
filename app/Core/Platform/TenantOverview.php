@@ -136,6 +136,10 @@ class TenantOverview
                 'enabled' => $enabled->has($module->key),
                 'enabled_globally' => (bool) $module->enabled_globally,
                 'in_plan' => $module->core || in_array($module->key, $inPlan, true),
+                // Most modules answer false and that is the safeguard: a module
+                // holding legal records never declares ModuleUninstall, so the
+                // screen cannot offer to delete what the law says to keep.
+                'supports_uninstall' => $this->registry->supportsUninstall($module->key),
             ])
             ->values()
             ->all();

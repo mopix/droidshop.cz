@@ -29,7 +29,7 @@ Request na `nazev.droidshop` rozpozná tenanta, ověří jeho stav, nastaví kon
 | Sekce | Stav | Poznámka |
 |---|---|---|
 | §4.2 varianta B + pojistky 1–3 | hotovo | scope, testy izolace v CI, `tenant_id` + composite indexy |
-| §4.2 pojistka 4 (per-tenant export) | **chybí** | GDPR, nutné před produkcí |
+| §4.2 pojistka 4 (per-tenant export) | **hotovo** (vlna 0.48) | [detail](2026-09-03-export-a-odinstalace.md) |
 | §4.3 rozpoznání z Host | hotovo | vlastní domény = fáze 2 |
 | §15.2 middleware pipeline | hotovo | admin větev zatím neexistuje |
 | §15.3 datový model | hotovo | bez `tenant_modules`, `plan_modules`, `sequences`, `settings`, `webhook_*`, `pending_events`, `redirects` (vlna 0.2+) |

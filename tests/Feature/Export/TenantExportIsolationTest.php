@@ -3,6 +3,7 @@
 namespace Tests\Feature\Export;
 
 use App\Core\Export\Contracts\TenantExporter;
+use App\Core\Export\TenantTableRegistry;
 use App\Core\Storage\FileStorage;
 use App\Core\Tax\TaxRates;
 use App\Core\Tenancy\TenantContext;
@@ -136,7 +137,7 @@ class TenantExportIsolationTest extends TestCase
         $result = app(TenantExporter::class)->export($tenant);
         $entries = $this->readArchive($tenant, $result->path);
 
-        foreach (app(\App\Core\Export\TenantTableRegistry::class)->exportable() as $table) {
+        foreach (app(TenantTableRegistry::class)->exportable() as $table) {
             $this->assertArrayHasKey('data/'.$table.'.json', $entries, $table.' is missing from the archive');
         }
     }

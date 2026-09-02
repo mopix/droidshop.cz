@@ -4,9 +4,9 @@ use App\Http\Controllers\Platform\Auth\LoginController;
 use App\Http\Controllers\Platform\Auth\TwoFactorController;
 use App\Http\Controllers\Platform\ImpersonationController;
 use App\Http\Controllers\Platform\ModuleController;
-use App\Http\Controllers\Platform\ProfileController as PlatformProfileController;
 use App\Http\Controllers\Platform\PlanController;
 use App\Http\Controllers\Platform\PlatformInvoiceDownloadController;
+use App\Http\Controllers\Platform\ProfileController as PlatformProfileController;
 use App\Http\Controllers\Platform\TaxRateController;
 use App\Http\Controllers\Platform\TenantController;
 use App\Http\Controllers\Platform\TenantModuleController;
@@ -89,6 +89,9 @@ Route::middleware('platform.host')->group(function () {
 
         Route::post('/superadmin/tenanti/{tenant}/moduly', [TenantModuleController::class, 'store'])
             ->name('platform.tenants.modules.store');
+
+        Route::delete('/superadmin/tenanti/{tenant}/moduly/{module}/data', [TenantModuleController::class, 'purge'])
+            ->name('platform.tenants.modules.purge');
 
         Route::delete('/superadmin/tenanti/{tenant}/moduly/{module}', [TenantModuleController::class, 'destroy'])
             ->name('platform.tenants.modules.destroy');

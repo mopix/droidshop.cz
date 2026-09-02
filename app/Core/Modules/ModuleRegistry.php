@@ -13,6 +13,7 @@ use App\Models\Tenant;
 use App\Models\TenantModule;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 
 /**
  * The registry of modules and who has them switched on (spec §15.1, §15.5).
@@ -151,6 +152,98 @@ class ModuleRegistry
 
             $this->audit->log('module.deactivated', $module, ['module' => $key]);
         });
+    }
+
+    /**
+     * Deletes a module's tenant data permanently (spec §5.2).
+     *
+     * Deactivation hides a module and keeps its rows, which is why it is
+     * reversible and why it stays the default. This is the other operation:
+     * the tenant wants the data gone.
+     *
+     * Only for modules that declare `ModuleUninstall`. Most do not, and that is
+     * the point — `docs` and `orders` hold records the law requires kept, and
+     * `documents.order_id` points into orders besides.
+     *
+     * The caller is responsible for having exported first; `UninstallModule`
+     * enforces that, because a merchant who uninstalls the wrong module needs a
+     * way back and this operation does not provide one.
+     *
+     * @return array<string, int> table => rows deleted
+     */
+    public function uninstall(Tenant $tenant, string $key): array
+    {
+        $module = $this->all()->get($key);
+
+        if (! $module) {
+            throw new \InvalidArgumentException("Module [{$key}] is not deployed.");
+        }
+
+        if ($module->core) {
+            throw new \InvalidArgumentException("Module [{$key}] is a core module and cannot be uninstalled.");
+        }
+
+        // Deactivation first, always. It runs guardDependents(), so reaching
+        // this point already proves nothing else in the shop needs the module;
+        // uninstalling a running module would pull data out from under live
+        // requests.
+        if ($this->isEnabled($tenant, $key)) {
+            throw new \InvalidArgumentException(
+                "Module [{$key}] must be switched off before its data can be deleted."
+            );
+        }
+
+        $uninstall = $this->uninstallerFor($module);
+
+        if ($uninstall === null) {
+            throw new \InvalidArgumentException(
+                "Module [{$key}] does not support deleting its data."
+            );
+        }
+
+        return $this->context->runAs($tenant, function () use ($tenant, $key, $module, $uninstall): array {
+            $deleted = [];
+
+            DB::transaction(function () use ($tenant, $uninstall, &$deleted): void {
+                foreach ($uninstall->tablesToPurge() as $table) {
+                    // Explicit tenant filter, not a model scope: several of
+                    // these tables have no model, and this is the one place in
+                    // the codebase where a missing WHERE deletes another
+                    // tenant's rows rather than merely showing them.
+                    $deleted[$table] = DB::table($table)->where('tenant_id', $tenant->id)->delete();
+                }
+            });
+
+            $this->audit->log('module.uninstalled', $module, [
+                'module' => $key,
+                'deleted' => $deleted,
+            ]);
+
+            return $deleted;
+        });
+    }
+
+    /**
+     * Can this module's data be deleted at all?
+     */
+    public function supportsUninstall(string $key): bool
+    {
+        $module = $this->all()->get($key);
+
+        return $module !== null && ! $module->core && $this->uninstallerFor($module) !== null;
+    }
+
+    private function uninstallerFor(Module $module): ?Contracts\ModuleUninstall
+    {
+        $class = 'Modules\\'.str($module->key)->studly().'\\Lifecycle';
+
+        if (! class_exists($class)) {
+            return null;
+        }
+
+        $instance = app($class);
+
+        return $instance instanceof Contracts\ModuleUninstall ? $instance : null;
     }
 
     public function flush(): void
