@@ -2,8 +2,10 @@
 
 namespace Tests\Feature\Export;
 
+use App\Core\Export\Contracts\TenantExporter;
 use App\Core\Export\Exceptions\ExportAlreadyRunning;
 use App\Core\Export\ExportRequests;
+use App\Core\Services\AuditLog;
 use App\Core\Storage\FileStorage;
 use App\Core\Tenancy\TenantContext;
 use App\Jobs\ExportTenantData;
@@ -115,9 +117,9 @@ class ExportRequestsTest extends TestCase
         $entry = app(ExportRequests::class)->start($tenant);
 
         (new ExportTenantData($tenant->id, $entry->id))->handle(
-            app(\App\Core\Export\Contracts\TenantExporter::class),
+            app(TenantExporter::class),
             $context,
-            app(\App\Core\Services\AuditLog::class),
+            app(AuditLog::class),
         );
 
         $fresh = $context->runAs($tenant, fn () => JobLogEntry::find($entry->id));
@@ -141,9 +143,9 @@ class ExportRequestsTest extends TestCase
         // A worker that picked up the job with the wrong tenant bound must
         // still export tenant A — the job names its own tenant.
         $context->runAs($b, fn () => (new ExportTenantData($a->id, $entry->id))->handle(
-            app(\App\Core\Export\Contracts\TenantExporter::class),
+            app(TenantExporter::class),
             $context,
-            app(\App\Core\Services\AuditLog::class),
+            app(AuditLog::class),
         ));
 
         $fresh = $context->runAs($a, fn () => JobLogEntry::find($entry->id));

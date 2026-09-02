@@ -2,7 +2,6 @@
 
 use App\Core\Storage\FileStorage;
 use App\Http\Controllers\ConsentController;
-use App\Http\Controllers\ShopLockController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ImpersonationController;
 use App\Http\Controllers\LegalController;
@@ -10,6 +9,7 @@ use App\Http\Controllers\Onboarding\OnboardingController;
 use App\Http\Controllers\Onboarding\ShopEntryController;
 use App\Http\Controllers\Onboarding\SubdomainCheckController;
 use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\ShopLockController;
 use App\Http\Controllers\Storage\PrivateFileController;
 use App\Http\Controllers\StorefrontEntryController;
 use Illuminate\Support\Facades\Route;
