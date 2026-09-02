@@ -63,6 +63,14 @@ class BlockUrlTest extends TestCase
         $this->assertFalse(BlockUrl::isSafe('/\\\\evil.com'));
     }
 
+    public function test_tab_obfuscated_protocol_relative_url_is_rejected(): void
+    {
+        // The URL parser drops tab, CR and LF anywhere in a URL before
+        // resolving it, so this reaches the browser as `//evil.com`.
+        $this->assertFalse(BlockUrl::isSafe("/\t/evil.com"));
+        $this->assertFalse(BlockUrl::isSafe("/\n/evil.com"));
+    }
+
     public function test_normal_internal_path_is_still_safe(): void
     {
         $this->assertTrue(BlockUrl::isSafe('/kategorie/boty'));

@@ -15,6 +15,7 @@ import {
   Circle,
   Contact,
   CreditCard,
+  Download,
   Eye,
   FileSpreadsheet,
   FileText,
@@ -65,6 +66,7 @@ const ICONS: Record<string, Component> = {
 
   // Kernel entries, which have no manifest to declare them.
   gauge: Gauge,
+  download: Download,
   globe: Globe,
   palette: Palette,
   sliders: SlidersHorizontal,

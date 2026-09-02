@@ -28,6 +28,16 @@ class FileStorage
 
     public const SIGNED_ROUTE = 'storage.private';
 
+    /**
+     * Where platform-generated artefacts live inside the tenant's own prefix.
+     *
+     * They sit there so `PathGuard` and `signedUrl()` apply unchanged, but they
+     * are not the tenant's files: they do not count towards the storage limit
+     * and they are not copied into an export. Without the second rule an export
+     * would archive the previous export, doubling on every run.
+     */
+    public const ARTEFACT_PREFIXES = ['exports/'];
+
     public function __construct(
         private readonly TenantContext $context,
         private readonly PathGuard $guard,
@@ -179,6 +189,68 @@ class FileStorage
      * Removes everything belonging to the current tenant, from both disks.
      * Used by the tenant purge job (spec §6.0 AK).
      */
+    /**
+     * Every file the current tenant owns on one disk, as tenant-relative paths.
+     *
+     * Used by the export (spec §4.2 pojistka 4), which needs the file tree the
+     * same way it needs the tables.
+     *
+     * @return list<string>
+     */
+    public function tenantFiles(bool $private = true): array
+    {
+        $prefix = 'tenants/'.$this->tenantId().'/';
+        $disk = $this->disk($private);
+
+        return array_values(array_filter(
+            array_map(
+                fn (string $key): string => substr($key, strlen($prefix)),
+                array_filter(
+                    $disk->allFiles(rtrim($prefix, '/')),
+                    fn (string $key): bool => str_starts_with($key, $prefix),
+                ),
+            ),
+            fn (string $path): bool => ! self::isPlatformArtefact($path),
+        ));
+    }
+
+    /**
+     * A read stream for a stored file, or null when the file is gone.
+     *
+     * Returns null rather than throwing because a database row can outlive its
+     * file, and the export must not abort over one missing image.
+     *
+     * @return resource|null
+     */
+    public function readStream(string $path, bool $private = true)
+    {
+        $disk = $this->disk($private);
+        $key = $this->key($path);
+
+        if (! $disk->exists($key)) {
+            return null;
+        }
+
+        $stream = $disk->readStream($key);
+
+        return is_resource($stream) ? $stream : null;
+    }
+
+    /**
+     * Stores a private file without charging it to the tenant's storage limit.
+     *
+     * Only for platform-generated artefacts the tenant did not upload — today
+     * that is the data export, which is a copy of bytes already counted once.
+     * Metering it would mean the tenant closest to their quota is the one who
+     * cannot get their data out, which inverts what the limit is for.
+     */
+    public function putPrivateUnmetered(string $path, mixed $contents): string
+    {
+        $this->privateDisk()->put($this->key($path), $contents);
+
+        return $path;
+    }
+
     public function deleteTenantPrefix(): void
     {
         $prefix = 'tenants/'.$this->tenantId();
@@ -197,11 +269,33 @@ class FileStorage
 
         foreach ([$this->publicDisk(), $this->privateDisk()] as $disk) {
             foreach ($disk->allFiles($prefix) as $file) {
+                // Skipped for the same reason they are unmetered on write: a
+                // tenant is not charged storage for the copy of their own data
+                // we generated for them.
+                if (self::isPlatformArtefact(substr($file, strlen($prefix) + 1))) {
+                    continue;
+                }
+
                 $total += $disk->size($file);
             }
         }
 
         return $total;
+    }
+
+    /**
+     * Is this tenant-relative path a platform artefact rather than the
+     * tenant's own file?
+     */
+    public static function isPlatformArtefact(string $path): bool
+    {
+        foreach (self::ARTEFACT_PREFIXES as $prefix) {
+            if (str_starts_with($path, $prefix)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function key(string $path): string

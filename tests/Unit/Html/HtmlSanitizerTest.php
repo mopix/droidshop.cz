@@ -70,6 +70,48 @@ class HtmlSanitizerTest extends TestCase
         $this->assertStringNotContainsString('data:', $out);
     }
 
+    public function test_a_protocol_relative_link_is_stripped(): void
+    {
+        // `//evil.com` looks like an internal path but the browser resolves it
+        // as `https://evil.com` — an open redirect wearing the shop's clothes.
+        $out = $this->sanitizer->clean('<a href="//evil.com">akce</a>');
+
+        $this->assertStringNotContainsString('evil.com', $out);
+        $this->assertStringContainsString('akce', $out);
+    }
+
+    public function test_a_backslash_link_is_stripped(): void
+    {
+        // The WHATWG URL parser normalises `\` to `/`, so `/\evil.com`
+        // becomes `//evil.com` and leaves the shop just the same.
+        $out = $this->sanitizer->clean('<a href="/\evil.com">akce</a>');
+
+        $this->assertStringNotContainsString('evil.com', $out);
+    }
+
+    public function test_a_tab_obfuscated_protocol_relative_link_is_stripped(): void
+    {
+        // The parser drops tab, CR and LF anywhere in a URL before resolving
+        // it, so this reaches the browser as `//evil.com`.
+        $out = $this->sanitizer->clean('<a href="/&#9;/evil.com">akce</a>');
+
+        $this->assertStringNotContainsString('evil.com', $out);
+    }
+
+    public function test_a_protocol_relative_image_source_is_stripped(): void
+    {
+        $out = $this->sanitizer->clean('<img src="//evil.com/a.jpg" alt="A">');
+
+        $this->assertStringNotContainsString('evil.com', $out);
+    }
+
+    public function test_an_anchor_link_survives(): void
+    {
+        $out = $this->sanitizer->clean('<a href="#parametry">parametry</a>');
+
+        $this->assertStringContainsString('href="#parametry"', $out);
+    }
+
     public function test_ordinary_links_and_images_keep_their_urls(): void
     {
         $out = $this->sanitizer->clean('<a href="https://example.com">web</a><img src="/img/a.jpg" alt="A">');

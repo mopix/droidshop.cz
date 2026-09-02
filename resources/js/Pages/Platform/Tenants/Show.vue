@@ -67,7 +67,39 @@ const props = defineProps<{
   audit: { action: string; meta: Record<string, unknown> | null; ip: string | null; created_at: string | null }[]
   statuses: { value: string; label: string }[]
   plans: { id: number; key: string; name: string }[]
+  export: {
+    status: 'pending' | 'running' | 'finished' | 'failed'
+    running: boolean
+    createdAt: string | null
+    report: { tables?: number; rows?: number; files?: number; bytes?: number; error?: string } | null
+  } | null
 }>()
+
+const exporting = ref(false)
+
+function startExport() {
+  exporting.value = true
+  router.post(
+    route('platform.tenants.export', props.tenant.uuid),
+    {},
+    { preserveScroll: true, onFinish: () => (exporting.value = false) },
+  )
+}
+
+const exportStatusLabel = computed(() => {
+  switch (props.export?.status) {
+    case 'pending':
+      return 'Čeká ve frontě'
+    case 'running':
+      return 'Probíhá'
+    case 'finished':
+      return 'Hotovo'
+    case 'failed':
+      return 'Selhalo'
+    default:
+      return 'Zatím nikdy'
+  }
+})
 
 /* ------------------------------------------------------------------ helpers */
 
@@ -643,6 +675,46 @@ const limitStateLabel = (limit: LimitUsage): string =>
             </div>
           </li>
         </ul>
+      </section>
+
+      <!-- Export dat (spec §4.2 pojistka 4) -->
+      <section
+        class="rounded-lg border border-gray-200 bg-white p-5 shadow-sm lg:col-span-2"
+        aria-labelledby="export-heading"
+      >
+        <h2 id="export-heading" class="mb-3 text-base font-semibold text-gray-900">Export dat</h2>
+
+        <p class="text-sm text-gray-700">
+          Kompletní kopie dat e-shopu (ZIP: JSON tabulek + nahrané soubory). Pro migraci pryč,
+          obnovu nebo vyřízení žádosti nájemce.
+        </p>
+
+        <p aria-live="polite" class="mt-3 text-sm text-gray-700">
+          Poslední export: <strong>{{ exportStatusLabel }}</strong>
+          <template v-if="props.export?.createdAt">
+            — {{ formatDateTime(props.export.createdAt) }}
+          </template>
+          <template v-if="props.export?.status === 'finished' && props.export.report">
+            ({{ props.export.report.rows ?? 0 }} řádků, {{ props.export.report.files ?? 0 }} souborů)
+          </template>
+        </p>
+
+        <p
+          v-if="props.export?.status === 'failed' && props.export.report?.error"
+          class="mt-2 rounded-md bg-red-50 px-3 py-2 text-sm text-red-800"
+          role="alert"
+        >
+          {{ props.export.report.error }}
+        </p>
+
+        <button
+          type="button"
+          class="mt-4 inline-flex items-center rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-900 hover:bg-gray-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-900 disabled:opacity-50"
+          :disabled="exporting || props.export?.running"
+          @click="startExport"
+        >
+          {{ props.export?.running ? 'Export probíhá…' : 'Vyexportovat data' }}
+        </button>
       </section>
 
       <!-- Audit -->

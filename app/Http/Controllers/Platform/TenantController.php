@@ -3,6 +3,8 @@
 namespace App\Http\Controllers\Platform;
 
 use App\Core\Enums\TenantStatus;
+use App\Core\Export\Exceptions\ExportAlreadyRunning;
+use App\Core\Export\ExportRequests;
 use App\Core\Platform\PlanSwitcher;
 use App\Core\Platform\TenantOverview;
 use App\Core\Tenancy\TenantContext;
@@ -60,13 +62,39 @@ class TenantController extends Controller
         ]);
     }
 
-    public function show(Tenant $tenant, TenantOverview $overview): Response
+    public function show(Tenant $tenant, TenantOverview $overview, ExportRequests $exports): Response
     {
+        $latest = $exports->latest($tenant);
+
         return Inertia::render('Platform/Tenants/Show', [
             ...$overview->for($tenant),
             'statuses' => $this->statusOptions(),
             'plans' => Plan::query()->orderBy('name')->get(['id', 'key', 'name'])->all(),
+            'export' => $latest === null ? null : [
+                'status' => $latest->status,
+                'running' => $latest->isRunning(),
+                'createdAt' => $latest->created_at?->toIso8601String(),
+                'report' => $latest->report,
+            ],
         ]);
+    }
+
+    /**
+     * Queues a full data export (spec §4.2 pojistka 4).
+     *
+     * The superadmin path exists for the operational cases the tenant cannot
+     * drive themselves: a support request, a shop being migrated away, a
+     * restore. The tenant's own screen covers the GDPR case.
+     */
+    public function exportData(Tenant $tenant, ExportRequests $exports): RedirectResponse
+    {
+        try {
+            $exports->start($tenant);
+        } catch (ExportAlreadyRunning $e) {
+            return back()->withErrors(['export' => $e->getMessage()]);
+        }
+
+        return back()->with('success', 'Export dat zařazen do fronty.');
     }
 
     public function updateStatus(UpdateTenantStatusRequest $request, Tenant $tenant): RedirectResponse

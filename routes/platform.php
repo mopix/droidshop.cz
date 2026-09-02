@@ -81,6 +81,9 @@ Route::middleware('platform.host')->group(function () {
         Route::patch('/superadmin/tenanti/{tenant}/tarif', [TenantController::class, 'updatePlan'])
             ->name('platform.tenants.plan');
 
+        Route::post('/superadmin/tenanti/{tenant}/export', [TenantController::class, 'exportData'])
+            ->name('platform.tenants.export');
+
         Route::get('/superadmin/tenanti/{tenant}/dopad-tarifu', [TenantController::class, 'planImpact'])
             ->name('platform.tenants.plan-impact');
 
