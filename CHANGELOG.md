@@ -11,6 +11,11 @@ Pravidla: [`.claude/skills/versioning/SKILL.md`](.claude/skills/versioning/SKILL
 
 > CHANGELOG vede milníky (minor/major). Detail patchů je v `git log`.
 
+## [0.49.0] – 2026-09-03
+
+**Recenze produktů a hodnocení obchodu.** Spec `docs/superpowers/specs/2026-09-03-recenze-design.md`,
+plán `docs/superpowers/plans/2026-09-03-recenze.md`. Ve výstavbě.
+
 ## [0.48.0] – 2026-09-03
 
 **Uzavření technických mezer.** Plán `docs/superpowers/plans/2026-09-02-uzavreni-technickych-mezer.md`, as-is `docs/as-is/2026-09-03-export-a-odinstalace.md`. Bez migrace; `npm run build` kvůli dvěma obrazovkám.

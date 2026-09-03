@@ -1,0 +1,28 @@
+{
+    "invitations_enabled": {
+        "rules": "boolean",
+        "label": "Posílat zákazníkům výzvu k recenzi",
+        "type": "boolean",
+        "default": true,
+        "help": "E-mail odejde jednou na objednávku, až po jejím doručení."
+    },
+    "invite_after_days": {
+        "rules": "integer|min:1|max:90",
+        "label": "Kolik dní po doručení výzvu poslat",
+        "type": "number",
+        "default": 7
+    },
+    "shop_reviews_enabled": {
+        "rules": "boolean",
+        "label": "Sbírat i hodnocení celého obchodu",
+        "type": "boolean",
+        "default": true
+    },
+    "min_body_length": {
+        "rules": "integer|min:0|max:500",
+        "label": "Minimální délka textu recenze",
+        "type": "number",
+        "default": 0,
+        "help": "Nula znamená, že stačí hvězdy bez textu."
+    }
+}

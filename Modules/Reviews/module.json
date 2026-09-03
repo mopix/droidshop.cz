@@ -1,0 +1,33 @@
+{
+    "name": "reviews",
+    "version": "1.0.0",
+    "title": {
+        "cs": "Recenze"
+    },
+    "description": {
+        "cs": "Recenze produktů a hodnocení obchodu od ověřených kupujících."
+    },
+    "core": false,
+    "billable": false,
+    "level": "base",
+    "requires": {},
+    "provides": [
+        "review-aggregates"
+    ],
+    "listens": [],
+    "permissions": [
+        "reviews.moderate"
+    ],
+    "settings_schema": "settings.json",
+    "settings_permission": "reviews.moderate",
+    "nav": [
+        {
+            "area": "admin",
+            "label": "Recenze",
+            "route": "admin.reviews.index",
+            "icon": "star",
+            "order": 50,
+            "group": "orders"
+        }
+    ]
+}
