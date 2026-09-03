@@ -20,5 +20,14 @@
     ],
     "settings_schema": "settings.json",
     "settings_permission": "reviews.moderate",
-    "nav": []
+    "nav": [
+        {
+            "area": "admin",
+            "label": "Recenze",
+            "route": "admin.reviews.index",
+            "icon": "star",
+            "order": 50,
+            "group": "orders"
+        }
+    ]
 }
