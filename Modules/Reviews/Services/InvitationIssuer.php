@@ -27,6 +27,12 @@ class InvitationIssuer
      * the order itself, so a second copy here would be one more place for
      * the two to drift apart.
      *
+     * `sent_at` starts null, not now(): issuing the row and delivering the
+     * mail are two different facts. MailService::send() can still throw
+     * MailLimitReached after this row exists, and a row that claims a mail
+     * went out when it never did would mislead the Task 5 admin screen. The
+     * caller stamps sent_at only once send() actually returns.
+     *
      * @return array{invitation: ReviewInvitation, token: string}
      */
     public function issue(int $orderId): array
@@ -36,7 +42,7 @@ class InvitationIssuer
         $invitation = ReviewInvitation::query()->create([
             'order_id' => $orderId,
             'token_hash' => hash('sha256', $token),
-            'sent_at' => now(),
+            'sent_at' => null,
             'expires_at' => now()->addDays(self::VALID_DAYS),
         ]);
 
@@ -50,14 +56,33 @@ class InvitationIssuer
      */
     public function resolve(string $token): ?ReviewInvitation
     {
-        $invitation = ReviewInvitation::query()
-            ->where('token_hash', hash('sha256', $token))
-            ->first();
+        $invitation = $this->find($token);
 
         if ($invitation === null || ! $invitation->isUsable()) {
             return null;
         }
 
         return $invitation;
+    }
+
+    /**
+     * Same lookup as resolve(), but without the isUsable() gate.
+     *
+     * The unsubscribe link the invitation e-mail carries has to keep working
+     * after the buyer has already written their review, and after the
+     * 60-day expiry — an unsubscribe link that dies is not an unsubscribe
+     * link, and bulk mail is required to carry one that works. Only the
+     * form and submission routes need resolve()'s stricter gate.
+     */
+    public function resolveAny(string $token): ?ReviewInvitation
+    {
+        return $this->find($token);
+    }
+
+    private function find(string $token): ?ReviewInvitation
+    {
+        return ReviewInvitation::query()
+            ->where('token_hash', hash('sha256', $token))
+            ->first();
     }
 }

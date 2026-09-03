@@ -2,18 +2,25 @@
 
 namespace Tests\Feature\Modules\Reviews;
 
+use App\Core\Customers\Contracts\CustomerIdentity;
+use App\Core\Enums\TenantStatus;
 use App\Core\Mail\Contracts\MailService;
 use App\Core\Mail\MailKind;
+use App\Core\Modules\ModuleRegistry;
 use App\Core\Settings\SettingsService;
 use App\Core\Tenancy\TenantContext;
 use App\Models\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
+use Modules\Customers\Models\Customer;
 use Modules\Orders\Models\Order;
+use Modules\Reviews\Mail\ReviewInvitationMail;
 use Modules\Reviews\Models\ReviewInvitation;
 use Modules\Reviews\Models\ReviewOptout;
+use RuntimeException;
 use Tests\Concerns\ActivatesModules;
 use Tests\TestCase;
 
@@ -184,6 +191,117 @@ class SendReviewInvitationsTest extends TestCase
         // Each tenant's own scope must not see the other tenant's row.
         $this->assertSame(0, $this->invitationCount(orderId: $orderA->id, tenant: $tenantB));
         $this->assertSame(0, $this->invitationCount(orderId: $orderB->id, tenant: $this->tenant));
+
+        // The riskier leak: both tenants own a primary domain and the queue
+        // is sync, so the mailable really renders here. Every link in the
+        // e-mail must carry that tenant's own host, not the platform's
+        // (a dropped forceRootUrl) and not the other tenant's (a shared
+        // mutable root left over between two runAs() iterations).
+        Mail::assertSent(
+            ReviewInvitationMail::class,
+            fn (ReviewInvitationMail $mail): bool => str_contains($mail->reviewUrl, 'shop1.droidshop')
+                && str_contains($mail->optoutUrl, 'shop1.droidshop')
+        );
+
+        Mail::assertSent(
+            ReviewInvitationMail::class,
+            fn (ReviewInvitationMail $mail): bool => str_contains($mail->reviewUrl, 'shop2.droidshop')
+                && str_contains($mail->optoutUrl, 'shop2.droidshop')
+        );
+    }
+
+    /**
+     * TenantStatus::allowsStorefront() is false for Suspended (also
+     * PendingDeletion and Deleted, not exercised separately here — all three
+     * share the same branch): a dead shop's customers must not be mailed a
+     * link to a storefront that will not answer, and it must not burn the
+     * shop's emails_month quota doing it.
+     */
+    public function test_a_suspended_tenant_gets_nothing(): void
+    {
+        $order = $this->deliveredOrder(daysAgo: 8);
+
+        $this->tenant->changeStatus(TenantStatus::Suspended, 'test');
+
+        $this->artisan('reviews:send-invitations')->assertSuccessful();
+
+        $this->assertSame(0, $this->invitationCount($order->id));
+    }
+
+    /**
+     * The storefront routes sit behind `module:reviews`, but this sweep
+     * loops over every tenant directly and never goes through that route
+     * gate — a tenant who switched the module off must not have a customer
+     * mailed a link that 404s, at his own quota's expense.
+     */
+    public function test_a_tenant_that_deactivated_the_module_gets_nothing(): void
+    {
+        $order = $this->deliveredOrder(daysAgo: 8);
+
+        app(ModuleRegistry::class)->deactivate($this->tenant, 'reviews');
+
+        $this->artisan('reviews:send-invitations')->assertSuccessful();
+
+        $this->assertSame(0, $this->invitationCount($order->id));
+    }
+
+    /**
+     * CustomerEraser anonymises the customer row but deliberately leaves
+     * orders.email as an accounting record — so the order's own email
+     * cannot be trusted to answer "was this buyer erased?". This exercises
+     * the real EloquentCustomerIdentity, not a mock: an anonymised row must
+     * come back null from findById(), and that null must suppress the
+     * invitation.
+     */
+    public function test_an_erased_customer_gets_nothing(): void
+    {
+        $this->activateModule($this->tenant, 'customers');
+
+        $customer = app(TenantContext::class)->runAs($this->tenant, fn () => Customer::query()->create([
+            'email' => 'erased@example.com',
+            'password' => Hash::make('irrelevant'),
+            'anonymised_at' => now(),
+        ]));
+
+        $order = app(TenantContext::class)->runAs($this->tenant, function () use ($customer): Order {
+            $order = $this->deliveredOrder(daysAgo: 8, email: 'erased@example.com');
+            $order->update(['customer_id' => $customer->id]);
+
+            return $order;
+        });
+
+        $this->artisan('reviews:send-invitations')->assertSuccessful();
+
+        $this->assertSame(0, $this->invitationCount($order->id));
+    }
+
+    /**
+     * The per-order body is wrapped in its own try/catch: a failure looking
+     * up one order's customer (a database hiccup, in production — a mocked
+     * throw here) must not take a sibling order in the same tenant down
+     * with it, and must not leave the sweep exiting non-zero.
+     */
+    public function test_one_order_failing_does_not_stop_the_others(): void
+    {
+        $this->activateModule($this->tenant, 'customers');
+
+        $this->mock(CustomerIdentity::class, function ($mock): void {
+            $mock->shouldReceive('findById')->with(999)->andThrow(new RuntimeException('boom'));
+        });
+
+        $brokenOrder = app(TenantContext::class)->runAs($this->tenant, function (): Order {
+            $order = $this->deliveredOrder(daysAgo: 8, email: 'broken@example.com');
+            $order->update(['customer_id' => 999]);
+
+            return $order;
+        });
+
+        $guestOrder = $this->deliveredOrder(daysAgo: 8, email: 'guest@example.com');
+
+        $this->artisan('reviews:send-invitations')->assertSuccessful();
+
+        $this->assertSame(0, $this->invitationCount($brokenOrder->id));
+        $this->assertSame(1, $this->invitationCount($guestOrder->id));
     }
 
     /**

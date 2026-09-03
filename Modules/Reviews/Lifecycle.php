@@ -20,10 +20,16 @@ class Lifecycle implements ModuleUninstall
      * Children before parents. None of these tables holds a foreign key into
      * another, so the order is for readability rather than correctness.
      *
+     * `review_optouts` is deliberately absent: it is a consent record, not
+     * review content, and it must outlive the feature that collected it.
+     * Uninstalling and reinstalling the module (or a tenant just switching
+     * it off and back on) must not wipe the unsubscribe list and re-mail
+     * everyone who asked to be left alone.
+     *
      * @return list<string>
      */
     public function tablesToPurge(): array
     {
-        return ['review_invitations', 'review_optouts', 'review_aggregates', 'reviews'];
+        return ['review_invitations', 'review_aggregates', 'reviews'];
     }
 }

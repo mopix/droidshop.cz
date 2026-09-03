@@ -6,6 +6,7 @@ use Illuminate\Bus\Queueable;
 use Illuminate\Mail\Mailable;
 use Illuminate\Mail\Mailables\Content;
 use Illuminate\Mail\Mailables\Envelope;
+use Illuminate\Mail\Mailables\Headers;
 use Illuminate\Queue\SerializesModels;
 
 /**
@@ -13,9 +14,9 @@ use Illuminate\Queue\SerializesModels;
  * — that is what makes it count against the plan, land in the tenant's mail
  * log and go out under the shop's name.
  *
- * envelope()/content() must be side-effect free: MailService builds the
- * mailable once to read the subject for the log, and the queued job builds
- * it again at delivery.
+ * envelope()/content()/headers() must be side-effect free: MailService
+ * builds the mailable once to read the subject for the log, and the queued
+ * job builds it again at delivery.
  *
  * Plain HTML view rather than a markdown mailable, matching every other
  * tenant-facing mailable sent through MailService (OrderPlacedCustomer,
@@ -42,5 +43,18 @@ class ReviewInvitationMail extends Mailable
     public function content(): Content
     {
         return new Content(view: 'reviews::mail.invitation');
+    }
+
+    /**
+     * This is bulk mail (MailKind::Bulk): a mailbox provider that never sees
+     * a machine-readable way out is what turns "unsubscribe" complaints into
+     * spam complaints, which is the tenant's sender reputation, not just
+     * this one campaign.
+     */
+    public function headers(): Headers
+    {
+        return new Headers(
+            text: ['List-Unsubscribe' => '<'.$this->optoutUrl.'>'],
+        );
     }
 }

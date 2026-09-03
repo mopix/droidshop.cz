@@ -3,7 +3,6 @@
 namespace Modules\Reviews\Providers;
 
 use App\Core\Reviews\Contracts\ReviewAggregates;
-use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\ServiceProvider;
 use Modules\Reviews\Console\SendReviewInvitations;
 use Modules\Reviews\Services\EloquentReviewAggregates;
@@ -26,17 +25,16 @@ class ModuleProvider extends ServiceProvider
             $this->commands([SendReviewInvitations::class]);
         }
 
-        // Scheduled from inside the provider, not routes/console.php: a
-        // module the deploy does not run must not need a matching line in a
-        // core file to avoid a scheduler error over a command that does not
-        // exist. Same precedent as Modules\Packeta\Providers\ModuleProvider
+        // No Schedule::command() yet, deliberately: the invitation e-mail's
+        // links point at storefront.reviews.store/optout, both still 404
+        // stubs at this point in the wave. Task 4 gives them a real body and
+        // is what adds the daily schedule entry (with withoutOverlapping()),
+        // here in boot() rather than routes/console.php — a module the
+        // deploy does not run must not need a matching line in a core file
+        // to avoid a scheduler error over a command that does not exist.
+        // Same precedent as Modules\Packeta\Providers\ModuleProvider
         // (SyncPickupPointsCommand) and Modules\Customers\Providers\ModuleProvider
-        // (PruneExpiredTokens). booted() defers registration until the
-        // schedule itself is resolvable.
-        $this->app->booted(function (): void {
-            $this->app->make(Schedule::class)
-                ->command(SendReviewInvitations::class)
-                ->dailyAt('09:00');
-        });
+        // (PruneExpiredTokens). Until then the command stays runnable by
+        // hand and by tests.
     }
 }
