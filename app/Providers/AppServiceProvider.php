@@ -37,6 +37,8 @@ use App\Core\Orders\NullOrderSettlement;
 use App\Core\PageCache\PageCacheObserver;
 use App\Core\Payments\Contracts\PaymentGatewayRegistry;
 use App\Core\Payments\NullPaymentGatewayRegistry;
+use App\Core\Reviews\Contracts\ReviewAggregates;
+use App\Core\Reviews\NullReviewAggregates;
 use App\Core\Shipping\Contracts\CarrierRegistry;
 use App\Core\Shipping\Contracts\PaymentOptions;
 use App\Core\Shipping\Contracts\PickupPointCatalog;
@@ -153,6 +155,13 @@ class AppServiceProvider extends ServiceProvider
         // rather than pretending a document was issued — see its own
         // docblock. Modules\Docs\Providers\ModuleProvider overwrites it.
         $this->app->bind(DocumentIssuer::class, NullDocumentIssuer::class);
+
+        // Same pattern for star ratings (reviews module): app(ReviewAggregates::class)
+        // resolves on a deploy without the module and answers "no rating" for
+        // every product and the shop, so the storefront never has to ask
+        // whether reviews are installed before drawing (or omitting) stars.
+        // Modules\Reviews\Providers\ModuleProvider overwrites it.
+        $this->app->bind(ReviewAggregates::class, NullReviewAggregates::class);
 
         // The read side of documents is its own contract (DocumentBook),
         // the same split OrderBook/OrderPlacement keeps — see DocumentBook's
