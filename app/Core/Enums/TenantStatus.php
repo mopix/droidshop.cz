@@ -31,6 +31,23 @@ enum TenantStatus: string
     }
 
     /**
+     * Every case for which allowsStorefront() is true, for callers that
+     * filter a query to "shops whose storefront actually answers" (e.g.
+     * Modules\Reviews\Console\SendReviewInvitations) — a hand-copied list
+     * of cases here would silently stop tracking allowsStorefront() the
+     * moment a new status is added.
+     *
+     * @return list<self>
+     */
+    public static function allowingStorefront(): array
+    {
+        return array_values(array_filter(
+            self::cases(),
+            fn (self $status): bool => $status->allowsStorefront()
+        ));
+    }
+
+    /**
      * Whether the tenant admin accepts writes.
      *
      * Suspended tenants keep read access so they can export their data

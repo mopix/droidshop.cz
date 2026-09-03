@@ -58,17 +58,22 @@ class SendReviewInvitations extends Command implements NotTenantAware
         ShopModules $modules,
         CustomerIdentity $customers,
     ): int {
-        // Only tenants whose storefront actually answers (TenantStatus::allowsStorefront()):
-        // a suspended or pending-deletion shop still has this row in `tenants`,
-        // but mailing its customers a link to a shop that will not respond —
-        // and burning its emails_month quota doing it — helps no one. Same
-        // status list App\Console\Commands\SweepTenantLifecycle reasons from.
+        // Only tenants whose storefront actually answers: a suspended or
+        // pending-deletion shop still has this row in `tenants`, but mailing
+        // its customers a link to a shop that will not respond — and
+        // burning its emails_month quota doing it — helps no one.
+        // TenantStatus::allowingStorefront() rather than a hand-copied list
+        // of cases here: SweepTenantLifecycle has no single combined
+        // allow-list to copy either (it filters Trial and PastDue
+        // separately, for two different transitions) — the source of truth
+        // for "does this status serve a storefront" is allowsStorefront()
+        // itself, and a future status added there must not need a second,
+        // easy-to-forget edit here to actually take effect.
         $tenants = Tenant::query()
-            ->whereIn('status', [
-                TenantStatus::Trial->value,
-                TenantStatus::Active->value,
-                TenantStatus::PastDue->value,
-            ])
+            ->whereIn('status', array_map(
+                fn (TenantStatus $status): string => $status->value,
+                TenantStatus::allowingStorefront()
+            ))
             ->cursor();
 
         foreach ($tenants as $tenant) {
@@ -205,7 +210,13 @@ class SendReviewInvitations extends Command implements NotTenantAware
             ->joinSub($deliveredAt, 'delivered', 'delivered.order_id', '=', 'orders.id')
             ->where('orders.fulfillment_status', Order::FULFILLMENT_DELIVERED)
             ->where('delivered.delivered_at', '<=', now()->subDays($days))
-            ->whereNotIn('orders.id', ReviewInvitation::query()->select('order_id'))
+            // Only orders whose invitation was actually sent: a row that
+            // exists but never got mailed (issue() wrote it, then send()
+            // failed for a reason other than MailLimitReached — see
+            // InvitationIssuer::issue()) must remain eligible for the next
+            // run, or a single transient failure permanently costs that
+            // buyer their invitation.
+            ->whereNotIn('orders.id', ReviewInvitation::query()->whereNotNull('sent_at')->select('order_id'))
             ->select('orders.*')
             ->cursor();
     }

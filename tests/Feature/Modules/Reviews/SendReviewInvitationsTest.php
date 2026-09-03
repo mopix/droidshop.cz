@@ -9,6 +9,7 @@ use App\Core\Mail\MailKind;
 use App\Core\Modules\ModuleRegistry;
 use App\Core\Settings\SettingsService;
 use App\Core\Tenancy\TenantContext;
+use App\Models\MailMessage;
 use App\Models\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -302,6 +303,64 @@ class SendReviewInvitationsTest extends TestCase
 
         $this->assertSame(0, $this->invitationCount($brokenOrder->id));
         $this->assertSame(1, $this->invitationCount($guestOrder->id));
+    }
+
+    /**
+     * The half of finding 4 that actually matters: issue() writes the
+     * review_invitations row before send() ever runs. A transient failure
+     * out of send() itself (SMTP, network, a MailMessage insert failing —
+     * simulated here as a generic RuntimeException, not MailLimitReached)
+     * must not permanently cost the buyer their invitation. The row has to
+     * survive unsent, and the next day's sweep has to be able to retry the
+     * same order — which means deliveredOrdersDue() must key its exclusion
+     * on sent_at, not on the row's mere existence, and issue() must reuse
+     * that row (fresh token, fresh expiry) rather than blindly create() a
+     * second one that unique(tenant_id, order_id) would reject.
+     */
+    public function test_a_mail_send_failure_leaves_the_order_invitable_on_retry(): void
+    {
+        $order = $this->deliveredOrder(daysAgo: 8);
+
+        $attempt = 0;
+        $this->mock(MailService::class, function ($mock) use (&$attempt): void {
+            $mock->shouldReceive('send')->andReturnUsing(function () use (&$attempt): MailMessage {
+                $attempt++;
+
+                if ($attempt === 1) {
+                    throw new RuntimeException('smtp blip');
+                }
+
+                return new MailMessage;
+            });
+        });
+
+        $this->artisan('reviews:send-invitations')->assertSuccessful();
+
+        // First attempt: issue() already wrote the row before send() blew
+        // up. It must still be there, still unsent.
+        $failed = app(TenantContext::class)->runAs(
+            $this->tenant,
+            fn () => ReviewInvitation::query()->where('order_id', $order->id)->firstOrFail()
+        );
+
+        $this->assertNull($failed->sent_at);
+
+        $this->artisan('reviews:send-invitations')->assertSuccessful();
+
+        // Retry: exactly one row for this order (not two — a blind
+        // create() on the second issue() would have violated
+        // unique(tenant_id, order_id)), now sent, and carrying a rotated
+        // token — the one from the failed attempt was never delivered to
+        // anybody, so reusing it would be a live link nobody has yet.
+        $this->assertSame(1, $this->invitationCount($order->id));
+
+        $retried = app(TenantContext::class)->runAs(
+            $this->tenant,
+            fn () => ReviewInvitation::query()->where('order_id', $order->id)->firstOrFail()
+        );
+
+        $this->assertNotNull($retried->sent_at);
+        $this->assertNotSame($failed->token_hash, $retried->token_hash);
     }
 
     /**

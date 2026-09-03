@@ -27,11 +27,22 @@ class InvitationIssuer
      * the order itself, so a second copy here would be one more place for
      * the two to drift apart.
      *
-     * `sent_at` starts null, not now(): issuing the row and delivering the
-     * mail are two different facts. MailService::send() can still throw
-     * MailLimitReached after this row exists, and a row that claims a mail
-     * went out when it never did would mislead the Task 5 admin screen. The
-     * caller stamps sent_at only once send() actually returns.
+     * `sent_at` is written null, not now(): issuing the row and delivering
+     * the mail are two different facts. MailService::send() can still throw
+     * after this row exists, and a row that claims a mail went out when it
+     * never did would mislead the Task 5 admin screen. The caller stamps
+     * sent_at only once send() actually returns.
+     *
+     * updateOrCreate() rather than create(): a previous call for the same
+     * order may already have written a row that was never actually sent
+     * (issue() ran, then send() failed for a reason other than
+     * MailLimitReached). unique(tenant_id, order_id) would reject a second
+     * create() outright, and SendReviewInvitations::deliveredOrdersDue()
+     * deliberately keeps offering such an order up for retry (it excludes
+     * only invitations with a non-null sent_at) — so this has to be able to
+     * reuse that row rather than fail. The old token_hash is overwritten
+     * with a fresh one: rotating it is correct, not a compromise, because
+     * the previous token was never delivered to anybody.
      *
      * @return array{invitation: ReviewInvitation, token: string}
      */
@@ -39,12 +50,14 @@ class InvitationIssuer
     {
         $token = Str::random(48);
 
-        $invitation = ReviewInvitation::query()->create([
-            'order_id' => $orderId,
-            'token_hash' => hash('sha256', $token),
-            'sent_at' => null,
-            'expires_at' => now()->addDays(self::VALID_DAYS),
-        ]);
+        $invitation = ReviewInvitation::query()->updateOrCreate(
+            ['order_id' => $orderId],
+            [
+                'token_hash' => hash('sha256', $token),
+                'sent_at' => null,
+                'expires_at' => now()->addDays(self::VALID_DAYS),
+            ]
+        );
 
         return ['invitation' => $invitation, 'token' => $token];
     }
