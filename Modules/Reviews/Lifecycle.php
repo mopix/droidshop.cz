@@ -5,20 +5,20 @@ namespace Modules\Reviews;
 use App\Core\Modules\Contracts\ModuleUninstall;
 
 /**
- * Recenze jsou obsah, ne zákonná evidence — smazat je smí nájemce beze zbytku.
+ * Reviews are content, not a legal record — a tenant may delete the lot.
  *
- * Na rozdíl od `orders` a `docs`, kde daňový doklad musí přežít deset let a
- * `documents.order_id` je skutečný cizí klíč, na recenzi neukazuje nic:
- * `reviews.order_id` je prostý integer bez FK, přesně proto, aby šlo objednávky
- * i produkty mazat nezávisle.
+ * Unlike `orders` and `docs`, where a tax document has to survive ten years
+ * and `documents.order_id` is a real foreign key, nothing points at a review:
+ * `reviews.order_id` is a plain integer with no FK, precisely so that orders
+ * and products stay independently deletable.
  *
  * @see App\Core\Modules\Contracts\ModuleUninstall
  */
 class Lifecycle implements ModuleUninstall
 {
     /**
-     * Děti před rodiči. Žádná z těch tabulek na sebe navzájem cizí klíč nemá,
-     * takže pořadí je tu jen kvůli čitelnosti.
+     * Children before parents. None of these tables holds a foreign key into
+     * another, so the order is for readability rather than correctness.
      *
      * @return list<string>
      */
