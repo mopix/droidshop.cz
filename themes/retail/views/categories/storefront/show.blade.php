@@ -41,7 +41,9 @@
             wants the control in sight, and a form in the flow needs no script
             to open.
         --}}
-        <div class="card mt-6 flex flex-wrap items-end justify-between gap-4 p-4">
+        {{-- The shared sort form carries its own bottom margin for use on its
+             own; inside this bar it would push the count out of line. --}}
+        <div class="card mt-6 flex flex-wrap items-center justify-between gap-4 p-4 [&_form]:mb-0">
             <p class="text-sm text-ink-muted">
                 <x-storefront::product-count :count="$products->total()" />
             </p>

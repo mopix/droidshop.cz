@@ -20,14 +20,6 @@
         :shop-noindex="$shopSettings->noindex"
         :default-image="$shopOgImage ?? null" />
 
-    <style>
-        :root {
-            {!! $theme->css() !!}
-            --brand-primary: {{ $theme->primary }};
-            --brand-primary-contrast: {{ $theme->primaryContrast }};
-            --brand-accent: {{ $theme->accent }};
-        }
-    </style>
     @if ($theme->faviconUrl)
         <link rel="icon" href="{{ $theme->faviconUrl }}">
     @endif
@@ -55,6 +47,22 @@
     <style>.consent-decided #cookie-banner { display: none; }</style>
 
     @vite($theme->assets())
+
+    {{--
+        After @vite, not before it: storefront.css carries a :root of fallback
+        tokens, and between two :root rules of equal specificity the later
+        sheet wins. Printed above the bundle, every theme's tokens were
+        overwritten by the defaults — the markup changed and the palette did
+        not, which is exactly the kind of bug no HTML assertion catches.
+    --}}
+    <style>
+        :root {
+            {!! $theme->css() !!}
+            --brand-primary: {{ $theme->primary }};
+            --brand-primary-contrast: {{ $theme->primaryContrast }};
+            --brand-accent: {{ $theme->accent }};
+        }
+    </style>
 </head>
 <body class="min-h-screen bg-surface-muted text-ink antialiased">
     {{-- WCAG 2.4.1: keyboard users must be able to jump the navigation. --}}

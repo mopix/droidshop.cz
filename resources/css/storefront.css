@@ -5,28 +5,33 @@
 /*
  * Fallbacks for every token a theme may set (wave 4.1).
  *
- * The layout prints the chosen theme's tokens into :root, so these values are
- * normally overwritten before the first paint. They matter for the two cases
- * where they are not: a page rendered outside the storefront layout, and a
- * deploy whose theme manifest lost a token. A missing --container is a broken
- * page, not a plain one, so nothing here may resolve to nothing.
+ * Inside @layer base, and that placement is the whole point: the storefront
+ * layout prints the chosen theme's tokens in an inline <style> that the
+ * browser reads *before* this file, so an unlayered :root here would win the
+ * cascade on source order and quietly undo every theme. Unlayered rules beat
+ * layered ones regardless of order, so the inline block wins and these remain
+ * what they are meant to be — the values for a page rendered outside the
+ * storefront layout, or a manifest that lost a token. Nothing here may resolve
+ * to nothing: a missing --container is a broken page, not a plain one.
  */
-:root {
-  --container: 72rem;
-  --radius: 0.75rem;
-  --radius-lg: 1rem;
-  --button-radius: 0.5rem;
-  --surface: #ffffff;
-  --surface-muted: #f8fafc;
-  --ink: #0f172a;
-  --ink-muted: #475569;
-  --line: #e2e8f0;
-  --font-body: Figtree, ui-sans-serif, system-ui, sans-serif;
-  --font-heading: var(--font-body);
-  --heading-transform: none;
-  --heading-tracking: -0.01em;
-  --heading-weight: 600;
-  --section-gap: 4rem;
+@layer base {
+  :root {
+    --container: 72rem;
+    --radius: 0.75rem;
+    --radius-lg: 1rem;
+    --button-radius: 0.5rem;
+    --surface: #ffffff;
+    --surface-muted: #f8fafc;
+    --ink: #0f172a;
+    --ink-muted: #475569;
+    --line: #e2e8f0;
+    --font-body: Figtree, ui-sans-serif, system-ui, sans-serif;
+    --font-heading: var(--font-body);
+    --heading-transform: none;
+    --heading-tracking: -0.01em;
+    --heading-weight: 600;
+    --section-gap: 4rem;
+  }
 }
 
 @layer base {

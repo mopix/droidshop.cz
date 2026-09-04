@@ -22,14 +22,6 @@
         through ThemeResolver::sanitizeToken(), and {{ }} would only escape
         HTML, which is not the syntax that matters inside a <style> block.
     --}}
-    <style>
-        :root {
-            {!! $theme->css() !!}
-            --brand-primary: {{ $theme->primary }};
-            --brand-primary-contrast: {{ $theme->primaryContrast }};
-            --brand-accent: {{ $theme->accent }};
-        }
-    </style>
     @if ($theme->faviconUrl)
         <link rel="icon" href="{{ $theme->faviconUrl }}">
     @endif
@@ -64,6 +56,22 @@
 
     {{-- The shared bundle plus this theme's own stylesheet, when it has one. --}}
     @vite($theme->assets())
+
+    {{--
+        After @vite, not before it: storefront.css carries a :root of fallback
+        tokens, and between two :root rules of equal specificity the later
+        sheet wins. Printed above the bundle, every theme's tokens were
+        overwritten by the defaults — the markup changed and the palette did
+        not, which is exactly the kind of bug no HTML assertion catches.
+    --}}
+    <style>
+        :root {
+            {!! $theme->css() !!}
+            --brand-primary: {{ $theme->primary }};
+            --brand-primary-contrast: {{ $theme->primaryContrast }};
+            --brand-accent: {{ $theme->accent }};
+        }
+    </style>
 </head>
 <body class="min-h-screen bg-white text-slate-900 antialiased">
     {{-- WCAG 2.4.1: keyboard users must be able to jump the navigation. --}}

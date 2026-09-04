@@ -1,7 +1,10 @@
 {{-- A contained card, not a full-width band: this theme keeps its page inside
      a frame, and a hero that escapes it reads as a different site. --}}
+@php($hasImage = ! empty($image_path))
+
+{{-- Two columns only when there is a picture for the second one. --}}
 <section class="mb-10 overflow-hidden rounded-token-lg bg-surface shadow-sm">
-    <div class="grid items-stretch md:grid-cols-2">
+    <div class="grid items-stretch {{ $hasImage ? 'md:grid-cols-2' : '' }}">
         <div class="flex flex-col justify-center p-8 md:p-12">
             <h1 class="text-2xl sm:text-3xl">{{ $title ?? '' }}</h1>
 
@@ -14,7 +17,7 @@
             @endif
         </div>
 
-        @if (!empty($image_path))
+        @if ($hasImage)
             {{-- The LCP on most visits: eager and prioritised. --}}
             <img src="{{ app(\App\Core\Storage\FileStorage::class)->publicUrl($image_path) }}"
                  alt="{{ $alt ?? '' }}" loading="eager" fetchpriority="high"
