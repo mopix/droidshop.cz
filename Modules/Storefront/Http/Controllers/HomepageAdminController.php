@@ -77,7 +77,7 @@ class HomepageAdminController
         // or from the block's previously stored value.
         unset($payload['image_path']);
 
-        if ($request->hasFile('image') && $request->input('image_index') === null) {
+        if ($request->hasFile('image')) {
             // image_path is always derived here from the uploaded file, never
             // accepted as a client-supplied string in the payload — otherwise
             // a tenant could point a block at an arbitrary path on the public
@@ -130,18 +130,15 @@ class HomepageAdminController
         }
 
         $stored = array_values($block->payload[$key] ?? []);
-        $uploadIndex = $request->input('image_index');
-        $uploadIndex = is_numeric($uploadIndex) ? (int) $uploadIndex : null;
-
         $items = array_values($payload[$key]);
 
         foreach ($items as $index => $item) {
             unset($item['image_path']);
 
-            if ($uploadIndex === $index && $request->hasFile('image')) {
-                $extension = $request->file('image')->extension();
-                $path = "homepage/{$block->id}-{$index}.{$extension}";
-                $this->files->putPublic($path, file_get_contents($request->file('image')->getRealPath()));
+            if ($request->hasFile("images.{$index}")) {
+                $upload = $request->file("images.{$index}");
+                $path = "homepage/{$block->id}-{$index}.".$upload->extension();
+                $this->files->putPublic($path, file_get_contents($upload->getRealPath()));
                 $item['image_path'] = $path;
             } elseif (isset($stored[$index]['image_path'])) {
                 $item['image_path'] = $stored[$index]['image_path'];

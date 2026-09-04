@@ -29,10 +29,12 @@ class UpdateBlockRequest extends FormRequest
             'payload' => ['required', 'array'],
             'visible' => ['sometimes', 'boolean'],
             'image' => ['sometimes', 'image', 'mimes:png,jpg,jpeg,webp', 'max:2048'],
-            // Which item of a list-shaped block the upload belongs to. The
-            // controller uses it to build the stored path; it is never a path
-            // itself.
-            'image_index' => ['sometimes', 'nullable', 'integer', 'min:0', 'max:7'],
+            // Uploads for a list-shaped block, keyed by item index
+            // (`images[0]`, `images[2]`). The index only ever builds the
+            // stored path on the server; it is never a path itself, and the
+            // payload's own image_path is thrown away regardless.
+            'images' => ['sometimes', 'array'],
+            'images.*' => ['image', 'mimes:png,jpg,jpeg,webp', 'max:2048'],
         ];
     }
 

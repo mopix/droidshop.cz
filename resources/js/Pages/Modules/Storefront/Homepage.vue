@@ -4,6 +4,7 @@ import { router, useForm } from '@inertiajs/vue3'
 import AdminLayout from '@/Layouts/AdminLayout.vue'
 import ConfirmDialog from '@/Components/Ui/ConfirmDialog.vue'
 import RichTextEditor from '@/Components/Ui/RichTextEditor.vue'
+import BlockItems from '@/Components/Storefront/BlockItems.vue'
 
 type BlockPayload = Record<string, unknown>
 
@@ -22,10 +23,56 @@ const props = defineProps<{
 /** Czech labels for the block types the server knows about (`BlockType` enum). */
 const TYPE_LABELS: Record<string, string> = {
   hero: 'Hero (úvodní)',
+  slider: 'Karusel',
+  usp_strip: 'Pás výhod',
   product_row: 'Řada produktů',
+  product_tabs: 'Produkty se záložkami',
   category_grid: 'Mřížka kategorií',
+  category_mosaic: 'Mozaika kategorií',
   text: 'Textový blok',
   banner: 'Banner',
+  banner_grid: 'Řada bannerů',
+}
+
+/**
+ * Which payload key holds the list, and how long it may be.
+ *
+ * A mirror of BlockType::itemBounds() on the server, and deliberately a small
+ * one: the server refuses anything outside these bounds regardless, so the
+ * copy here only decides when a button greys out. Disagreement costs a
+ * confusing error, never a bad save.
+ */
+const ITEM_BLOCKS: Record<string, { key: string; label: string; itemLabel: string; min: number; max: number }> = {
+  slider: { key: 'slides', label: 'Slidy', itemLabel: 'Slide', min: 1, max: 8 },
+  usp_strip: { key: 'items', label: 'Výhody', itemLabel: 'Výhoda', min: 2, max: 6 },
+  product_tabs: { key: 'tabs', label: 'Záložky', itemLabel: 'Záložka', min: 2, max: 5 },
+  banner_grid: { key: 'banners', label: 'Bannery', itemLabel: 'Banner', min: 2, max: 3 },
+}
+
+/** The icon names the server accepts (Modules\Storefront\Support\UspIcons). */
+const USP_ICONS = [
+  'truck', 'clock', 'shield', 'leaf', 'award', 'heart',
+  'gift', 'headset', 'refresh', 'lock', 'sparkles', 'wallet',
+]
+
+const MOSAIC_LAYOUTS = [
+  { value: '2-2', label: 'Čtyři stejné dlaždice' },
+  { value: '1-2-1', label: 'Vysoká – dvě malé – vysoká' },
+]
+
+const emptyItem = (type: string): Record<string, unknown> => {
+  switch (type) {
+    case 'slider':
+      return { title: '', subtitle: '', cta_label: '', cta_url: '', alt: '', image: null, image_path: null }
+    case 'usp_strip':
+      return { icon: 'truck', title: '', subtitle: '' }
+    case 'product_tabs':
+      return { label: '', mode: 'latest', count: 6, category_id: '', product_ids: '' }
+    case 'banner_grid':
+      return { url: '', alt: '', image: null, image_path: null }
+    default:
+      return {}
+  }
 }
 
 const typeLabel = (type: string) => TYPE_LABELS[type] ?? type
@@ -101,12 +148,57 @@ const parseIdList = (value: string): number[] =>
     .map((part) => Number(part))
     .filter((n) => Number.isFinite(n))
 
+/** The list a block is editing right now, or an empty array for the rest. */
+const editItems = computed<Record<string, unknown>[]>(
+  () => (editState.value?.items as Record<string, unknown>[]) ?? [],
+)
+
+const addItem = (type: string) => {
+  if (!editState.value) return
+  editState.value.items.push(emptyItem(type))
+}
+
+const removeItem = (index: number) => {
+  if (!editState.value) return
+  editState.value.items.splice(index, 1)
+}
+
+const moveItem = (index: number, direction: -1 | 1) => {
+  if (!editState.value) return
+
+  const items = editState.value.items as unknown[]
+  const target = index + direction
+
+  if (target < 0 || target >= items.length) return
+
+  ;[items[index], items[target]] = [items[target], items[index]]
+}
+
+const onItemImageChange = (index: number, event: Event) => {
+  if (!editState.value) return
+
+  editState.value.items[index].image = (event.target as HTMLInputElement).files?.[0] ?? null
+}
+
 const startEdit = (block: Block) => {
   const p = block.payload
 
   editingId.value = block.id
   editErrors.value = {}
   existingImagePath.value = (p.image_path as string | null) ?? null
+
+  const list = ITEM_BLOCKS[block.type]
+  const items = list
+    ? ((p[list.key] as Record<string, unknown>[]) ?? []).map((item) => ({
+        ...emptyItem(block.type),
+        ...item,
+        // Lists of ids are edited as text, exactly like the single-value
+        // blocks above.
+        product_ids: Array.isArray(item.product_ids) ? (item.product_ids as number[]).join(', ') : '',
+        category_id: item.category_id ?? '',
+        image: null,
+      }))
+    : []
 
   editState.value = {
     // hero
@@ -127,6 +219,10 @@ const startEdit = (block: Block) => {
     alt: (p.alt as string) ?? '',
     // hero + banner
     image: null as File | null,
+    // slider / usp_strip / product_tabs / banner_grid
+    items,
+    // category_mosaic
+    layout: (p.layout as string) ?? MOSAIC_LAYOUTS[0].value,
   }
 }
 
@@ -175,6 +271,48 @@ const payloadFor = (type: string, state: Record<string, any>): BlockPayload => {
         url: state.url || null,
         alt: state.alt,
       }
+    case 'slider':
+      return {
+        slides: (state.items as Record<string, any>[]).map((item) => ({
+          title: item.title,
+          subtitle: item.subtitle || null,
+          cta_label: item.cta_label || null,
+          cta_url: item.cta_url || null,
+          alt: item.alt || '',
+        })),
+      }
+    case 'usp_strip':
+      return {
+        items: (state.items as Record<string, any>[]).map((item) => ({
+          icon: item.icon,
+          title: item.title,
+          subtitle: item.subtitle || null,
+        })),
+      }
+    case 'product_tabs':
+      return {
+        heading: state.heading || null,
+        tabs: (state.items as Record<string, any>[]).map((item) => ({
+          label: item.label,
+          mode: item.mode,
+          count: Number(item.count) || 6,
+          category_id: item.category_id ? Number(item.category_id) : null,
+          product_ids: parseIdList(String(item.product_ids ?? '')),
+        })),
+      }
+    case 'banner_grid':
+      return {
+        banners: (state.items as Record<string, any>[]).map((item) => ({
+          url: item.url || null,
+          alt: item.alt || '',
+        })),
+      }
+    case 'category_mosaic':
+      return {
+        heading: state.heading || null,
+        layout: state.layout,
+        category_ids: parseIdList(state.category_ids),
+      }
     default:
       return {}
   }
@@ -190,6 +328,15 @@ const submitEdit = (block: Block) => {
   if (state.image) {
     data.image = state.image
   }
+
+  // Uploads for a list block travel keyed by item index, so several pictures
+  // can be replaced in one save — the server never reads a path from the
+  // payload, only this index.
+  ;(state.items as Record<string, any>[] | undefined)?.forEach((item, index) => {
+    if (item.image) {
+      data[`images[${index}]`] = item.image
+    }
+  })
 
   // Method-spoofed POST, not a native PATCH: PHP only parses multipart/
   // form-data bodies on POST, so a real PATCH with forceFormData would land
@@ -387,8 +534,346 @@ const existingImageName = computed(() => existingImagePath.value?.split('/').pop
                 Formulář obsahuje chyby, opravte prosím zvýrazněná pole.
               </div>
 
+              <!-- Slider -->
+              <template v-if="block.type === 'slider'">
+                <BlockItems
+                  :items="editItems"
+                  label="Slidy"
+                  item-label="Slide"
+                  :min="1"
+                  :max="8"
+                  @add="addItem('slider')"
+                  @remove="removeItem"
+                  @move="moveItem"
+                >
+                  <template #default="{ item, index }">
+                    <div class="sm:col-span-2">
+                      <label :for="`slide-title-${block.id}-${index}`" class="block text-sm font-medium text-gray-700">
+                        Nadpis
+                      </label>
+                      <input
+                        :id="`slide-title-${block.id}-${index}`"
+                        v-model="item.title"
+                        type="text"
+                        required
+                        class="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-gray-900 focus:ring-gray-900"
+                      />
+                    </div>
+
+                    <div class="sm:col-span-2">
+                      <label :for="`slide-subtitle-${block.id}-${index}`" class="block text-sm font-medium text-gray-700">
+                        Podnadpis
+                      </label>
+                      <input
+                        :id="`slide-subtitle-${block.id}-${index}`"
+                        v-model="item.subtitle"
+                        type="text"
+                        class="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-gray-900 focus:ring-gray-900"
+                      />
+                    </div>
+
+                    <div>
+                      <label :for="`slide-cta-label-${block.id}-${index}`" class="block text-sm font-medium text-gray-700">
+                        Text tlačítka
+                      </label>
+                      <input
+                        :id="`slide-cta-label-${block.id}-${index}`"
+                        v-model="item.cta_label"
+                        type="text"
+                        class="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-gray-900 focus:ring-gray-900"
+                      />
+                    </div>
+
+                    <div>
+                      <label :for="`slide-cta-url-${block.id}-${index}`" class="block text-sm font-medium text-gray-700">
+                        Odkaz tlačítka
+                      </label>
+                      <input
+                        :id="`slide-cta-url-${block.id}-${index}`"
+                        v-model="item.cta_url"
+                        type="text"
+                        placeholder="/kategorie/novinky"
+                        class="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-gray-900 focus:ring-gray-900"
+                      />
+                    </div>
+
+                    <div>
+                      <label :for="`slide-image-${block.id}-${index}`" class="block text-sm font-medium text-gray-700">
+                        Obrázek
+                      </label>
+                      <input
+                        :id="`slide-image-${block.id}-${index}`"
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp"
+                        class="mt-1 w-full text-sm"
+                        @change="onItemImageChange(index, $event)"
+                      />
+                      <p v-if="item.image_path" class="mt-1 text-xs text-gray-600">
+                        Nahráno: {{ String(item.image_path).split('/').pop() }}
+                      </p>
+                    </div>
+
+                    <div>
+                      <label :for="`slide-alt-${block.id}-${index}`" class="block text-sm font-medium text-gray-700">
+                        Alternativní text obrázku
+                      </label>
+                      <input
+                        :id="`slide-alt-${block.id}-${index}`"
+                        v-model="item.alt"
+                        type="text"
+                        class="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-gray-900 focus:ring-gray-900"
+                      />
+                    </div>
+                  </template>
+                </BlockItems>
+              </template>
+
+              <!-- Pás výhod -->
+              <template v-else-if="block.type === 'usp_strip'">
+                <BlockItems
+                  :items="editItems"
+                  label="Výhody"
+                  item-label="Výhoda"
+                  :min="2"
+                  :max="6"
+                  @add="addItem('usp_strip')"
+                  @remove="removeItem"
+                  @move="moveItem"
+                >
+                  <template #default="{ item, index }">
+                    <div>
+                      <label :for="`usp-icon-${block.id}-${index}`" class="block text-sm font-medium text-gray-700">
+                        Ikona
+                      </label>
+                      <select
+                        :id="`usp-icon-${block.id}-${index}`"
+                        v-model="item.icon"
+                        class="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-gray-900 focus:ring-gray-900"
+                      >
+                        <option v-for="icon in USP_ICONS" :key="icon" :value="icon">{{ icon }}</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label :for="`usp-title-${block.id}-${index}`" class="block text-sm font-medium text-gray-700">
+                        Nadpis
+                      </label>
+                      <input
+                        :id="`usp-title-${block.id}-${index}`"
+                        v-model="item.title"
+                        type="text"
+                        required
+                        class="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-gray-900 focus:ring-gray-900"
+                      />
+                    </div>
+
+                    <div class="sm:col-span-2">
+                      <label :for="`usp-subtitle-${block.id}-${index}`" class="block text-sm font-medium text-gray-700">
+                        Popisek
+                      </label>
+                      <input
+                        :id="`usp-subtitle-${block.id}-${index}`"
+                        v-model="item.subtitle"
+                        type="text"
+                        class="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-gray-900 focus:ring-gray-900"
+                      />
+                    </div>
+                  </template>
+                </BlockItems>
+              </template>
+
+              <!-- Produkty se záložkami -->
+              <template v-else-if="block.type === 'product_tabs'">
+                <div class="sm:col-span-2">
+                  <label :for="`heading-${block.id}`" class="block text-sm font-medium text-gray-700">Nadpis sekce</label>
+                  <input
+                    :id="`heading-${block.id}`"
+                    v-model="editState.heading"
+                    type="text"
+                    class="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-gray-900 focus:ring-gray-900"
+                  />
+                </div>
+
+                <BlockItems
+                  :items="editItems"
+                  label="Záložky"
+                  item-label="Záložka"
+                  :min="2"
+                  :max="5"
+                  @add="addItem('product_tabs')"
+                  @remove="removeItem"
+                  @move="moveItem"
+                >
+                  <template #default="{ item, index }">
+                    <div>
+                      <label :for="`tab-label-${block.id}-${index}`" class="block text-sm font-medium text-gray-700">
+                        Název záložky
+                      </label>
+                      <input
+                        :id="`tab-label-${block.id}-${index}`"
+                        v-model="item.label"
+                        type="text"
+                        required
+                        class="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-gray-900 focus:ring-gray-900"
+                      />
+                    </div>
+
+                    <div>
+                      <label :for="`tab-mode-${block.id}-${index}`" class="block text-sm font-medium text-gray-700">
+                        Zdroj produktů
+                      </label>
+                      <select
+                        :id="`tab-mode-${block.id}-${index}`"
+                        v-model="item.mode"
+                        class="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-gray-900 focus:ring-gray-900"
+                      >
+                        <option value="latest">Nejnovější</option>
+                        <option value="category">Z kategorie</option>
+                        <option value="manual">Ručně vybrané</option>
+                      </select>
+                    </div>
+
+                    <div v-if="item.mode === 'category'">
+                      <label :for="`tab-category-${block.id}-${index}`" class="block text-sm font-medium text-gray-700">
+                        ID kategorie
+                      </label>
+                      <input
+                        :id="`tab-category-${block.id}-${index}`"
+                        v-model="item.category_id"
+                        type="number"
+                        min="1"
+                        class="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-gray-900 focus:ring-gray-900"
+                      />
+                    </div>
+
+                    <div v-else-if="item.mode === 'manual'" class="sm:col-span-2">
+                      <label :for="`tab-products-${block.id}-${index}`" class="block text-sm font-medium text-gray-700">
+                        ID produktů (oddělená čárkou)
+                      </label>
+                      <input
+                        :id="`tab-products-${block.id}-${index}`"
+                        v-model="item.product_ids"
+                        type="text"
+                        placeholder="12, 45, 78"
+                        class="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-gray-900 focus:ring-gray-900"
+                      />
+                    </div>
+
+                    <div v-else>
+                      <label :for="`tab-count-${block.id}-${index}`" class="block text-sm font-medium text-gray-700">
+                        Počet produktů
+                      </label>
+                      <input
+                        :id="`tab-count-${block.id}-${index}`"
+                        v-model="item.count"
+                        type="number"
+                        min="1"
+                        max="12"
+                        class="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-gray-900 focus:ring-gray-900"
+                      />
+                    </div>
+                  </template>
+                </BlockItems>
+              </template>
+
+              <!-- Mozaika kategorií -->
+              <template v-else-if="block.type === 'category_mosaic'">
+                <div class="sm:col-span-2">
+                  <label :for="`heading-${block.id}`" class="block text-sm font-medium text-gray-700">Nadpis</label>
+                  <input
+                    :id="`heading-${block.id}`"
+                    v-model="editState.heading"
+                    type="text"
+                    class="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-gray-900 focus:ring-gray-900"
+                  />
+                </div>
+
+                <div>
+                  <label :for="`layout-${block.id}`" class="block text-sm font-medium text-gray-700">Rozvržení</label>
+                  <select
+                    :id="`layout-${block.id}`"
+                    v-model="editState.layout"
+                    class="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-gray-900 focus:ring-gray-900"
+                  >
+                    <option v-for="layout in MOSAIC_LAYOUTS" :key="layout.value" :value="layout.value">
+                      {{ layout.label }}
+                    </option>
+                  </select>
+                </div>
+
+                <div>
+                  <label :for="`category-ids-${block.id}`" class="block text-sm font-medium text-gray-700">
+                    ID kategorií (oddělená čárkou)
+                  </label>
+                  <input
+                    :id="`category-ids-${block.id}`"
+                    v-model="editState.category_ids"
+                    type="text"
+                    placeholder="3, 7, 9, 11"
+                    class="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-gray-900 focus:ring-gray-900"
+                  />
+                </div>
+              </template>
+
+              <!-- Řada bannerů -->
+              <template v-else-if="block.type === 'banner_grid'">
+                <BlockItems
+                  :items="editItems"
+                  label="Bannery"
+                  item-label="Banner"
+                  :min="2"
+                  :max="3"
+                  @add="addItem('banner_grid')"
+                  @remove="removeItem"
+                  @move="moveItem"
+                >
+                  <template #default="{ item, index }">
+                    <div>
+                      <label :for="`banner-image-${block.id}-${index}`" class="block text-sm font-medium text-gray-700">
+                        Obrázek
+                      </label>
+                      <input
+                        :id="`banner-image-${block.id}-${index}`"
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp"
+                        class="mt-1 w-full text-sm"
+                        @change="onItemImageChange(index, $event)"
+                      />
+                      <p v-if="item.image_path" class="mt-1 text-xs text-gray-600">
+                        Nahráno: {{ String(item.image_path).split('/').pop() }}
+                      </p>
+                    </div>
+
+                    <div>
+                      <label :for="`banner-url-${block.id}-${index}`" class="block text-sm font-medium text-gray-700">
+                        Odkaz
+                      </label>
+                      <input
+                        :id="`banner-url-${block.id}-${index}`"
+                        v-model="item.url"
+                        type="text"
+                        placeholder="/kategorie/akce"
+                        class="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-gray-900 focus:ring-gray-900"
+                      />
+                    </div>
+
+                    <div class="sm:col-span-2">
+                      <label :for="`banner-alt-${block.id}-${index}`" class="block text-sm font-medium text-gray-700">
+                        Alternativní text obrázku
+                      </label>
+                      <input
+                        :id="`banner-alt-${block.id}-${index}`"
+                        v-model="item.alt"
+                        type="text"
+                        class="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-gray-900 focus:ring-gray-900"
+                      />
+                    </div>
+                  </template>
+                </BlockItems>
+              </template>
+
               <!-- Hero -->
-              <template v-if="block.type === 'hero'">
+              <template v-else-if="block.type === 'hero'">
                 <div class="sm:col-span-2">
                   <label :for="`title-${block.id}`" class="block text-sm font-medium text-gray-700">
                     Nadpis

@@ -6,6 +6,8 @@ use App\Core\Tenancy\TenantContext;
 use App\Models\Tenant;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Testing\TestResponse;
 use Modules\Storefront\Enums\BlockType;
 use Modules\Storefront\Models\HomepageBlock;
@@ -222,5 +224,29 @@ class HomepageBlockPayloadTest extends TestCase
 
         $this->save($block, ['heading' => 'Kategorie', 'layout' => 'sikmo', 'category_ids' => []])
             ->assertSessionHasErrors('payload.layout');
+    }
+
+    public function test_an_upload_lands_on_the_item_it_was_sent_for(): void
+    {
+        Storage::fake('tenant_public');
+
+        $block = $this->block(BlockType::Slider);
+
+        $slides = $this->slides(2);
+        $slides[1]['alt'] = 'Druhý obrázek';
+
+        $this->actingAs($this->owner)->post(
+            "http://shop1.droidshop/admin/m/storefront/homepage/blok/{$block->id}",
+            [
+                '_method' => 'patch',
+                'payload' => ['slides' => $slides],
+                'images' => [1 => UploadedFile::fake()->image('slide.jpg')],
+            ],
+        )->assertSessionHasNoErrors();
+
+        $fresh = $block->fresh()->payload['slides'];
+
+        $this->assertArrayNotHasKey('image_path', $fresh[0]);
+        $this->assertSame("homepage/{$block->id}-1.jpg", $fresh[1]['image_path']);
     }
 }
