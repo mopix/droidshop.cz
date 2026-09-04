@@ -136,6 +136,23 @@ tím, že vznikne — ne tím, že si na ni někdo vzpomene.
 - **Zamykání šablon tarifem** není implementované — všechny šablony jsou v base. Až vznikne
   prémiová šablona, bude potřeba gate v tarifu **i** ve validaci requestu.
 
+## Nález mimo rozsah vlny: lišta souhlasu překrývá konec krátké stránky
+
+E2E ukázalo, že s vypnutým JavaScriptem lišta souhlasu (`#cookie-banner`, `position: fixed`
+dole) překryje poslední prvek stránky, která se nemá kam odrolovat — konkrétně tlačítko
+**Pokračovat** na krocích pokladny. Není to vada šablony: lišta je v jádře, renderuje se do
+každé cachované stránky bezpodmínečně a odstraňuje ji jen JavaScript (vlna 3.0 vědomě
+nechtěla cachovat podle cookie). Bez JS ji tedy nikdy nic neodstraní a rolování nepomůže,
+protože pod tlačítkem už nic není.
+
+Klávesnicí to projde (Enter na tlačítku), takže to není úplná blokace, ale myší se návštěvník
+bez JavaScriptu na tlačítko nedostane. Testy proto odesílají kroky pokladny z klávesnice a
+komentář u nich na tuhle příčinu ukazuje.
+
+**Návrh opravy (jiná vlna, jádro):** dát `<body>` spodní odsazení o výšku lišty, dokud
+rozhodnutí neexistuje — buď třídou, kterou lišta sama přidá, nebo `scroll-padding-bottom`.
+Chce to vlastní zadání, protože se to dotýká každé stránky každého e-shopu.
+
 ## Pre-deploy checklist
 
 - [ ] `php artisan migrate` — přibývá `tenant_theme.template` (default `base`)
