@@ -2,7 +2,6 @@
     "key": "base",
     "name": "Základní",
     "description": "Neutrální vzhled platformy. Střídmá typografie, jemné rámečky, bezpečná volba pro každý sortiment.",
-    "preview": "preview.webp",
     "tokens": {
         "container": "72rem",
         "radius": "0.75rem",

@@ -2,7 +2,9 @@
 
 namespace App\Http\Requests\Tenant;
 
+use App\Core\Theme\ThemeRegistry;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class UpdateAppearanceRequest extends FormRequest
 {
@@ -17,6 +19,12 @@ class UpdateAppearanceRequest extends FormRequest
     public function rules(): array
     {
         return [
+            // Optional, and validated against the registry rather than a list
+            // written out here: a theme is added by deploying a directory, and
+            // a second list would be the one nobody remembers to update.
+            // Absent means "leave the theme alone" — a request that lost the
+            // field must not silently reset a shop's layout to the default.
+            'template' => ['sometimes', 'string', Rule::in(app(ThemeRegistry::class)->all()->keys()->all())],
             'primary_color' => ['required', 'regex:/^#[0-9a-fA-F]{6}$/D'],
             'accent_color' => ['required', 'regex:/^#[0-9a-fA-F]{6}$/D'],
             'logo' => ['nullable', 'image', 'max:512'],
@@ -38,6 +46,7 @@ class UpdateAppearanceRequest extends FormRequest
     public function messages(): array
     {
         return [
+            'template.in' => 'Tuhle šablonu platforma nenabízí.',
             'primary_color.required' => 'Zadejte barvu.',
             'primary_color.regex' => 'Barva musí být hex kód, např. #0f766e.',
             'accent_color.required' => 'Zadejte barvu.',

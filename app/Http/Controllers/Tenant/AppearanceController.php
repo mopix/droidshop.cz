@@ -6,6 +6,7 @@ use App\Core\PageCache\Generations;
 use App\Core\Storage\FileStorage;
 use App\Core\Tenancy\TenantContext;
 use App\Core\Theme\Contrast;
+use App\Core\Theme\ThemeRegistry;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Tenant\UpdateAppearanceRequest;
 use App\Models\TenantTheme;
@@ -28,6 +29,7 @@ class AppearanceController extends Controller
         private readonly TenantContext $context,
         private readonly FileStorage $files,
         private readonly Generations $generations,
+        private readonly ThemeRegistry $themes,
     ) {}
 
     public function edit(): Response
@@ -43,7 +45,27 @@ class AppearanceController extends Controller
                 'logo_url' => $theme?->logo_path !== null ? $this->files->publicUrl($theme->logo_path) : null,
                 'favicon_url' => $theme?->favicon_path !== null ? $this->files->publicUrl($theme->favicon_path) : null,
                 'contrast_ratio' => round(Contrast::ratio($primary, '#ffffff'), 2),
+                'template' => $theme?->template ?? (string) config('themes.default', 'base'),
             ],
+            'themes' => $this->themes->all()
+                ->map(fn ($manifest): array => [
+                    'key' => $manifest->key,
+                    'name' => $manifest->name,
+                    'description' => $manifest->description,
+                    // A still image from public/themes, never a live iframe:
+                    // the preview belongs to the admin screen, and an iframe
+                    // there would pull the storefront's own domain into it
+                    // just to show a thumbnail.
+                    'preview' => $manifest->preview === null
+                        ? null
+                        : "/themes/{$manifest->key}/{$manifest->preview}",
+                    // Enough of the theme for the screen to draw a small mock
+                    // of it. A shop that has not been built yet has nothing to
+                    // photograph, so the tile has to be able to show what a
+                    // theme looks like without a screenshot of it.
+                    'tokens' => $manifest->tokens,
+                ])
+                ->values(),
         ]);
     }
 
@@ -56,6 +78,10 @@ class AppearanceController extends Controller
             'primary_color' => $request->validated('primary_color'),
             'accent_color' => $request->validated('accent_color'),
         ];
+
+        if ($request->has('template')) {
+            $data['template'] = $request->validated('template');
+        }
 
         if ($request->hasFile('logo')) {
             $extension = $request->file('logo')->extension();
