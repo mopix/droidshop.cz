@@ -51,7 +51,11 @@
             <x-storefront::sort-form :query="$query" />
         </div>
 
-        <div class="mt-6">
+        <div class="mt-6 lg:grid lg:grid-cols-[15rem_minmax(0,1fr)] lg:gap-6">
+            <div class="mb-6 lg:mb-0">
+                <x-storefront::facet-panel :facets="$facets" :query="$query" />
+            </div>
+
             <x-storefront::product-grid :products="$products" />
         </div>
 

@@ -147,11 +147,23 @@ class PageCacheKey
                 continue;
             }
 
-            // Non-scalar whitelisted parameters (arrays): only q renders
-            // differently (as the literal term "Array"). Other parameters
-            // (razeni, skladem, page) fall back to their defaults, same as
-            // missing parameters, so we skip them entirely.
+            // Non-scalar whitelisted parameters (arrays). `vlastnost` is
+            // genuinely array-shaped — it carries a list of values per
+            // attribute — so it is normalised through the same code the
+            // catalogue reads it with, which is what makes two orderings of
+            // one filter a single cache entry and stops an unknown value from
+            // minting one.
             if (! is_scalar($value)) {
+                if ($name === 'vlastnost') {
+                    $normalised = ProductQuery::normaliseAttributes($value);
+
+                    if ($normalised !== []) {
+                        $params[$name] = http_build_query($normalised);
+                    }
+
+                    continue;
+                }
+
                 if ($name === 'q') {
                     // Use a key name unreachable by user input to avoid collision
                     // with scalar q values. All array-shaped q values share one key.
@@ -226,6 +238,24 @@ class PageCacheKey
             $folded = self::foldSearchTerm($value);
 
             return $folded === '' ? null : $folded;
+        }
+
+        if ($name === 'na-stranku') {
+            // Only page sizes the shop offers; everything else falls back to
+            // the default in ProductQuery::fromInput() and therefore has to
+            // land on the default's key.
+            $asInt = filter_var($value, FILTER_VALIDATE_INT);
+
+            return in_array($asInt, ProductQuery::PER_PAGE, true) && $asInt !== ProductQuery::PER_PAGE[0]
+                ? (string) $asInt
+                : null;
+        }
+
+        if ($name === 'vlastnost') {
+            // Scalar shape (`?vlastnost=barva`) is not something the catalogue
+            // reads, so it changes nothing about the page and must not change
+            // the key either.
+            return null;
         }
 
         if ($name === 'zalozka') {

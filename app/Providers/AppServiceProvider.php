@@ -3,6 +3,8 @@
 namespace App\Providers;
 
 use App\Core\Billing\Listeners\SendTenantStatusMail;
+use App\Core\Catalog\Contracts\ProductFacets;
+use App\Core\Catalog\NullProductFacets;
 use App\Core\Checkout\Contracts\CartRepository;
 use App\Core\Checkout\NullCartRepository;
 use App\Core\Customers\Contracts\CustomerIdentity;
@@ -79,6 +81,11 @@ class AppServiceProvider extends ServiceProvider
         // inside a request, and the instance memoises the parsed manifests —
         // a fresh instance per resolution would re-read them on every call and
         // would leave flush() clearing a memo nobody else holds.
+        // The kernel's default: a shop without the products module offers no
+        // filters, and says so with an empty list rather than by failing to
+        // resolve. Modules\Products binds the real one over it.
+        $this->app->bind(ProductFacets::class, NullProductFacets::class);
+
         $this->app->singleton(ThemeRegistry::class);
 
         // Singleton because it captures the view hints as the module providers
