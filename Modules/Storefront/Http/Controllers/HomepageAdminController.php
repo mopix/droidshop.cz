@@ -77,7 +77,7 @@ class HomepageAdminController
         // or from the block's previously stored value.
         unset($payload['image_path']);
 
-        if ($request->hasFile('image')) {
+        if ($request->hasFile('image') && $request->input('image_index') === null) {
             // image_path is always derived here from the uploaded file, never
             // accepted as a client-supplied string in the payload — otherwise
             // a tenant could point a block at an arbitrary path on the public
@@ -92,12 +92,67 @@ class HomepageAdminController
             $payload['image_path'] = $block->payload['image_path'];
         }
 
+        $payload = $this->resolveItemImages($request, $block, $payload);
+
         $block->update([
             'payload' => $payload,
             'visible' => $request->boolean('visible', $block->visible),
         ]);
 
         return back()->with('success', 'Blok byl uložen.');
+    }
+
+    /**
+     * The same server-authority rule as the single image, applied inside a list.
+     *
+     * A slider or a banner grid keeps an `image_path` per item, and update()'s
+     * `unset($payload['image_path'])` only reaches the top level — a payload
+     * carrying `slides[0].image_path` would otherwise let a tenant point a
+     * slide at any file on the public disk. So every item's path is thrown
+     * away and re-derived: from the upload when one arrived for that index,
+     * otherwise from what the block already had at that index.
+     *
+     * @param  array<string, mixed>  $payload
+     * @return array<string, mixed>
+     */
+    private function resolveItemImages(UpdateBlockRequest $request, HomepageBlock $block, array $payload): array
+    {
+        $bounds = $block->type->itemBounds();
+
+        if ($bounds === null) {
+            return $payload;
+        }
+
+        [$key] = $bounds;
+
+        if (! is_array($payload[$key] ?? null)) {
+            return $payload;
+        }
+
+        $stored = array_values($block->payload[$key] ?? []);
+        $uploadIndex = $request->input('image_index');
+        $uploadIndex = is_numeric($uploadIndex) ? (int) $uploadIndex : null;
+
+        $items = array_values($payload[$key]);
+
+        foreach ($items as $index => $item) {
+            unset($item['image_path']);
+
+            if ($uploadIndex === $index && $request->hasFile('image')) {
+                $extension = $request->file('image')->extension();
+                $path = "homepage/{$block->id}-{$index}.{$extension}";
+                $this->files->putPublic($path, file_get_contents($request->file('image')->getRealPath()));
+                $item['image_path'] = $path;
+            } elseif (isset($stored[$index]['image_path'])) {
+                $item['image_path'] = $stored[$index]['image_path'];
+            }
+
+            $items[$index] = $item;
+        }
+
+        $payload[$key] = $items;
+
+        return $payload;
     }
 
     public function move(MoveBlockRequest $request, HomepageBlock $block): RedirectResponse
