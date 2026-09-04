@@ -2,6 +2,7 @@
 
 namespace Modules\Checkout\Services;
 
+use App\Core\Catalog\Contracts\ProductAddons;
 use App\Core\Catalog\Contracts\ProductCatalog;
 use App\Core\Checkout\Contracts\CartShape;
 use App\Core\Discounts\AppliedDiscount;
@@ -38,6 +39,7 @@ final class CartPricer
         private readonly TaxRates $taxRates,
         private readonly VatMode $vat,
         private readonly DiscountEngine $discounts,
+        private readonly ProductAddons $addons,
     ) {}
 
     public function price(CartShape $cart): PricedCart
@@ -52,6 +54,48 @@ final class CartPricer
         foreach ($cart->cartItems() as $item) {
             $productId = (int) $item->product_id;
             $quantity = (int) $item->quantity;
+
+            // An accessory line prices itself: its label, its surcharge and
+            // its VAT rate come from the addon, not from the product it hangs
+            // on. The price is read from the catalogue here for the same
+            // reason the product's is — the stored figure is a display
+            // snapshot and is never what gets charged.
+            if ((int) ($item->addon_id ?? 0) > 0) {
+                $addon = $this->addons->find($productId, (int) $item->addon_id);
+
+                $snapshotPrice = $item->unit_price instanceof Money
+                    ? $item->unit_price
+                    : new Money((int) $item->unit_price, config('app.currency', 'CZK'));
+
+                $addonPrice = $addon?->price ?? $snapshotPrice;
+
+                $lines[] = new PricedCartLine(
+                    itemId: (int) $item->id,
+                    productId: $productId,
+                    name: $addon?->label ?? 'Doplněk už není dostupný',
+                    url: null,
+                    imageUrl: $addon?->imageUrl,
+                    quantity: $quantity,
+                    unitPrice: $addonPrice,
+                    lineTotal: $addon === null ? new Money(0, $addonPrice->currency) : $addonPrice->times($quantity),
+                    priceChanged: $addon !== null && ! $addonPrice->equals($snapshotPrice),
+                    previousUnitPrice: null,
+                    available: $addon !== null,
+                    variantId: null,
+                    variantLabel: null,
+                    parentItemId: (int) $item->parent_item_id,
+                    addonId: (int) $item->addon_id,
+                );
+
+                if ($addon !== null) {
+                    $itemsTotal = $itemsTotal === null
+                        ? $addonPrice->times($quantity)
+                        : $itemsTotal->plus($addonPrice->times($quantity));
+                }
+
+                continue;
+            }
+
             $product = $this->catalog->findById($productId);
 
             $snapshot = $item->unit_price instanceof Money

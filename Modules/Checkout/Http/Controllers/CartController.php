@@ -2,6 +2,7 @@
 
 namespace Modules\Checkout\Http\Controllers;
 
+use App\Core\Catalog\Contracts\ProductAddons;
 use App\Core\Catalog\Contracts\ProductCatalog;
 use App\Core\Checkout\Contracts\CartRepository;
 use App\Core\Money\Money;
@@ -38,6 +39,7 @@ class CartController
         private readonly ProductCatalog $catalog,
         private readonly ShopModules $modules,
         private readonly SettingsService $settings,
+        private readonly ProductAddons $addons,
     ) {}
 
     public function show(Request $request): Response
@@ -102,9 +104,41 @@ class CartController
             $variantId = (int) $variant->getKey();
         }
 
+        // Which accessories were actually chosen, resolved against this
+        // product. An id that belongs to another product's group is dropped
+        // here rather than priced: otherwise a crafted post buys one picture's
+        // cheap frame for another one.
+        $addons = [];
+
+        foreach ($request->input('addon_id', []) as $addonId) {
+            $addon = $this->addons->find($request->integer('product_id'), (int) $addonId);
+
+            if ($addon !== null) {
+                $addons[] = $addon;
+            }
+        }
+
+        // A group the merchant marked required is not optional because the
+        // form said so: the form is a suggestion and this is the guarantee.
+        $answered = array_map(fn ($addon): int => $addon->groupId, $addons);
+
+        foreach ($this->addons->requiredGroupIds($request->integer('product_id')) as $groupId) {
+            if (! in_array($groupId, $answered, true)) {
+                return back()->withErrors([
+                    'addon_id' => 'Vyberte prosím všechny povinné doplňky.',
+                ]);
+            }
+        }
+
         $cart = $this->carts->forToken(CartCookie::read($request));
 
-        $this->carts->addItem($cart, $request->integer('product_id'), $request->integer('quantity'), $variantId);
+        $this->carts->addItem(
+            $cart,
+            $request->integer('product_id'),
+            $request->integer('quantity'),
+            $variantId,
+            array_map(fn ($addon): int => $addon->id, $addons),
+        );
 
         return CartCookie::attach(
             redirect()->route('storefront.checkout.show')->with('status', 'Přidáno do košíku.'),

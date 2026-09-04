@@ -36,7 +36,10 @@ interface CartRepository
      * $variantId is optional and last: a product without variants adds
      * exactly as it always did.
      */
-    public function addItem(CartShape $cart, int $productId, int $quantity, ?int $variantId = null): void;
+    /**
+     * @param  list<int>  $addonIds  accessories chosen with the product; each becomes its own line
+     */
+    public function addItem(CartShape $cart, int $productId, int $quantity, ?int $variantId = null, array $addonIds = []): void;
 
     /**
      * Sets a line's quantity. Zero (or less) removes the row.

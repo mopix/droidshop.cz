@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Modules\Checkout;
 
+use App\Core\Catalog\Contracts\ProductAddons;
 use App\Core\Catalog\Contracts\ProductCatalog;
 use App\Core\Checkout\Contracts\CartRepository;
 use App\Core\Checkout\NullCartRepository;
@@ -148,11 +149,11 @@ class CartRepositoryTest extends TestCase
 
             // The loser: its first existingItem() lookup is forced to miss,
             // so it proceeds straight to create() and collides.
-            $racy = new class(app(ShopModules::class), app(ProductCatalog::class)) extends EloquentCartRepository
+            $racy = new class(app(ShopModules::class), app(ProductCatalog::class), app(ProductAddons::class)) extends EloquentCartRepository
             {
                 public int $lookupCalls = 0;
 
-                protected function existingItem(Cart $cart, int $productId, int $variantId = 0): ?CartItem
+                protected function existingItem(Cart $cart, int $productId, int $variantId = 0, array $addonIds = []): ?CartItem
                 {
                     $this->lookupCalls++;
 
@@ -160,7 +161,7 @@ class CartRepositoryTest extends TestCase
                         return null;
                     }
 
-                    return parent::existingItem($cart, $productId, $variantId);
+                    return parent::existingItem($cart, $productId, $variantId, $addonIds);
                 }
             };
 

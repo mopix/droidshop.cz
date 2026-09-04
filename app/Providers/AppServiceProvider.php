@@ -3,7 +3,9 @@
 namespace App\Providers;
 
 use App\Core\Billing\Listeners\SendTenantStatusMail;
+use App\Core\Catalog\Contracts\ProductAddons;
 use App\Core\Catalog\Contracts\ProductFacets;
+use App\Core\Catalog\NullProductAddons;
 use App\Core\Catalog\NullProductFacets;
 use App\Core\Checkout\Contracts\CartRepository;
 use App\Core\Checkout\NullCartRepository;
@@ -85,6 +87,7 @@ class AppServiceProvider extends ServiceProvider
         // filters, and says so with an empty list rather than by failing to
         // resolve. Modules\Products binds the real one over it.
         $this->app->bind(ProductFacets::class, NullProductFacets::class);
+        $this->app->bind(ProductAddons::class, NullProductAddons::class);
 
         $this->app->singleton(ThemeRegistry::class);
 
