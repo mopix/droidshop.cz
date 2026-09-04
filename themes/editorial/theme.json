@@ -30,6 +30,7 @@
         "storefront::components.blocks.category-grid",
         "storefront::components.blocks.product-row",
         "storefront::components.blocks.text",
-        "categories::storefront.show"
+        "categories::storefront.show",
+        "products::storefront.show"
     ]
 }

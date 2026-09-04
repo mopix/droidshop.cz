@@ -188,6 +188,24 @@ class ThemeStorefrontContractTest extends TestCase
     }
 
     #[DataProvider('themes')]
+    public function test_adding_to_the_cart_is_a_plain_form_post(string $theme): void
+    {
+        // The POST plus the redirect from CartController is the entire "add to
+        // cart" interaction. A theme may restyle the button; it may not turn it
+        // into something that only works once a script has loaded, or the shop
+        // stops taking orders for anyone whose JavaScript failed.
+        $this->shopWith($theme);
+
+        $html = (string) $this->get('http://obchod.droidshop/produkt/notebook-acme-14')
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString(route('storefront.checkout.add'), $html);
+        $this->assertStringContainsString('name="product_id"', $html);
+        $this->assertStringContainsString('name="_token"', $html);
+    }
+
+    #[DataProvider('themes')]
     public function test_the_cart_renders_under_the_themes_layout(string $theme): void
     {
         // The cart is never overridable, so this is not about how it looks —
