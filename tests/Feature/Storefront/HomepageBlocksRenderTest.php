@@ -5,6 +5,7 @@ namespace Tests\Feature\Storefront;
 use App\Core\Tenancy\TenantContext;
 use App\Models\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Modules\Categories\Models\Category;
 use Modules\Storefront\Enums\BlockType;
 use Modules\Storefront\Models\HomepageBlock;
 use Tests\Concerns\ActivatesModules;
@@ -212,5 +213,108 @@ class HomepageBlocksRenderTest extends TestCase
         $this->get('http://blockshop.droidshop/')
             ->assertOk()
             ->assertSee('Nabídka se právě připravuje');
+    }
+
+    public function test_a_slider_puts_every_slide_in_the_html(): void
+    {
+        // Not just the first one: the dots are anchors and the track scrolls,
+        // which is what makes the block work with no JavaScript at all.
+        $this->seedBlocks([[
+            'type' => BlockType::Slider,
+            'payload' => ['slides' => [
+                ['title' => 'První slide', 'subtitle' => null, 'cta_label' => null, 'cta_url' => null, 'image_path' => null, 'alt' => ''],
+                ['title' => 'Druhý slide', 'subtitle' => null, 'cta_label' => null, 'cta_url' => null, 'image_path' => null, 'alt' => ''],
+                ['title' => 'Třetí slide', 'subtitle' => null, 'cta_label' => null, 'cta_url' => null, 'image_path' => null, 'alt' => ''],
+            ]],
+        ]]);
+
+        $this->get('http://blockshop.droidshop/')
+            ->assertOk()
+            ->assertSee('První slide')
+            ->assertSee('Druhý slide')
+            ->assertSee('Třetí slide');
+    }
+
+    public function test_a_benefits_strip_renders_its_items(): void
+    {
+        $this->seedBlocks([[
+            'type' => BlockType::UspStrip,
+            'payload' => ['items' => [
+                ['icon' => 'truck', 'title' => 'Doprava zdarma', 'subtitle' => 'nad 2500 Kč'],
+                ['icon' => 'clock', 'title' => 'Rychlé dodání', 'subtitle' => 'do pár dní'],
+            ]],
+        ]]);
+
+        $this->get('http://blockshop.droidshop/')
+            ->assertOk()
+            ->assertSee('Doprava zdarma')
+            ->assertSee('nad 2500 Kč')
+            ->assertSee('Rychlé dodání');
+    }
+
+    public function test_product_tabs_open_the_first_tab_and_leave_the_rest_as_links(): void
+    {
+        $this->activateModule($this->tenant, 'products');
+
+        $this->seedBlocks([[
+            'type' => BlockType::ProductTabs,
+            'payload' => [
+                'heading' => 'Nabídka',
+                'tabs' => [
+                    ['label' => 'Obrazy', 'mode' => 'latest', 'count' => 4, 'category_id' => null, 'product_ids' => []],
+                    ['label' => 'Tapety', 'mode' => 'latest', 'count' => 4, 'category_id' => null, 'product_ids' => []],
+                ],
+            ],
+        ]]);
+
+        $response = $this->get('http://blockshop.droidshop/')->assertOk();
+
+        $response->assertSee('Obrazy');
+        $response->assertSee('Tapety');
+        $response->assertSee('?zalozka=2', false);
+    }
+
+    public function test_an_out_of_range_tab_falls_back_to_the_first(): void
+    {
+        // A stale link or a crawler guessing at parameters must see goods, not
+        // an empty section.
+        $this->activateModule($this->tenant, 'products');
+
+        $this->seedBlocks([[
+            'type' => BlockType::ProductTabs,
+            'payload' => [
+                'heading' => 'Nabídka',
+                'tabs' => [
+                    ['label' => 'Obrazy', 'mode' => 'latest', 'count' => 4, 'category_id' => null, 'product_ids' => []],
+                    ['label' => 'Tapety', 'mode' => 'latest', 'count' => 4, 'category_id' => null, 'product_ids' => []],
+                ],
+            ],
+        ]]);
+
+        $this->get('http://blockshop.droidshop/?zalozka=99')
+            ->assertOk()
+            ->assertSee('Obrazy');
+    }
+
+    public function test_a_category_mosaic_renders_its_categories(): void
+    {
+        $this->activateModule($this->tenant, 'categories');
+
+        $category = $this->context->runAs($this->tenant, fn () => Category::create([
+            'name' => 'Obrazy',
+            'slug' => 'obrazy',
+            'is_visible' => true,
+            'position' => 0,
+        ]));
+
+        $this->seedBlocks([[
+            'type' => BlockType::CategoryMosaic,
+            'payload' => ['heading' => 'Kategorie', 'layout' => '1-2-1', 'category_ids' => [$category->id]],
+        ]]);
+
+        $this->get('http://blockshop.droidshop/')
+            ->assertOk()
+            ->assertSee('Kategorie')
+            ->assertSee('Obrazy');
     }
 }

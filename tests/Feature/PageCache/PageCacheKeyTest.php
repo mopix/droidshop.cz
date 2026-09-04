@@ -405,4 +405,29 @@ class PageCacheKeyTest extends TestCase
             $this->key($tenant, '/kategorie/boty?razeni[]=b'),
         );
     }
+
+    public function test_two_tabs_do_not_share_a_key(): void
+    {
+        $tenant = Tenant::factory()->create();
+
+        // Different tabs render different goods. Sharing one stored page would
+        // serve the first visitor's tab to everyone who asked for the other.
+        $this->assertNotSame(
+            $this->key($tenant, '/?zalozka=1'),
+            $this->key($tenant, '/?zalozka=2'),
+        );
+    }
+
+    public function test_a_tab_number_nobody_can_open_lands_on_the_default_key(): void
+    {
+        // HomeController clamps an out-of-range number back to the first tab,
+        // so the key has to agree — otherwise every guessed number mints its
+        // own cache entry holding the very same HTML.
+        $tenant = Tenant::factory()->create();
+        $default = $this->key($tenant, '/');
+
+        $this->assertSame($default, $this->key($tenant, '/?zalozka=99'));
+        $this->assertSame($default, $this->key($tenant, '/?zalozka=druha'));
+        $this->assertSame($default, $this->key($tenant, '/?zalozka=1'));
+    }
 }

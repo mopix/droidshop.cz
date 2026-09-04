@@ -17,6 +17,14 @@ class PageCacheKey
      */
     public const SEGMENT_VERBATIM = 120;
 
+    /**
+     * The upper bound on `?zalozka=`, mirroring BlockType::itemBounds() for
+     * product tabs. Kept as a number here rather than read from the enum:
+     * app/Core may not import a module, and the value it guards is cache
+     * cardinality, not the block's own validation.
+     */
+    private const MAX_TABS = 5;
+
     public function __construct(private readonly Generations $generations) {}
 
     /**
@@ -218,6 +226,17 @@ class PageCacheKey
             $folded = self::foldSearchTerm($value);
 
             return $folded === '' ? null : $folded;
+        }
+
+        if ($name === 'zalozka') {
+            // Which tab of a product-tabs block is open. Two tabs render
+            // different goods, so they must not share a stored page — and an
+            // out-of-range number falls back to the first tab in
+            // HomeController, so it has to land on the same key as no
+            // parameter at all, or every guessed number would be its own entry.
+            $asInt = filter_var($value, FILTER_VALIDATE_INT);
+
+            return $asInt > 1 && $asInt <= self::MAX_TABS ? (string) $asInt : null;
         }
 
         if ($name === 'page') {
