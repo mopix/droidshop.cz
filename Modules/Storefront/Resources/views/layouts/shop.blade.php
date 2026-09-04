@@ -15,8 +15,16 @@
         :shop-noindex="$shopSettings->noindex"
         :default-image="$shopOgImage ?? null" />
 
+    {{--
+        Theme tokens first, the merchant's own brand after them: a shop with a
+        red logo must not turn orange because its owner liked a theme's
+        layout. Token values are printed unescaped on purpose — they have been
+        through ThemeResolver::sanitizeToken(), and {{ }} would only escape
+        HTML, which is not the syntax that matters inside a <style> block.
+    --}}
     <style>
         :root {
+            {!! $theme->css() !!}
             --brand-primary: {{ $theme->primary }};
             --brand-primary-contrast: {{ $theme->primaryContrast }};
             --brand-accent: {{ $theme->accent }};
