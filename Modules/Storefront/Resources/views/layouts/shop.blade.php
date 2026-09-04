@@ -62,7 +62,8 @@
     </script>
     <style>.consent-decided #cookie-banner { display: none; }</style>
 
-    @vite(['resources/css/storefront.css', 'resources/js/storefront.js'])
+    {{-- The shared bundle plus this theme's own stylesheet, when it has one. --}}
+    @vite($theme->assets())
 </head>
 <body class="min-h-screen bg-white text-slate-900 antialiased">
     {{-- WCAG 2.4.1: keyboard users must be able to jump the navigation. --}}

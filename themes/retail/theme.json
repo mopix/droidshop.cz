@@ -1,0 +1,25 @@
+{
+    "key": "retail",
+    "name": "Retail",
+    "description": "Katalogový vzhled pro široký sortiment. Ohraničené zaoblené karty, vodorovné filtry, výrazné tlačítko do košíku, pás výhod.",
+    "css": "resources/css/themes/retail.css",
+    "tokens": {
+        "container": "70rem",
+        "radius": "0.75rem",
+        "radius-lg": "1.25rem",
+        "button-radius": "0.5rem",
+        "surface": "#ffffff",
+        "surface-muted": "#faf7f2",
+        "ink": "#1f2532",
+        "ink-muted": "#5a6274",
+        "line": "#e6e2da",
+        "font-body": "Source Sans 3, ui-sans-serif, system-ui, sans-serif",
+        "font-heading": "Source Sans 3, ui-sans-serif, system-ui, sans-serif",
+        "heading-transform": "none",
+        "heading-tracking": "-0.005em",
+        "heading-weight": "700",
+        "card": "bordered",
+        "section-gap": "3rem"
+    },
+    "overrides": []
+}

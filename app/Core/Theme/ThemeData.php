@@ -21,7 +21,27 @@ final readonly class ThemeData
         public ?string $faviconUrl,
         public string $key = 'base',
         public array $tokens = [],
+        public ?string $cssEntry = null,
     ) {}
+
+    /**
+     * Vite entries the storefront layout has to load.
+     *
+     * The theme's own stylesheet is separate from the shared one so a shop
+     * downloads only the webfaces of the theme it runs — a single bundle
+     * carrying every theme's fonts would put four files on the critical path
+     * to use one.
+     *
+     * @return list<string>
+     */
+    public function assets(): array
+    {
+        return array_values(array_filter([
+            'resources/css/storefront.css',
+            'resources/js/storefront.js',
+            $this->cssEntry,
+        ]));
+    }
 
     /**
      * The tokens as CSS custom-property declarations.

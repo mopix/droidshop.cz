@@ -5,6 +5,9 @@ namespace App\Core\Theme;
 use App\Core\Storage\FileStorage;
 use App\Core\Tenancy\TenantContext;
 use App\Models\TenantTheme;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Vite;
+use Throwable;
 
 /**
  * Builds the storefront ThemeData for the current tenant.
@@ -46,6 +49,7 @@ class ThemeResolver
             faviconUrl: $theme?->favicon_path ? $this->files->publicUrl($theme->favicon_path) : null,
             key: $manifest->key,
             tokens: $this->sanitizeTokens($manifest),
+            cssEntry: $this->cssEntryOf($manifest),
         );
     }
 
@@ -59,6 +63,33 @@ class ThemeResolver
      * the custom-property declaration and inject arbitrary CSS into a
      * page-cached response.
      */
+    /**
+     * The theme's own Vite entry, if the manifest names one that exists.
+     *
+     * Checked against the build manifest rather than trusted: an entry that
+     * was never built throws a ViteManifestNotFound at render time, which
+     * would turn a mistake in a theme.json into a blank storefront.
+     */
+    private function cssEntryOf(ThemeManifest $manifest): ?string
+    {
+        if ($manifest->cssEntry === null) {
+            return null;
+        }
+
+        try {
+            Vite::asset($manifest->cssEntry);
+        } catch (Throwable) {
+            Log::warning('Theme stylesheet is not in the build manifest; skipping it.', [
+                'theme' => $manifest->key,
+                'entry' => $manifest->cssEntry,
+            ]);
+
+            return null;
+        }
+
+        return $manifest->cssEntry;
+    }
+
     /**
      * Tokens, filtered down to values that can only ever be a value.
      *
