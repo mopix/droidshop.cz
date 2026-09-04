@@ -11,6 +11,25 @@ Pravidla: [`.claude/skills/versioning/SKILL.md`](.claude/skills/versioning/SKILL
 
 > CHANGELOG vede milníky (minor/major). Detail patchů je v `git log`.
 
+## [0.50.0] – 2026-09-04
+
+**Šablony storefrontu.** Spec `docs/superpowers/specs/2026-09-04-sablony-storefrontu-design.md`,
+plán `docs/superpowers/plans/2026-09-04-sablony-storefrontu.md`, as-is
+`docs/as-is/2026-09-04-sablony-storefrontu.md`. Migrace `tenant_theme.template` + `npm run build`.
+
+### Šablona je adresář, ne fork
+Nájemce si v Nastavení → Vzhled vybere z `base` (dnešní vzhled), `editorial` (redakční — plné
+obrazové pásy, verzálky, ostré rohy) a `retail` (katalogový — ohraničené karty, tlačítko Detail,
+kontakt v hlavičce). Šablona veze manifest, tokeny a **volitelné** přepisy pohledů; co nepřepíše,
+bere ze základu, takže oprava v jádře doputuje všude. Seznam přepisovatelných pohledů je uzavřený
+a košík, pokladna ani účet zákazníka v něm nejsou — druhý checkout je ten, který nikdo netestuje.
+
+### Co se skoro pokazilo
+Tokeny se tiskly nad `@vite` a fallbacky ve `storefront.css` je přebily: každá šablona vykreslila
+vlastní značkování ve výchozí paletě, a **žádná HTML aserce to nechytila**, protože tokeny na
+stránce byly, jen přehlasované. Našlo se to až otevřením e-shopu v prohlížeči. Hlídá to teď test
+nad zdrojem layoutů.
+
 ## [0.49.0] – 2026-09-03
 
 **Recenze produktů a hodnocení obchodu.** Spec `docs/superpowers/specs/2026-09-03-recenze-design.md`,

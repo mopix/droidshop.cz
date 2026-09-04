@@ -10,6 +10,8 @@
 
 **Spec:** [`docs/superpowers/specs/2026-09-04-sablony-storefrontu-design.md`](../specs/2026-09-04-sablony-storefrontu-design.md)
 
+**Stav: dokončeno 2026-09-04.** As-is včetně odchylek: [`docs/as-is/2026-09-04-sablony-storefrontu.md`](../../as-is/2026-09-04-sablony-storefrontu.md).
+
 ---
 
 ## Global Constraints

@@ -1,7 +1,7 @@
 # Šablony storefrontu — výběr vzhledu nájemcem
 
 **Datum:** 2026-09-04
-**Status:** draft
+**Status:** done
 **Související plán:** `docs/superpowers/plans/2026-09-04-sablony-storefrontu.md`
 
 ## Kontext
