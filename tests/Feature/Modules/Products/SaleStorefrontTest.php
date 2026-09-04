@@ -105,6 +105,39 @@ class SaleStorefrontTest extends TestCase
         $response->assertSee('data-sale-badge', false);
     }
 
+    public function test_the_saving_is_measured_against_the_same_reference_as_the_percentage(): void
+    {
+        // Two figures about one discount have to describe the same discount:
+        // the percentage is computed from the 30-day low, so the koruna
+        // saving is too. Measuring it against the shelf price instead would
+        // put a bigger number next to a smaller percentage on the same line.
+        $this->makeProduct();
+
+        Carbon::setTestNow(now()->addDay());
+
+        $product = $this->context->runAs($this->tenant, fn () => Product::query()->firstOrFail());
+        $this->context->runAs($this->tenant, fn () => app(ProductWriter::class)->update($product, ['sale_price' => 79900]));
+
+        $response = $this->get($this->url('/produkt/klavesnice-acme'));
+
+        $response->assertOk();
+        $response->assertSee('data-sale-saving', false);
+        // 1000 − 799 = 201 Kč, the same 20 % the badge claims.
+        $response->assertSee($this->money(20100), false);
+    }
+
+    public function test_a_product_launched_into_a_sale_shows_no_saving_either(): void
+    {
+        // No reference means no percentage, and a saving without a reference
+        // is the same unfounded claim in korunas.
+        $this->makeProduct(['sale_price' => 79900]);
+
+        $response = $this->get($this->url('/produkt/klavesnice-acme'));
+
+        $response->assertOk();
+        $response->assertDontSee('data-sale-saving', false);
+    }
+
     public function test_a_product_without_a_sale_shows_no_struck_price(): void
     {
         $this->makeProduct();

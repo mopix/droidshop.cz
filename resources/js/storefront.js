@@ -24,6 +24,63 @@ document.querySelectorAll('[data-gallery]').forEach((gallery) => {
     });
 });
 
+// Lightbox: open the full picture in a <dialog>. The thumbnails stay ordinary
+// links to the image file, so with JS off the customer still reaches every
+// photo — the dialog is only a nicer way to look at one.
+document.querySelectorAll('[data-gallery]').forEach((gallery) => {
+    const main = gallery.querySelector('[data-gallery-main]');
+
+    if (!main || typeof HTMLDialogElement === 'undefined') {
+        return;
+    }
+
+    const dialog = document.createElement('dialog');
+    dialog.className = 'backdrop:bg-black/70 max-w-[90vw] bg-transparent p-0';
+    dialog.innerHTML =
+        '<img alt="" class="max-h-[85vh] w-auto" />' +
+        '<button type="button" class="mt-2 w-full bg-white px-4 py-2 text-sm font-medium">Zavřít</button>';
+
+    const picture = dialog.querySelector('img');
+    const close = dialog.querySelector('button');
+
+    close.addEventListener('click', () => dialog.close());
+    document.body.append(dialog);
+
+    const open = (src, alt) => {
+        picture.src = src;
+        picture.alt = alt ?? '';
+        dialog.showModal();
+    };
+
+    main.style.cursor = 'zoom-in';
+    main.addEventListener('click', () => open(main.src, main.alt));
+
+    const trigger = gallery.querySelector('[data-gallery-open]');
+    trigger?.addEventListener('click', (event) => {
+        event.preventDefault();
+        open(main.src, main.alt);
+    });
+});
+
+// Sticky purchase bar: shown once the real buy button has scrolled away, and
+// only when JavaScript is there to know that. Its markup starts hidden, so a
+// visitor without JS never sees a bar that would cover the page's own footer
+// controls for no reason.
+document.querySelectorAll('[data-sticky-buy]').forEach((bar) => {
+    const anchorEl = document.querySelector(bar.dataset.stickyBuy);
+
+    if (!anchorEl || typeof IntersectionObserver === 'undefined') {
+        return;
+    }
+
+    const observer = new IntersectionObserver(
+        ([entry]) => bar.classList.toggle('hidden', entry.isIntersecting),
+        { rootMargin: '0px 0px -40% 0px' },
+    );
+
+    observer.observe(anchorEl);
+});
+
 // Listing controls submit on change once JS is available; the submit button
 // stays in the markup for everyone else.
 document.querySelectorAll('[data-storefront-autosubmit]').forEach((form) => {

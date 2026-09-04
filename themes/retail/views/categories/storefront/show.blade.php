@@ -56,11 +56,15 @@
                 <x-storefront::facet-panel :facets="$facets" :query="$query" />
             </div>
 
-            <x-storefront::product-grid :products="$products" />
-        </div>
+            <div>
+                @if ($products->hasPages())
+                    <div class="mb-4">{{ $products->links() }}</div>
+                @endif
 
-        <div class="mt-8">
-            {{ $products->links() }}
+                <x-storefront::product-grid :products="$products" />
+
+                <div class="mt-8">{{ $products->links() }}</div>
+            </div>
         </div>
     @endif
 

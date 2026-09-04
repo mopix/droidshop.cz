@@ -40,6 +40,13 @@
             @else
                 <x-storefront::sort-form :query="$query" />
 
+                {{-- Above the grid as well as below it: on a long listing the
+                     next page is otherwise a scroll away from the goods the
+                     visitor just decided not to buy. --}}
+                @if ($products->hasPages())
+                    <div class="mb-6">{{ $products->links() }}</div>
+                @endif
+
                 <x-storefront::product-grid :products="$products" />
 
                 <div class="mt-8">
