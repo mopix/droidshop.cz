@@ -21,5 +21,16 @@
         "card": "bordered",
         "section-gap": "3rem"
     },
-    "overrides": []
+    "overrides": [
+        "storefront::layouts.shop",
+        "storefront::components.product-card",
+        "storefront::components.product-grid",
+        "storefront::components.blocks.hero",
+        "storefront::components.blocks.banner",
+        "storefront::components.blocks.category-grid",
+        "storefront::components.blocks.product-row",
+        "storefront::components.blocks.text",
+        "categories::storefront.show",
+        "products::storefront.show"
+    ]
 }
