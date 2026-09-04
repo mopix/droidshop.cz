@@ -269,4 +269,33 @@ class CartAddonTest extends TestCase
             'price' => 15_000,
         ]);
     }
+
+    public function test_the_cart_gives_an_accessory_no_controls_of_its_own(): void
+    {
+        // Found by clicking: the discount rebuild in CartPricer dropped the
+        // parent link, so every accessory rendered as a product of its own —
+        // with a quantity box and a "remove" that would have taken the frame
+        // off a picture arriving unframed.
+        $this->add(['addon_id' => [$this->oak->id]]);
+
+        $addonItem = CartItem::query()
+            ->withoutGlobalScopes()
+            ->whereNotNull('parent_item_id')
+            ->firstOrFail();
+
+        $html = (string) $this->withCookie('cart_token', $this->cartToken())
+            ->get('http://shop1.droidshop/kosik')
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('Rám – dub', $html);
+        $this->assertStringNotContainsString(
+            route('storefront.checkout.update', $addonItem->id),
+            $html,
+        );
+        $this->assertStringNotContainsString(
+            route('storefront.checkout.remove', $addonItem->id),
+            $html,
+        );
+    }
 }

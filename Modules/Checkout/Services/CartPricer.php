@@ -226,6 +226,12 @@ final class CartPricer
                 available: $line->available,
                 variantId: $line->variantId,
                 variantLabel: $line->variantLabel,
+                // Carried through the rebuild. Dropping them here left every
+                // accessory looking like a product of its own in the cart —
+                // with its own quantity box and its own "remove", which is
+                // exactly what the model says it must not have.
+                parentItemId: $line->parentItemId,
+                addonId: $line->addonId,
                 discountAmount: $share,
                 discountedLineTotal: $line->lineTotal->minus($share),
             );
