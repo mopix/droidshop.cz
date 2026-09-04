@@ -11,7 +11,7 @@ import { artisanEval, shopUrl } from '../support/shop'
  *
  * Runs in the `no-js` project (javaScriptEnabled: false).
  */
-const THEMES = ['base', 'editorial', 'retail']
+const THEMES = ['base', 'editorial', 'retail', 'katalog']
 
 function useTheme(key: string): void {
   artisanEval(

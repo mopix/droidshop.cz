@@ -169,9 +169,10 @@ ceny a metriky neověřené.
 ## Stav
 
 Platforma je funkčně hotová: jádro (tenancy, moduly, kernel služby, superadmin), 15 modulů, veřejný
-storefront v Blade SSR se **třemi volitelnými šablonami**, kompletní nákupní cesta včetně plateb
+storefront v Blade SSR se **čtyřmi volitelnými šablonami**, blokovou titulkou, fasetovými
+filtry a doplňky produktu, kompletní nákupní cesta včetně plateb
 a dokladů, page cache, self-service onboarding se Stripe Billing, administrace nájemce a právní
-minimum. Testy: ~2250 PHPUnit + 92 Playwright.
+minimum. Testy: ~2330 PHPUnit + 106 Playwright.
 
 **Zbývá nasazení na VPS** a **právní revize draftů** v `docs/legal/`. Otevřené jsou jen věci vázané na
 server (page cache etapa 2, Caddy TLS, cron, reálné účty Stripe/Comgate/Packeta/GA4).
@@ -219,6 +220,7 @@ novou, která ji ruší.
 - [ ] **Zásilkovna — doručení na adresu:** `php artisan migrate` (rozšíření enumu `shipping_methods.provider`) + `npm run build`; **ověřit tvar odpovědi `packetCourierNumber` a `packetCourierLabelPdf` proti reálnému účtu** (v testech jsou stubované a tvar odpovědi je odhad z dokumentace); zkontrolovat, že id partnerského dopravce v nastavení metody odpovídá tomu, co má nájemce ve smlouvě povolené
 - [ ] **Rich text editor:** `npm run build` (žádná migrace); po nasazení otevřít jeden existující produkt s tabulkou nebo obrázkem v popisu, uložit beze změny a ověřit, že se obsah nezměnil
 - [ ] **Bezpečnost, mimo rozsah vlny:** `HtmlSanitizer::isSafeUrl` propouští protokolově relativní `//evil.com` v odkazu psaném nájemcem (open redirect maskovaný jako interní cesta) — detail a návrh opravy v `security_warnings.md`
+- [ ] **Vlna 4.2 — prvky storefrontu:** `php artisan migrate` (vlastnosti produktu, doplňky, sloupce v `cart_items` včetně přestavěného unikátního indexu a v `order_items`) + `npm run build` (nový vstup `themes/katalog.css`); ověřit nasazení `public/fonts/archivo/` a `public/fonts/source-sans-3/` (přesunuty z adresářů pojmenovaných po šablonách). Po nasazení projít nákup s doplňkem a zkontrolovat fakturu — doplněk musí být samostatný řádek se svou sazbou DPH
 - [ ] **Vlna 4.1 — šablony storefrontu:** `php artisan migrate` (`tenant_theme.template`, default `base`) + `npm run build` (nové Vite vstupy `themes/{editorial,retail}.css`); ověřit, že se nasadily statické soubory `public/fonts/editorial/` a `public/fonts/retail/` (nejsou součástí buildu), a po nasazení zkontrolovat, že stávající nájemci mají `template = 'base'` a jejich e-shop vypadá stejně jako předtím
 - [ ] **Vlna 3.9:** `php artisan migrate` (`products.purchase_tax_rate_id`, `products.sale_percent`) + `npm run build`
 - [ ] **Vlna 3.8:** `php artisan migrate` (rozměry produktu) + `npm run build`; po nasazení ověřit, že uložená cena sedí na to, co bylo do formuláře zadáno

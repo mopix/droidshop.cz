@@ -1,7 +1,7 @@
 # Prvky storefrontu a šablona `katalog`
 
 **Datum:** 2026-09-05
-**Status:** draft
+**Status:** done
 **Související plán:** `docs/superpowers/plans/2026-09-05-prvky-storefrontu.md`
 
 ## Kontext

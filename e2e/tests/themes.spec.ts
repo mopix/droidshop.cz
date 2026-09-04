@@ -12,7 +12,7 @@ import { auditPage } from '../support/a11y'
  * check or the a11y-checker agent; it catches regressions in the third it
  * knows, every time.
  */
-const THEMES = ['editorial', 'retail']
+const THEMES = ['editorial', 'retail', 'katalog']
 
 function useTheme(key: string): void {
   artisanEval(
