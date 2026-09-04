@@ -27,8 +27,12 @@ readonly class ProductQuery
         self::SORT_NAME,
     ];
 
+    /** Page sizes a listing offers. Anything else falls back to the first. */
+    public const PER_PAGE = [24, 48, 96];
+
     /**
      * @param  list<int>  $categoryIds  empty means "the whole catalogue"
+     * @param  array<string, list<string>>  $attributes  attribute code => value slugs
      */
     public function __construct(
         public array $categoryIds = [],
@@ -36,6 +40,7 @@ readonly class ProductQuery
         public string $sort = self::SORT_NEWEST,
         public bool $inStockOnly = false,
         public int $perPage = 24,
+        public array $attributes = [],
     ) {}
 
     /**
@@ -51,12 +56,19 @@ readonly class ProductQuery
     {
         $sort = is_string($input['razeni'] ?? null) ? $input['razeni'] : self::SORT_NEWEST;
 
+        // A page size the visitor asked for, but only one the shop offers:
+        // `?na-stranku=100000` is a way to make the server render the whole
+        // catalogue, and it arrives from a query string like everything else.
+        $requestedPerPage = filter_var($input['na-stranku'] ?? null, FILTER_VALIDATE_INT);
+        $perPage = in_array($requestedPerPage, self::PER_PAGE, true) ? $requestedPerPage : $perPage;
+
         return new self(
             categoryIds: $categoryIds,
             term: is_string($input['q'] ?? null) ? trim($input['q']) : null,
             sort: in_array($sort, self::SORTS, true) ? $sort : self::SORT_NEWEST,
             inStockOnly: filter_var($input['skladem'] ?? false, FILTER_VALIDATE_BOOL),
             perPage: $perPage,
+            attributes: self::normaliseAttributes($input['vlastnost'] ?? null),
         );
     }
 
@@ -66,6 +78,52 @@ readonly class ProductQuery
      */
     public function isFiltered(): bool
     {
-        return $this->inStockOnly || $this->sort !== self::SORT_NEWEST;
+        return $this->inStockOnly || $this->sort !== self::SORT_NEWEST || $this->attributes !== [];
+    }
+
+    /**
+     * `?vlastnost[barva]=modra,cerna` turned into a shape the catalogue can use.
+     *
+     * Sorted and de-duplicated on the way in, and that is not tidiness: this
+     * same value ends up in the page-cache key, so two orderings of the same
+     * filter have to be one entry rather than two copies of identical HTML.
+     * Codes and slugs are bounded and stripped of anything that is not a slug
+     * character, because they arrive from a query string and a crawler will
+     * eventually send every shape there is.
+     *
+     * @return array<string, list<string>>
+     */
+    public static function normaliseAttributes(mixed $raw): array
+    {
+        if (! is_array($raw)) {
+            return [];
+        }
+
+        $result = [];
+
+        foreach ($raw as $code => $values) {
+            if (! is_string($code) || preg_match('/^[a-z0-9-]{1,64}$/D', $code) !== 1) {
+                continue;
+            }
+
+            $list = is_array($values) ? $values : explode(',', (string) $values);
+
+            $slugs = collect($list)
+                ->filter(fn ($value): bool => is_string($value))
+                ->map(fn (string $value): string => trim($value))
+                ->filter(fn (string $value): bool => preg_match('/^[a-z0-9-]{1,64}$/D', $value) === 1)
+                ->unique()
+                ->sort()
+                ->values()
+                ->all();
+
+            if ($slugs !== []) {
+                $result[$code] = $slugs;
+            }
+        }
+
+        ksort($result);
+
+        return $result;
     }
 }
