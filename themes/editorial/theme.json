@@ -21,5 +21,7 @@
         "card": "plain",
         "section-gap": "0rem"
     },
-    "overrides": []
+    "overrides": [
+        "storefront::layouts.shop"
+    ]
 }

@@ -187,6 +187,25 @@ class ThemeStorefrontContractTest extends TestCase
     }
 
     #[DataProvider('themes')]
+    public function test_the_layout_keeps_what_is_not_about_looks(string $theme): void
+    {
+        // A theme's layout is a copy of the base one, and a copy is the
+        // easiest place in this codebase to lose something. None of these are
+        // decoration: the skip link is WCAG 2.4.1, the consent banner and its
+        // permanent settings link are what makes withdrawing consent as easy
+        // as giving it, and the version attribute is how the banner tells a
+        // current decision from one made against older wording.
+        $this->shopWith($theme);
+
+        $html = (string) $this->get('http://obchod.droidshop/')->assertOk()->getContent();
+
+        $this->assertStringContainsString('Přeskočit na obsah', $html);
+        $this->assertStringContainsString('data-consent-version=', $html);
+        $this->assertStringContainsString('id="cookie-banner"', $html);
+        $this->assertStringContainsString(route('consent.show'), $html);
+    }
+
+    #[DataProvider('themes')]
     public function test_the_cached_page_carries_no_personal_content(string $theme): void
     {
         // Page cache entries are shared between visitors, so anything personal

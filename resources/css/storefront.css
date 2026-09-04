@@ -31,6 +31,10 @@
 
 @layer base {
   body {
+    /* .bleed measures against the viewport, which includes the scrollbar on
+       desktop; without this the band is a few pixels wider than the page and
+       the whole document scrolls sideways. */
+    overflow-x: hidden;
     font-family: var(--font-body);
     background-color: var(--surface);
     color: var(--ink);
@@ -102,5 +106,14 @@
   }
   .section-stack > * + * {
     margin-top: var(--section-gap);
+  }
+  /*
+   * Escapes the container for a full-width band without moving the container
+   * off <main>, so a theme can run image bands edge to edge while the pages it
+   * may not override keep the layout they were written for.
+   */
+  .bleed {
+    margin-left: calc(50% - 50vw);
+    margin-right: calc(50% - 50vw);
   }
 }
