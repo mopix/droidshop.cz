@@ -17,6 +17,7 @@ export default defineConfig({
                 // it actually runs.
                 'resources/css/themes/editorial.css',
                 'resources/css/themes/retail.css',
+                'resources/css/themes/katalog.css',
             ],
             refresh: true,
         }),

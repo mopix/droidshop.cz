@@ -1,7 +1,9 @@
 /*
- * Retail — typographic layer. Same reasoning as editorial.css: self-hosted,
- * variable, split by subset so an ASCII-only catalogue never pays for the
- * accented glyphs.
+ * Katalog — typographic layer.
+ *
+ * Shares Source Sans 3 with the retail theme; the faces live under the family
+ * name for exactly this reason, so a second theme wanting the same typeface
+ * costs nothing extra to download.
  */
 @font-face {
   font-family: 'Source Sans 3';

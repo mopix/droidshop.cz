@@ -1,9 +1,11 @@
 <!DOCTYPE html>
 {{--
-    Retail — the shop as a catalogue: a contained page, bordered rounded
-    cards, a wide search field, contact details in reach.
+    Katalog — the shop as a catalogue with filters: a contained page, a wide
+    search field, contact details in reach, and room in the listing for a
+    filter panel.
 
-    A copy of the base layout. Everything below that is not about looks — the
+    A copy of the base layout, like every theme's. Everything below that is not
+    about looks — the
     skip link, the consent version attribute, the pre-paint banner script, the
     SEO component, the @stack hooks, the countless mini-cart link, the
     cookie-settings link, the tracking includes and the banner — is carried
