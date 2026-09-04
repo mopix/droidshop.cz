@@ -3,6 +3,7 @@
 namespace Modules\Orders\Services;
 
 use App\Core\Catalog\Contracts\CatalogProduct;
+use App\Core\Catalog\Contracts\ProductAddons;
 use App\Core\Catalog\Contracts\ProductCatalog;
 use App\Core\Catalog\Exceptions\InsufficientStock;
 use App\Core\Discounts\AppliedDiscount;
@@ -76,6 +77,7 @@ class OrderPlacer implements OrderPlacement
         private readonly PickupPointCatalog $points,
         private readonly DiscountEngine $discounts,
         private readonly DiscountRedemption $redemptions,
+        private readonly ProductAddons $addons,
     ) {}
 
     public function place(PlacementRequest $request): PlacedOrder
@@ -229,6 +231,12 @@ class OrderPlacer implements OrderPlacement
             //    unit gets InsufficientStock, which propagates out and rolls
             //    the whole transaction back.
             foreach ($lines as $line) {
+                // Accessories are not stocked goods in this wave; the product
+                // they hang on is the thing that leaves the shelf.
+                if (($line['addon_id'] ?? null) !== null) {
+                    continue;
+                }
+
                 $this->catalog->decrementStock($line['product_id'], $line['quantity'], $line['variant_id']);
             }
 
@@ -277,11 +285,43 @@ class OrderPlacer implements OrderPlacement
                 'placed_at' => now(),
             ]);
 
+            // Two passes, so an accessory can point at the order line of the
+            // product it belongs to: the parent's id does not exist until it
+            // is written. Keyed by cart item id, which is what the cart used
+            // to express the same relationship.
+            $orderItemByCartItem = [];
+
             foreach ($lines as $line) {
+                if (($line['parent_cart_item_id'] ?? null) !== null) {
+                    continue;
+                }
+
+                $orderItemByCartItem[$line['cart_item_id']] = $order->items()->create([
+                    'product_id' => $line['product_id'],
+                    'variant_id' => $line['variant_id'],
+                    'variant_label' => $line['variant_label'],
+                    'name' => $line['name'],
+                    'sku' => $line['sku'],
+                    'unit_price' => $line['unit_price'],
+                    'tax_rate' => $line['tax_rate'],
+                    'quantity' => $line['quantity'],
+                    'line_total' => $line['line_total'],
+                    'discount_total' => $line['discount_total'],
+                    'currency' => $currency,
+                ])->id;
+            }
+
+            foreach ($lines as $line) {
+                if (($line['parent_cart_item_id'] ?? null) === null) {
+                    continue;
+                }
+
                 $order->items()->create([
                     'product_id' => $line['product_id'],
                     'variant_id' => $line['variant_id'],
                     'variant_label' => $line['variant_label'],
+                    'parent_item_id' => $orderItemByCartItem[$line['parent_cart_item_id']] ?? null,
+                    'addon_id' => $line['addon_id'],
                     'name' => $line['name'],
                     'sku' => $line['sku'],
                     'unit_price' => $line['unit_price'],
@@ -439,6 +479,16 @@ class OrderPlacer implements OrderPlacement
             // již není dostupná" (InsufficientStock) — the wrong message for
             // what actually happened, even though nothing is lost either way
             // (both exceptions abort before any stock is touched).
+            // An accessory line prices and taxes itself. It is not a product,
+            // so it takes no stock and carries no weight — the parcel is the
+            // product's, and decrementing the product again for its own frame
+            // would sell one picture twice.
+            if ((int) ($item->addon_id ?? 0) > 0) {
+                $lines[] = $this->addonLine($item, $productId, $quantity);
+
+                continue;
+            }
+
             $variant = $variantId === null
                 ? null
                 : $this->catalog->findVariantById($productId, $variantId);
@@ -497,6 +547,54 @@ class OrderPlacer implements OrderPlacement
         }
 
         return $lines;
+    }
+
+    /**
+     * An accessory as an order line.
+     *
+     * Priced and taxed from the catalogue like everything else — the cart's
+     * figure is a display snapshot. An addon the merchant deleted mid-checkout
+     * is refused the same way a vanished product is: nothing can be charged for
+     * something that no longer has a price.
+     *
+     * @return array<string, mixed>
+     */
+    private function addonLine(mixed $item, int $productId, int $quantity): array
+    {
+        $addon = $this->addons->find($productId, (int) $item->addon_id);
+
+        if ($addon === null) {
+            throw InsufficientStock::for($productId, $quantity);
+        }
+
+        $snapshot = $item->unit_price instanceof Money
+            ? $item->unit_price
+            : new Money((int) $item->unit_price, $addon->price->currency);
+
+        if (! $addon->price->equals($snapshot)) {
+            throw PriceChanged::forProduct($productId, $snapshot, $addon->price);
+        }
+
+        return [
+            'cart_item_id' => (int) $item->id,
+            'parent_cart_item_id' => (int) $item->parent_item_id,
+            'addon_id' => $addon->id,
+            'product_id' => $productId,
+            'variant_id' => null,
+            'variant_label' => null,
+            'name' => $addon->label,
+            'sku' => null,
+            'unit_price' => $addon->price,
+            'tax_rate' => $addon->taxRatePercent,
+            'quantity' => $quantity,
+            'line_total' => $addon->price->times($quantity),
+            'discount_total' => new Money(0, $addon->price->currency),
+            'category_ids' => [],
+            // No weight and no dimensions: the parcel is the product's, and an
+            // accessory that added its own would inflate the carrier's figure.
+            'weight_grams' => 0,
+            'dimensions_mm' => null,
+        ];
     }
 
     /**
