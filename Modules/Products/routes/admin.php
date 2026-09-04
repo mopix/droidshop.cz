@@ -1,6 +1,7 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
+use Modules\Products\Http\Controllers\AttributeAdminController;
 use Modules\Products\Http\Controllers\ProductAdminController;
 use Modules\Products\Http\Controllers\ProductExportController;
 use Modules\Products\Http\Controllers\ProductImageAdminController;
@@ -13,6 +14,21 @@ Route::post('/', [ProductAdminController::class, 'store'])->name('store');
 // Above the /{product} routes on purpose: a product is bound by slug, so
 // "export" and "import" would otherwise be looked up as products of that name.
 Route::get('/export', [ProductExportController::class, 'download'])->name('export');
+
+// Above /{product} for the same reason as export: a product is bound by slug,
+// so "vlastnosti" would otherwise be looked up as a product of that name.
+Route::get('/vlastnosti', [AttributeAdminController::class, 'index'])->name('attributes.index');
+Route::post('/vlastnosti', [AttributeAdminController::class, 'store'])->name('attributes.store');
+Route::patch('/vlastnosti/{attribute}', [AttributeAdminController::class, 'update'])
+    ->whereNumber('attribute')->name('attributes.update');
+Route::delete('/vlastnosti/{attribute}', [AttributeAdminController::class, 'destroy'])
+    ->whereNumber('attribute')->name('attributes.destroy');
+Route::post('/vlastnosti/{attribute}/hodnoty', [AttributeAdminController::class, 'storeValue'])
+    ->whereNumber('attribute')->name('attributes.values.store');
+Route::patch('/vlastnosti/hodnoty/{value}', [AttributeAdminController::class, 'updateValue'])
+    ->whereNumber('value')->name('attributes.values.update');
+Route::delete('/vlastnosti/hodnoty/{value}', [AttributeAdminController::class, 'destroyValue'])
+    ->whereNumber('value')->name('attributes.values.destroy');
 
 Route::get('/import', [ProductImportController::class, 'index'])->name('import.index');
 Route::post('/import', [ProductImportController::class, 'store'])->name('import.store');

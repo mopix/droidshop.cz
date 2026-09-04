@@ -13,7 +13,9 @@ use Modules\Categories\Models\Category;
 use Modules\Products\Http\Requests\StoreProductRequest;
 use Modules\Products\Http\Requests\UpdateProductRequest;
 use Modules\Products\Models\Product;
+use Modules\Products\Models\ProductAttribute;
 use Modules\Products\Rules\Ean;
+use Modules\Products\Services\AttributeWriter;
 use Modules\Products\Services\ProductImageService;
 use Modules\Products\Services\ProductWriter;
 
@@ -26,6 +28,7 @@ class ProductAdminController
         private readonly ProductImageService $images,
         private readonly TaxRates $rates,
         private readonly VatMode $vat,
+        private readonly AttributeWriter $attributes,
     ) {}
 
     public function index(Request $request): Response
@@ -124,7 +127,7 @@ class ProductAdminController
         $canSeeCosts = $request->user()->can('products.costs');
         $vatApplies = $this->vat->appliesVat();
 
-        $product->load(['images', 'categories', 'manufacturer']);
+        $product->load(['images', 'categories', 'manufacturer', 'attributeValues']);
 
         return inertia('Modules/Products/Show', [
             'product' => [
@@ -189,6 +192,19 @@ class ProductAdminController
                 'percent' => $rate->percent(),
             ]),
             'categories' => $this->categoryOptions(),
+            // The whole code list plus what this product carries: the form
+            // needs both to draw the checkboxes, and the server is the only
+            // place that knows either.
+            'attributes' => ProductAttribute::query()->with('values')->orderBy('position')->get()
+                ->map(fn (ProductAttribute $attribute): array => [
+                    'id' => $attribute->id,
+                    'name' => $attribute->name,
+                    'values' => $attribute->values->map(fn ($value): array => [
+                        'id' => $value->id,
+                        'value' => $value->value,
+                    ]),
+                ]),
+            'attributeValueIds' => $product->attributeValues->pluck('id'),
             'options' => $product->options()->with('values')->get(),
             'variants' => $product->variants()->with('optionValues')->get()->map(fn ($variant) => [
                 'id' => $variant->id,
@@ -215,6 +231,8 @@ class ProductAdminController
     {
         $product = $this->writer->create($this->attributes($request->validated()));
 
+        $this->attributes->syncForProduct($product, $request->validated('attribute_value_ids', []));
+
         $this->writer->syncCategories(
             $product,
             $request->validated('category_ids', []),
@@ -229,6 +247,8 @@ class ProductAdminController
     public function update(UpdateProductRequest $request, Product $product): RedirectResponse
     {
         $this->writer->update($product, $this->attributes($request->validated()));
+
+        $this->attributes->syncForProduct($product, $request->validated('attribute_value_ids', []));
 
         $this->writer->syncCategories(
             $product,
@@ -286,7 +306,15 @@ class ProductAdminController
     {
         $manufacturer = $data['manufacturer'] ?? null;
 
-        unset($data['manufacturer'], $data['category_ids'], $data['primary_category_id']);
+        // Relations are synced separately and must not reach the writer as
+        // columns: an UPDATE naming attribute_value_ids fails on "unknown
+        // column", which is how this list was found to be missing one.
+        unset(
+            $data['manufacturer'],
+            $data['category_ids'],
+            $data['primary_category_id'],
+            $data['attribute_value_ids'],
+        );
 
         if ($manufacturer !== null && trim($manufacturer) !== '') {
             $data['manufacturer_id'] = $this->writer->manufacturer($manufacturer)->id;

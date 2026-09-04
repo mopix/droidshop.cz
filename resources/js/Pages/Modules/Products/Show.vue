@@ -69,6 +69,8 @@ const props = defineProps<{
   taxRates: { id: number; name: string; percent: number }[]
   vatApplies: boolean
   categories: { id: number; name: string; depth: number }[]
+  attributes: { id: number; name: string; values: { id: number; value: string }[] }[]
+  attributeValueIds: number[]
   options: ProductOption[]
   variants: ProductVariant[]
   can: { edit: boolean; costs: boolean }
@@ -159,6 +161,10 @@ const form = useForm({
   stock_policy: props.product.stock_policy,
   stock_alert_qty: props.product.stock_alert_qty,
   category_ids: [...props.product.category_ids],
+  // Descriptive properties (wave 4.2). Sits on the categories tab: both
+  // answer "where does this thing belong", and a tab per code list would be a
+  // tab nobody opens.
+  attribute_value_ids: [...props.attributeValueIds],
   primary_category_id: props.product.primary_category_id,
   variant_display: props.product.variant_display,
   seo_title: props.product.seo_title ?? '',
@@ -906,6 +912,30 @@ const runVariantDelete = () => {
             </div>
           </fieldset>
 
+          <fieldset v-if="attributes.length > 0">
+            <legend class="text-sm font-medium text-gray-700">Vlastnosti</legend>
+            <p class="mt-1 text-sm text-gray-600">
+              Podle čeho zákazník filtruje ve výpisu. Číselník se spravuje v
+              <a :href="route('admin.products.attributes.index')" class="underline">Vlastnostech produktů</a>.
+            </p>
+
+            <div class="mt-3 space-y-3">
+              <div v-for="attribute in attributes" :key="attribute.id">
+                <span class="block text-sm font-medium text-gray-700">{{ attribute.name }}</span>
+                <div class="mt-1 flex flex-wrap gap-x-4 gap-y-1">
+                  <label v-for="value in attribute.values" :key="value.id" class="flex items-center gap-2 text-sm">
+                    <input
+                      v-model="form.attribute_value_ids"
+                      type="checkbox"
+                      :value="value.id"
+                      class="rounded border-gray-300 text-gray-900 focus:ring-gray-900"
+                    />
+                    <span>{{ value.value }}</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+          </fieldset>
         </div>
 
         <div

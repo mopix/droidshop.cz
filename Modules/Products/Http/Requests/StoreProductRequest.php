@@ -13,6 +13,7 @@ use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Modules\Categories\Models\Category;
 use Modules\Products\Models\Product;
+use Modules\Products\Models\ProductAttributeValue;
 use Modules\Products\Rules\Ean;
 
 class StoreProductRequest extends FormRequest
@@ -100,6 +101,12 @@ class StoreProductRequest extends FormRequest
             ])],
             'stock_alert_qty' => ['nullable', 'integer', 'min:0'],
 
+            // Descriptive properties (wave 4.2). Existence is checked against
+            // the tenant-scoped model, and AttributeWriter filters again on
+            // write — a value id from another shop must not become a row in
+            // this shop's pivot.
+            'attribute_value_ids' => ['array'],
+            'attribute_value_ids.*' => ['integer', Rule::exists(ProductAttributeValue::class, 'id')],
             'category_ids' => ['array'],
             'category_ids.*' => ['integer', Rule::exists(Category::class, 'id')],
             'primary_category_id' => ['nullable', 'integer', Rule::exists(Category::class, 'id')],
