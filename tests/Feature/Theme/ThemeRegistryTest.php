@@ -53,6 +53,16 @@ class ThemeRegistryTest extends TestCase
             "{$this->path}/{$key}/theme.json",
             json_encode(['key' => $key, ...$manifest], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT),
         );
+
+        // The registry insists a declared override exists on disk, so every
+        // fixture that declares one has to ship it.
+        foreach ($manifest['overrides'] ?? [] as $view) {
+            [$namespace, $name] = explode('::', $view);
+            $file = "{$this->path}/{$key}/views/{$namespace}/".str_replace('.', '/', $name).'.blade.php';
+
+            File::ensureDirectoryExists(dirname($file));
+            File::put($file, '');
+        }
     }
 
     private function registry(): ThemeRegistry

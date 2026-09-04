@@ -53,6 +53,7 @@ use App\Core\Shop\ShopClock;
 use App\Core\Storage\StorageLimitCounter;
 use App\Core\Tenancy\Events\TenantStatusChanged;
 use App\Core\Theme\ThemeRegistry;
+use App\Core\Theme\ThemeViewPaths;
 use App\Models\TenantTheme;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Vite;
@@ -79,6 +80,11 @@ class AppServiceProvider extends ServiceProvider
         // a fresh instance per resolution would re-read them on every call and
         // would leave flush() clearing a memo nobody else holds.
         $this->app->singleton(ThemeRegistry::class);
+
+        // Singleton because it captures the view hints as the module providers
+        // left them. A fresh instance would capture whatever the previous
+        // tenant's theme had already set and treat that as the baseline.
+        $this->app->singleton(ThemeViewPaths::class);
         $this->app->bind(
             TenantExporter::class,
             TenantDataExporter::class,
