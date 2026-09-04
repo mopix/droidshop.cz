@@ -5,6 +5,7 @@ namespace Tests\Feature\Modules\Checkout;
 use App\Core\Tax\TaxRates;
 use App\Core\Tenancy\TenantContext;
 use App\Models\Tenant;
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Testing\TestResponse;
 use Modules\Checkout\Models\Cart;
@@ -215,5 +216,57 @@ class CartAddonTest extends TestCase
             ->delete("http://shop1.droidshop/kosik/{$parent->id}");
 
         $this->assertDatabaseCount('cart_items', 0);
+    }
+
+    public function test_declining_an_optional_group_is_a_valid_answer(): void
+    {
+        // The product page posts one entry per group, and "bez doplňku" sends
+        // an empty value. That is the customer declining, not a broken form.
+        $this->add(['addon_id' => [(string) $this->frames->id => '']])->assertSessionHasNoErrors();
+
+        $this->assertDatabaseCount('cart_items', 1);
+    }
+
+    public function test_the_product_page_offers_the_accessories(): void
+    {
+        $html = (string) $this->get('http://shop1.droidshop/produkt/'.$this->product->slug)
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('Dekorativní rám', $html);
+        $this->assertStringContainsString('Rám – dub', $html);
+        $this->assertStringContainsString('name="addon_id['.$this->frames->id.']"', $html);
+    }
+
+    public function test_a_merchant_creates_a_group_and_an_addon(): void
+    {
+        $owner = User::factory()->create();
+        $this->tenant->users()->attach($owner, ['role' => 'owner', 'joined_at' => now()]);
+
+        $this->actingAs($owner)->post(
+            "http://shop1.droidshop/admin/m/products/{$this->product->slug}/doplnky",
+            ['label' => 'Potisk', 'required' => false],
+        )->assertRedirect();
+
+        $group = ProductAddonGroup::query()
+            ->withoutGlobalScopes()
+            ->where('label', 'Potisk')
+            ->firstOrFail();
+
+        $this->actingAs($owner)->post(
+            "http://shop1.droidshop/admin/m/products/doplnky/skupina/{$group->id}",
+            [
+                'label' => 'Zlatý potisk',
+                // Korunas in the form, haléře in the column.
+                'price' => '150,00',
+                'tax_rate_id' => app(TaxRates::class)->default()->id,
+            ],
+        )->assertRedirect();
+
+        $this->assertDatabaseHas('product_addons', [
+            'group_id' => $group->id,
+            'label' => 'Zlatý potisk',
+            'price' => 15_000,
+        ]);
     }
 }

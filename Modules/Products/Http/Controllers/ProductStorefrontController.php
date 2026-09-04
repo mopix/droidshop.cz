@@ -2,6 +2,7 @@
 
 namespace Modules\Products\Http\Controllers;
 
+use App\Core\Catalog\Contracts\ProductAddons;
 use App\Core\Catalog\Contracts\ProductCatalog;
 use App\Core\Storage\FileStorage;
 use Illuminate\Contracts\View\View;
@@ -48,6 +49,10 @@ class ProductStorefrontController
             'images' => $product->images,
             'options' => $product->options()->with('values')->get(),
             'variants' => app(ProductCatalog::class)->variantsFor($product->id),
+            // Through the kernel contract like the catalogue itself: the page
+            // must render on a shop that sells no accessories, and the null
+            // binding is what makes the section simply not appear.
+            'addonGroups' => app(ProductAddons::class)->groupsFor($product->id),
             // A shop that never turned checkout on must not offer a form
             // that posts into a 404 (module:checkout gates /kosik per
             // tenant) — same reasoning as layout.shop's customerAreaEnabled.

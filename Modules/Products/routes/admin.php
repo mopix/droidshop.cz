@@ -1,6 +1,7 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
+use Modules\Products\Http\Controllers\AddonAdminController;
 use Modules\Products\Http\Controllers\AttributeAdminController;
 use Modules\Products\Http\Controllers\ProductAdminController;
 use Modules\Products\Http\Controllers\ProductExportController;
@@ -29,6 +30,15 @@ Route::patch('/vlastnosti/hodnoty/{value}', [AttributeAdminController::class, 'u
     ->whereNumber('value')->name('attributes.values.update');
 Route::delete('/vlastnosti/hodnoty/{value}', [AttributeAdminController::class, 'destroyValue'])
     ->whereNumber('value')->name('attributes.values.destroy');
+
+// Accessories live on the product they belong to.
+Route::post('/{product}/doplnky', [AddonAdminController::class, 'storeGroup'])->name('addons.groups.store');
+Route::delete('/doplnky/skupina/{group}', [AddonAdminController::class, 'destroyGroup'])
+    ->whereNumber('group')->name('addons.groups.destroy');
+Route::post('/doplnky/skupina/{group}', [AddonAdminController::class, 'storeAddon'])
+    ->whereNumber('group')->name('addons.store');
+Route::delete('/doplnky/{addon}', [AddonAdminController::class, 'destroyAddon'])
+    ->whereNumber('addon')->name('addons.destroy');
 
 Route::get('/import', [ProductImportController::class, 'index'])->name('import.index');
 Route::post('/import', [ProductImportController::class, 'store'])->name('import.store');

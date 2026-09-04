@@ -13,6 +13,7 @@ use Modules\Categories\Models\Category;
 use Modules\Products\Http\Requests\StoreProductRequest;
 use Modules\Products\Http\Requests\UpdateProductRequest;
 use Modules\Products\Models\Product;
+use Modules\Products\Models\ProductAddonGroup;
 use Modules\Products\Models\ProductAttribute;
 use Modules\Products\Rules\Ean;
 use Modules\Products\Services\AttributeWriter;
@@ -205,6 +206,25 @@ class ProductAdminController
                     ]),
                 ]),
             'attributeValueIds' => $product->attributeValues->pluck('id'),
+            // Accessories offered with this product (wave 4.2). Read from the
+            // module's own models rather than the kernel contract: this is the
+            // admin, where the merchant edits the thing itself.
+            'addonGroups' => ProductAddonGroup::query()
+                ->where('product_id', $product->id)
+                ->with('addons')
+                ->orderBy('position')
+                ->get()
+                ->map(fn (ProductAddonGroup $group): array => [
+                    'id' => $group->id,
+                    'label' => $group->label,
+                    'required' => $group->required,
+                    'addons' => $group->addons->map(fn ($addon): array => [
+                        'id' => $addon->id,
+                        'label' => $addon->label,
+                        'price' => MoneyInput::toInput($addon->price->amount),
+                        'tax_rate_id' => $addon->tax_rate_id,
+                    ]),
+                ]),
             'options' => $product->options()->with('values')->get(),
             'variants' => $product->variants()->with('optionValues')->get()->map(fn ($variant) => [
                 'id' => $variant->id,

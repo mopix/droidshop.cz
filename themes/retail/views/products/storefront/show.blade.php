@@ -128,6 +128,8 @@
                             ])
                         @endif
 
+                        <x-products::addons :groups="$addonGroups" />
+
                         <div class="mt-5 flex items-end gap-3">
                             <div>
                                 <label for="mnozstvi" class="field-label">Množství</label>

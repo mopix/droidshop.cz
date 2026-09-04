@@ -71,6 +71,12 @@ const props = defineProps<{
   categories: { id: number; name: string; depth: number }[]
   attributes: { id: number; name: string; values: { id: number; value: string }[] }[]
   attributeValueIds: number[]
+  addonGroups: {
+    id: number
+    label: string
+    required: boolean
+    addons: { id: number; label: string; price: string; tax_rate_id: number }[]
+  }[]
   options: ProductOption[]
   variants: ProductVariant[]
   can: { edit: boolean; costs: boolean }
@@ -78,6 +84,45 @@ const props = defineProps<{
 
 /** Tabs whose fields belong to the main product form. */
 const FORM_TABS = ['basic', 'categories', 'prices', 'stock', 'seo', 'settings']
+
+// Accessories are their own forms, posted on their own — they are not part of
+// the product's main payload, so the tab is outside FORM_TABS.
+const addonGroupForm = useForm({ label: '', required: false })
+const addonDrafts = ref<Record<number, { label: string; price: string; tax_rate_id: number | null; image: File | null }>>({})
+
+const draftFor = (groupId: number) => {
+  if (!addonDrafts.value[groupId]) {
+    addonDrafts.value[groupId] = { label: '', price: '', tax_rate_id: null, image: null }
+  }
+
+  return addonDrafts.value[groupId]
+}
+
+const submitAddonGroup = () =>
+  addonGroupForm.post(route('admin.products.addons.groups.store', props.product.slug), {
+    preserveScroll: true,
+    onSuccess: () => addonGroupForm.reset(),
+  })
+
+const submitAddon = (groupId: number) => {
+  const draft = draftFor(groupId)
+
+  router.post(
+    route('admin.products.addons.store', groupId),
+    { label: draft.label, price: draft.price, tax_rate_id: draft.tax_rate_id, image: draft.image },
+    {
+      forceFormData: true,
+      preserveScroll: true,
+      onSuccess: () => (addonDrafts.value[groupId] = { label: '', price: '', tax_rate_id: null, image: null }),
+    },
+  )
+}
+
+const deleteAddonGroup = (groupId: number) =>
+  router.delete(route('admin.products.addons.groups.destroy', groupId), { preserveScroll: true })
+
+const deleteAddon = (addonId: number) =>
+  router.delete(route('admin.products.addons.destroy', addonId), { preserveScroll: true })
 
 const TABS = [
   { key: 'basic', label: 'Základní' },
@@ -88,6 +133,7 @@ const TABS = [
   { key: 'variants', label: 'Varianty' },
   { key: 'seo', label: 'SEO' },
   { key: 'settings', label: 'Nastavení' },
+  { key: 'addons', label: 'Doplňky' },
 ] as const
 
 const tab = ref<(typeof TABS)[number]['key']>('basic')
@@ -936,6 +982,136 @@ const runVariantDelete = () => {
               </div>
             </div>
           </fieldset>
+        </div>
+
+        <div
+          v-show="tab === 'addons'"
+          :id="'panel-addons'"
+          role="tabpanel"
+          aria-labelledby="tab-addons"
+          class="space-y-6"
+        >
+          <p class="text-sm text-gray-600">
+            Příplatkové doplňky, které si zákazník vybere u produktu — rám, potisk, prodloužená
+            záruka. Každý doplněk jde na objednávku i na fakturu jako samostatná položka s vlastní
+            sazbou DPH.
+          </p>
+
+          <form class="rounded-md border border-gray-200 p-4" @submit.prevent="submitAddonGroup">
+            <div class="flex flex-wrap items-end gap-4">
+              <div class="grow">
+                <label for="addon-group-label" class="block text-sm font-medium text-gray-700">
+                  Název skupiny
+                </label>
+                <input
+                  id="addon-group-label"
+                  v-model="addonGroupForm.label"
+                  type="text"
+                  required
+                  placeholder="Dekorativní rám"
+                  class="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-gray-900 focus:ring-gray-900"
+                />
+              </div>
+
+              <label class="flex items-center gap-2 text-sm text-gray-700">
+                <input
+                  v-model="addonGroupForm.required"
+                  type="checkbox"
+                  class="rounded border-gray-300 text-gray-900 focus:ring-gray-900"
+                />
+                Povinná volba
+              </label>
+
+              <button
+                type="submit"
+                class="rounded-md bg-gray-900 px-4 py-2 text-sm font-semibold text-white hover:bg-gray-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-900 focus-visible:ring-offset-2"
+              >
+                Přidat skupinu
+              </button>
+            </div>
+          </form>
+
+          <div v-for="group in addonGroups" :key="group.id" class="rounded-md border border-gray-200">
+            <div class="flex items-center justify-between border-b border-gray-200 p-3">
+              <span class="font-medium text-gray-900">
+                {{ group.label }}
+                <span v-if="group.required" class="ml-2 text-xs text-gray-600">(povinná)</span>
+              </span>
+
+              <button
+                type="button"
+                class="text-sm font-medium text-red-800 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-red-800"
+                @click="deleteAddonGroup(group.id)"
+              >
+                Smazat skupinu
+              </button>
+            </div>
+
+            <ul v-if="group.addons.length" class="divide-y divide-gray-100">
+              <li v-for="addon in group.addons" :key="addon.id" class="flex items-center justify-between p-3 text-sm">
+                <span>{{ addon.label }} — {{ addon.price }} Kč</span>
+                <button
+                  type="button"
+                  class="font-medium text-red-800 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-red-800"
+                  @click="deleteAddon(addon.id)"
+                >
+                  Smazat
+                </button>
+              </li>
+            </ul>
+
+            <form class="grid gap-3 p-3 sm:grid-cols-4" @submit.prevent="submitAddon(group.id)">
+              <div>
+                <label :for="`addon-label-${group.id}`" class="block text-sm font-medium text-gray-700">Název</label>
+                <input
+                  :id="`addon-label-${group.id}`"
+                  v-model="draftFor(group.id).label"
+                  type="text"
+                  required
+                  class="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-gray-900 focus:ring-gray-900"
+                />
+              </div>
+
+              <div>
+                <label :for="`addon-price-${group.id}`" class="block text-sm font-medium text-gray-700">
+                  Příplatek (Kč)
+                </label>
+                <input
+                  :id="`addon-price-${group.id}`"
+                  v-model="draftFor(group.id).price"
+                  type="text"
+                  inputmode="decimal"
+                  required
+                  placeholder="269,00"
+                  class="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-gray-900 focus:ring-gray-900"
+                />
+              </div>
+
+              <div>
+                <label :for="`addon-rate-${group.id}`" class="block text-sm font-medium text-gray-700">Sazba DPH</label>
+                <select
+                  :id="`addon-rate-${group.id}`"
+                  v-model="draftFor(group.id).tax_rate_id"
+                  required
+                  class="mt-1 w-full rounded-md border-gray-300 shadow-sm focus:border-gray-900 focus:ring-gray-900"
+                >
+                  <option :value="null">— vyberte —</option>
+                  <option v-for="rate in taxRates" :key="rate.id" :value="rate.id">
+                    {{ rate.name }} ({{ rate.percent }} %)
+                  </option>
+                </select>
+              </div>
+
+              <div class="flex items-end gap-2">
+                <button
+                  type="submit"
+                  class="rounded-md border border-gray-300 px-3 py-2 text-sm font-medium text-gray-800 hover:bg-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-900"
+                >
+                  Přidat doplněk
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
 
         <div
