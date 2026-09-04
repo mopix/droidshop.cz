@@ -127,6 +127,22 @@ class Product extends Model implements CatalogProduct
             ->withPivot('is_primary');
     }
 
+    /**
+     * Descriptive properties the shop filters and describes by (wave 4.2).
+     *
+     * Not variants: a variant changes price and stock, an attribute only says
+     * what the thing is like.
+     */
+    public function attributeValues(): BelongsToMany
+    {
+        return $this->belongsToMany(
+            ProductAttributeValue::class,
+            'product_attribute_value_product',
+            'product_id',
+            'value_id',
+        );
+    }
+
     public function primaryCategory(): ?Category
     {
         return $this->categories->firstWhere('pivot.is_primary', true)
