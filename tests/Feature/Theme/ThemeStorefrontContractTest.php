@@ -159,6 +159,26 @@ class ThemeStorefrontContractTest extends TestCase
     }
 
     #[DataProvider('themes')]
+    public function test_sorting_survives_without_javascript(string $theme): void
+    {
+        // A theme is free to hide sorting behind a disclosure; it is not free
+        // to make it a button that only works once a script has loaded. The
+        // control has to be in a GET form the server reads on its own.
+        $category = $this->shopWith($theme);
+
+        $html = (string) $this->get("http://obchod.droidshop/kategorie/{$category->slug}")
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('<form method="get"', $html);
+        $this->assertStringContainsString('name="razeni"', $html);
+
+        $this->get("http://obchod.droidshop/kategorie/{$category->slug}?razeni=cena-asc")
+            ->assertOk()
+            ->assertSee('Notebook Acme 14');
+    }
+
+    #[DataProvider('themes')]
     public function test_the_homepage_and_search_render(string $theme): void
     {
         $this->shopWith($theme);
