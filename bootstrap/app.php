@@ -3,6 +3,7 @@
 use App\Core\Consent\ConsentCookie;
 use App\Core\Routing\RedirectResponder;
 use App\Http\Middleware\AllowLocalOnly;
+use App\Http\Middleware\ApplyTenantTheme;
 use App\Http\Middleware\CacheStorefrontPage;
 use App\Http\Middleware\CheckTenantStatus;
 use App\Http\Middleware\EnsurePlatformTwoFactor;
@@ -64,6 +65,10 @@ $app = Application::configure(basePath: dirname(__DIR__))
         ]);
 
         $middleware->web(append: [
+            // Before any controller renders, and unconditionally: the view
+            // finder is a singleton, so a request that skipped this would
+            // inherit whatever theme the previous one left behind (wave 4.1).
+            ApplyTenantTheme::class,
             // A shop the merchant locked answers with a password form instead
             // of its catalogue. Appended, so it sits behind StartSession (the
             // unlock is remembered there) and in front of every route

@@ -12,6 +12,11 @@ export default defineConfig({
                 'resources/js/app.js',
                 'resources/css/storefront.css',
                 'resources/js/storefront.js',
+                // One entry per theme that has its own typography. Separate
+                // bundles so a shop only downloads the webfaces of the theme
+                // it actually runs.
+                'resources/css/themes/editorial.css',
+                'resources/css/themes/retail.css',
             ],
             refresh: true,
         }),

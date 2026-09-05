@@ -7,6 +7,14 @@ import SettingsPage from '@/Components/Settings/SettingsPage.vue'
 import SettingsGrid from '@/Components/Settings/SettingsGrid.vue'
 import SettingsCard from '@/Components/Settings/SettingsCard.vue'
 
+type ThemeOption = {
+  key: string
+  name: string
+  description: string
+  preview: string | null
+  tokens: Record<string, string>
+}
+
 const props = defineProps<{
   appearance: {
     primary_color: string
@@ -14,15 +22,50 @@ const props = defineProps<{
     logo_url: string | null
     favicon_url: string | null
     contrast_ratio: number
+    template: string
   }
+  themes: ThemeOption[]
 }>()
 
 const form = useForm({
+  template: props.appearance.template,
   primary_color: props.appearance.primary_color,
   accent_color: props.appearance.accent_color,
   logo: null as File | null,
   favicon: null as File | null,
 })
+
+// The tile draws a small mock from the theme's own tokens rather than showing
+// a screenshot. A shop that has not been built yet has nothing to photograph,
+// and a stale screenshot of an older version of a theme is worse than none.
+function mockStyle(theme: ThemeOption) {
+  return {
+    backgroundColor: theme.tokens['surface-muted'] ?? '#f8fafc',
+    borderColor: theme.tokens.line ?? '#e2e8f0',
+    fontFamily: theme.tokens['font-body'] ?? 'inherit',
+  }
+}
+
+function mockCardStyle(theme: ThemeOption) {
+  const card = theme.tokens.card ?? 'elevated'
+
+  return {
+    backgroundColor: theme.tokens.surface ?? '#ffffff',
+    borderRadius: theme.tokens.radius ?? '0.75rem',
+    border: card === 'plain' ? 'none' : `1px solid ${theme.tokens.line ?? '#e2e8f0'}`,
+    boxShadow: card === 'elevated' ? '0 1px 2px rgb(0 0 0 / 0.08)' : 'none',
+  }
+}
+
+function mockHeadingStyle(theme: ThemeOption) {
+  return {
+    color: theme.tokens.ink ?? '#0f172a',
+    fontFamily: theme.tokens['font-heading'] ?? 'inherit',
+    fontWeight: theme.tokens['heading-weight'] ?? '600',
+    letterSpacing: theme.tokens['heading-tracking'] ?? 'normal',
+    textTransform: (theme.tokens['heading-transform'] ?? 'none') as 'none' | 'uppercase',
+  }
+}
 
 const logoInput = ref<HTMLInputElement | null>(null)
 const faviconInput = ref<HTMLInputElement | null>(null)
@@ -155,6 +198,70 @@ function flushCache() {
       </template>
 
       <form class="space-y-6" enctype="multipart/form-data" @submit.prevent="submit">
+        <SettingsCard legend="Šablona">
+          <p class="mb-4 text-sm text-gray-600">
+            Šablona určuje rozvržení e-shopu — hlavičku, výpis zboží i detail produktu.
+            Barvy níže platí ve všech šablonách.
+          </p>
+
+          <div role="radiogroup" aria-label="Šablona storefrontu" class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <label
+              v-for="theme in themes"
+              :key="theme.key"
+              class="relative flex cursor-pointer flex-col rounded-lg border-2 p-3 focus-within:ring-2 focus-within:ring-gray-900 focus-within:ring-offset-2"
+              :class="
+                form.template === theme.key
+                  ? 'border-gray-900 bg-gray-50'
+                  : 'border-gray-200 hover:border-gray-400'
+              "
+            >
+              <input
+                v-model="form.template"
+                type="radio"
+                name="template"
+                :value="theme.key"
+                class="sr-only"
+              />
+
+              <img
+                v-if="theme.preview"
+                :src="theme.preview"
+                alt=""
+                class="mb-3 aspect-[4/3] w-full rounded object-cover"
+              />
+              <div
+                v-else
+                aria-hidden="true"
+                class="mb-3 flex aspect-[4/3] w-full flex-col gap-2 overflow-hidden rounded border p-3"
+                :style="mockStyle(theme)"
+              >
+                <div class="text-[0.6rem] leading-none" :style="mockHeadingStyle(theme)">NADPIS</div>
+                <div class="grid flex-1 grid-cols-3 gap-2">
+                  <div v-for="n in 3" :key="n" class="flex flex-col gap-1 p-1" :style="mockCardStyle(theme)">
+                    <div class="flex-1 rounded-sm bg-gray-200"></div>
+                    <div class="h-1 w-2/3 rounded-sm bg-gray-300"></div>
+                  </div>
+                </div>
+              </div>
+
+              <span class="flex items-center gap-2 text-sm font-semibold text-gray-900">
+                {{ theme.name }}
+                <span
+                  v-if="form.template === theme.key"
+                  class="rounded-full bg-gray-900 px-2 py-0.5 text-xs font-medium text-white"
+                >
+                  Vybráno
+                </span>
+              </span>
+              <span class="mt-1 text-sm text-gray-600">{{ theme.description }}</span>
+            </label>
+          </div>
+
+          <p v-if="form.errors.template" role="alert" class="mt-2 text-sm text-red-700">
+            {{ form.errors.template }}
+          </p>
+        </SettingsCard>
+
         <SettingsGrid>
           <SettingsCard legend="Barvy">
             <div class="grid gap-4 sm:grid-cols-2">

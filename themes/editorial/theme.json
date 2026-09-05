@@ -1,0 +1,36 @@
+{
+    "key": "editorial",
+    "name": "Editorial",
+    "description": "Redakční vzhled pro módu a design. Široké obrazové pásy bez rámečků, nadpisy verzálkami, ostré rohy, tmavá tlačítka.",
+    "css": "resources/css/themes/editorial.css",
+    "tokens": {
+        "container": "80rem",
+        "radius": "0",
+        "radius-lg": "0",
+        "button-radius": "0",
+        "surface": "#ffffff",
+        "surface-muted": "#f4f2f0",
+        "ink": "#141414",
+        "ink-muted": "#5c5854",
+        "line": "#dedad6",
+        "font-body": "Archivo, ui-sans-serif, system-ui, sans-serif",
+        "font-heading": "Archivo, ui-sans-serif, system-ui, sans-serif",
+        "heading-transform": "uppercase",
+        "heading-tracking": "0.08em",
+        "heading-weight": "600",
+        "card": "plain",
+        "section-gap": "0rem"
+    },
+    "overrides": [
+        "storefront::layouts.shop",
+        "storefront::components.product-card",
+        "storefront::components.product-grid",
+        "storefront::components.blocks.hero",
+        "storefront::components.blocks.banner",
+        "storefront::components.blocks.category-grid",
+        "storefront::components.blocks.product-row",
+        "storefront::components.blocks.text",
+        "categories::storefront.show",
+        "products::storefront.show"
+    ]
+}

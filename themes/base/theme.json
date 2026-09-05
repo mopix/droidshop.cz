@@ -1,0 +1,24 @@
+{
+    "key": "base",
+    "name": "Základní",
+    "description": "Neutrální vzhled platformy. Střídmá typografie, jemné rámečky, bezpečná volba pro každý sortiment.",
+    "tokens": {
+        "container": "72rem",
+        "radius": "0.75rem",
+        "radius-lg": "1rem",
+        "button-radius": "0.5rem",
+        "surface": "#ffffff",
+        "surface-muted": "#f8fafc",
+        "ink": "#0f172a",
+        "ink-muted": "#475569",
+        "line": "#e2e8f0",
+        "font-body": "Figtree, ui-sans-serif, system-ui, sans-serif",
+        "font-heading": "Figtree, ui-sans-serif, system-ui, sans-serif",
+        "heading-transform": "none",
+        "heading-tracking": "-0.01em",
+        "heading-weight": "600",
+        "card": "elevated",
+        "section-gap": "4rem"
+    },
+    "overrides": []
+}

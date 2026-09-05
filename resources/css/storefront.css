@@ -2,9 +2,72 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * Fallbacks for every token a theme may set (wave 4.1).
+ *
+ * Inside @layer base, and that placement is the whole point: the storefront
+ * layout prints the chosen theme's tokens in an inline <style> that the
+ * browser reads *before* this file, so an unlayered :root here would win the
+ * cascade on source order and quietly undo every theme. Unlayered rules beat
+ * layered ones regardless of order, so the inline block wins and these remain
+ * what they are meant to be — the values for a page rendered outside the
+ * storefront layout, or a manifest that lost a token. Nothing here may resolve
+ * to nothing: a missing --container is a broken page, not a plain one.
+ */
+@layer base {
+  :root {
+    --container: 72rem;
+    --radius: 0.75rem;
+    --radius-lg: 1rem;
+    --button-radius: 0.5rem;
+    --surface: #ffffff;
+    --surface-muted: #f8fafc;
+    --ink: #0f172a;
+    --ink-muted: #475569;
+    --line: #e2e8f0;
+    --font-body: Figtree, ui-sans-serif, system-ui, sans-serif;
+    --font-heading: var(--font-body);
+    --heading-transform: none;
+    --heading-tracking: -0.01em;
+    --heading-weight: 600;
+    --section-gap: 4rem;
+  }
+}
+
+@layer base {
+  body {
+    /* .bleed measures against the viewport, which includes the scrollbar on
+       desktop; without this the band is a few pixels wider than the page and
+       the whole document scrolls sideways. */
+    overflow-x: hidden;
+    font-family: var(--font-body);
+    background-color: var(--surface);
+    color: var(--ink);
+  }
+
+  /*
+   * Headings carry the theme's voice, and that voice is mostly typographic:
+   * the difference between an editorial fashion shop and a retail catalogue
+   * is letterspaced capitals against plain bold, not a different colour.
+   * Setting it here rather than in each theme's views keeps a theme from
+   * having to fork a view merely to change the shape of its headings.
+   */
+  h1, h2, h3 {
+    font-family: var(--font-heading);
+    font-weight: var(--heading-weight);
+    letter-spacing: var(--heading-tracking);
+    text-transform: var(--heading-transform);
+  }
+}
+
 @layer components {
+  .shop-container {
+    max-width: var(--container);
+    @apply mx-auto w-full px-4;
+  }
   .btn {
-    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2;
+    border-radius: var(--button-radius);
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2;
   }
   .btn-primary {
     background-color: var(--brand-primary);
@@ -17,21 +80,45 @@
     --tw-ring-color: var(--brand-primary);
   }
   .btn-outline {
-    @apply border border-slate-300 bg-white text-slate-800 hover:bg-slate-50;
+    border: 1px solid var(--line);
+    background-color: var(--surface);
+    color: var(--ink);
+  }
+  .btn-outline:hover {
+    background-color: var(--surface-muted);
   }
   .card {
-    @apply rounded-xl border border-slate-200 bg-white shadow-sm;
+    border-radius: var(--radius);
+    border: 1px solid var(--line);
+    background-color: var(--surface);
+    @apply shadow-sm;
   }
   .field-label {
-    @apply block text-sm font-medium text-slate-700;
+    color: var(--ink-muted);
+    @apply block text-sm font-medium;
   }
   .field-input {
-    @apply mt-1 block w-full rounded-lg border-slate-300 shadow-sm focus:border-slate-400 focus:ring-slate-400;
+    border-radius: var(--button-radius);
+    border-color: var(--line);
+    @apply mt-1 block w-full shadow-sm focus:border-slate-400 focus:ring-slate-400;
   }
   .badge {
     @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium;
   }
   .prose-shop {
-    @apply max-w-none text-slate-700 leading-relaxed;
+    color: var(--ink-muted);
+    @apply max-w-none leading-relaxed;
+  }
+  .section-stack > * + * {
+    margin-top: var(--section-gap);
+  }
+  /*
+   * Escapes the container for a full-width band without moving the container
+   * off <main>, so a theme can run image bands edge to edge while the pages it
+   * may not override keep the layout they were written for.
+   */
+  .bleed {
+    margin-left: calc(50% - 50vw);
+    margin-right: calc(50% - 50vw);
   }
 }
