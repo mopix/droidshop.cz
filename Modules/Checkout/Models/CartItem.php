@@ -6,6 +6,7 @@ use App\Core\Money\MoneyCast;
 use App\Core\Tenancy\BelongsToTenant;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class CartItem extends Model
 {
@@ -26,5 +27,21 @@ class CartItem extends Model
     public function cart(): BelongsTo
     {
         return $this->belongsTo(Cart::class);
+    }
+
+    /**
+     * The accessory lines that belong to this one.
+     *
+     * They follow the product line everywhere: quantity, removal, the order.
+     * A frame without its picture is not something anyone ordered.
+     */
+    public function addonLines(): HasMany
+    {
+        return $this->hasMany(self::class, 'parent_item_id');
+    }
+
+    public function isAddon(): bool
+    {
+        return (int) $this->addon_id > 0;
     }
 }

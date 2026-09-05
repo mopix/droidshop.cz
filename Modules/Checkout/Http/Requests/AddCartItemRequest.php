@@ -34,6 +34,15 @@ class AddCartItemRequest extends FormRequest
             // server-side via ProductCatalog::resolveVariant().
             'option_value_id' => ['sometimes', 'array', 'max:10'],
             'option_value_id.*' => ['integer'],
+            // Chosen accessories. Which ones exist, what they cost and whether
+            // they even belong to this product is decided in the controller
+            // through the catalogue contract — an id here is a claim, not a
+            // fact, exactly like option_value_id above.
+            'addon_id' => ['sometimes', 'array', 'max:10'],
+            // Nullable because the product page posts one entry per group and
+            // "no accessory" is a real answer — an empty string there is the
+            // customer declining, not a malformed request.
+            'addon_id.*' => ['nullable', 'integer'],
             // Deliberately absent: any 'price' or 'unit_price' the client
             // sends is never a validated field, so it is never read — the
             // pricing authority stays ProductCatalog::price() (AK 5).

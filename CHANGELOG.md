@@ -11,6 +11,28 @@ Pravidla: [`.claude/skills/versioning/SKILL.md`](.claude/skills/versioning/SKILL
 
 > CHANGELOG vede milníky (minor/major). Detail patchů je v `git log`.
 
+## [0.51.0] – 2026-09-05
+
+**Prvky storefrontu a šablona `katalog`.** Spec `docs/superpowers/specs/2026-09-05-prvky-storefrontu-design.md`,
+plán `docs/superpowers/plans/2026-09-05-prvky-storefrontu.md`, as-is
+`docs/as-is/2026-09-05-prvky-storefrontu.md`. Migrace (vlastnosti, doplňky, sloupce v košíku
+a objednávkách) + `npm run build`.
+
+### Šablona potřebuje co zobrazit
+Vlna 4.1 dala platformě šablony a ukázala, že samotný vzhled nestačí: pět nových bloků titulky
+(karusel, pás výhod, produkty se záložkami, mozaika kategorií, řada bannerů), fasetové filtry ve
+výpisu a doplňky s příplatkem na detailu. Teprve nad tím vznikla čtvrtá šablona.
+
+### Doplněk je řádek, ne příplatek
+Doplněk jde na fakturu se svým názvem a svou sazbou DPH; přičtení do ceny produktu by dalo plátnu
+i rámu jednu sazbu. Sklad se za doplněk neodepisuje a hmotnost nenese — obraz odchází z regálu
+jednou, ne dvakrát proto, že měl rám.
+
+### Co našlo proklikání
+CartPricer staví řádky podruhé kvůli rozpočtu slevy a zahodil při tom vazbu doplňku na rodiče:
+každý doplněk měl v košíku vlastní množství a vlastní odebrání, tedy nabídku sundat obrazu rám,
+který pak dorazí nezarámovaný. Testy to nechytly, protože kontrolovaly čísla, ne ovládací prvky.
+
 ## [0.50.0] – 2026-09-04
 
 **Šablony storefrontu.** Spec `docs/superpowers/specs/2026-09-04-sablony-storefrontu-design.md`,

@@ -10,6 +10,7 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
+use Inertia\Testing\AssertableInertia;
 use Modules\Storefront\Enums\BlockType;
 use Modules\Storefront\Models\HomepageBlock;
 use Tests\Concerns\ActivatesModules;
@@ -267,5 +268,25 @@ class HomepageAdminTest extends TestCase
                 'image' => UploadedFile::fake()->create('x.svg', 10, 'image/svg+xml'),
             ])
             ->assertSessionHasErrors('image');
+    }
+
+    public function test_the_editor_offers_every_block_type(): void
+    {
+        // The picker is built from what the server sends, so a type added to
+        // the enum without reaching this list would exist and be unreachable.
+        [$tenant, $owner] = $this->makeShopWithOwner('shop1');
+        $this->withoutVite();
+
+        $this->actingAs($owner)
+            ->get($this->url($tenant))
+            ->assertOk()
+            ->assertInertia(fn (AssertableInertia $page) => $page
+                ->component('Modules/Storefront/Homepage')
+                ->where('blockTypes', array_map(
+                    fn (BlockType $type): string => $type->value,
+                    BlockType::cases(),
+                ))
+                ->etc()
+            );
     }
 }

@@ -28,7 +28,7 @@
          contains an accented glyph, and preloading both would spend the
          connection budget on a file many shops never render. --}}
     <link rel="preload" as="font" type="font/woff2" crossorigin
-          href="{{ asset('fonts/retail/source-sans-3-latin.woff2') }}">
+          href="{{ asset('fonts/source-sans-3/latin.woff2') }}">
 
     @stack('head')
 

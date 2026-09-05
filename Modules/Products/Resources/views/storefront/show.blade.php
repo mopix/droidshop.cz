@@ -87,6 +87,13 @@
                 $salePercent = $lowestPrice !== null && $lowestPrice->amount > $displayPrice->amount
                     ? (int) round(($lowestPrice->amount - $displayPrice->amount) / $lowestPrice->amount * 100)
                     : null;
+                // The saving in korunas, from the SAME reference the
+                // percentage uses — the 30-day low, not the shelf price. Two
+                // figures describing one discount must describe the same one,
+                // or the page argues with itself (wave 4.2).
+                $saving = $salePercent === null
+                    ? null
+                    : $lowestPrice->minus($displayPrice);
             @endphp
 
             <p class="mt-6">
@@ -97,6 +104,9 @@
 
                     @if ($salePercent !== null)
                         <span class="badge ml-2 bg-red-100 text-red-800" data-sale-badge>−{{ $salePercent }} %</span>
+                        <span class="ml-2 text-sm font-medium text-red-700" data-sale-saving>
+                            Ušetříte {{ $saving->format() }}
+                        </span>
                     @endif
                 @endif
 
@@ -141,6 +151,8 @@
                             'preselected' => $preselected,
                         ])
                     @endif
+
+                    <x-products::addons :groups="$addonGroups" />
 
                     <div class="mt-6 flex items-end gap-3">
                         <div>

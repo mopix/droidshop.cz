@@ -13,7 +13,7 @@
          raw, unfolded `q`. The set comes from PageCacheKey so it can never
          drift from what the cache key is built from. --}}
     @foreach (\App\Core\PageCache\PageCacheKey::whitelistedInputs(request()) as $key => $value)
-        @continue(in_array($key, ['razeni', 'skladem', 'page'], true))
+        @continue(in_array($key, ['razeni', 'skladem', 'page', 'na-stranku'], true))
         <input type="hidden" name="{{ $key }}" value="{{ $value }}">
     @endforeach
 
@@ -24,6 +24,15 @@
             <option value="cena-asc" @selected($query->sort === 'cena-asc')>Nejlevnější</option>
             <option value="cena-desc" @selected($query->sort === 'cena-desc')>Nejdražší</option>
             <option value="nazev" @selected($query->sort === 'nazev')>Podle názvu</option>
+        </select>
+    </div>
+
+    <div>
+        <label for="na-stranku" class="field-label">Na stránku</label>
+        <select id="na-stranku" name="na-stranku" class="field-input">
+            @foreach (\App\Core\Catalog\ProductQuery::PER_PAGE as $size)
+                <option value="{{ $size }}" @selected($query->perPage === $size)>{{ $size }}</option>
+            @endforeach
         </select>
     </div>
 

@@ -18,6 +18,8 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Modules\Products\Models\Product;
+use Modules\Products\Models\ProductAttribute;
+use Modules\Products\Models\ProductAttributeValue;
 use Modules\Products\Models\ProductOptionValue;
 use Modules\Products\Models\ProductVariant;
 use Modules\Products\Support\SearchText;
@@ -92,6 +94,8 @@ class EloquentProductCatalog implements ProductCatalog
             );
         }
 
+        $this->applyAttributes($builder, $query->attributes);
+
         if ($query->term !== null && $query->term !== '') {
             $this->applySearch($builder, $query->term);
         }
@@ -146,6 +150,113 @@ class EloquentProductCatalog implements ProductCatalog
     /**
      * @param  Builder<Product>  $builder
      */
+    /**
+     * Narrow by descriptive properties: OR inside one attribute, AND between them.
+     *
+     * That is what a shopper means by "blue or black, for a bedroom" and what
+     * every competing shop does. The nesting is one whereExists per attribute
+     * rather than a loop of whereHas with orWhere inside — the latter reads
+     * the same and produces an intersection where the union belongs, so a
+     * customer picking two colours would be shown the goods that are somehow
+     * both.
+     *
+     * Unknown codes and slugs simply match nothing to narrow by: they are
+     * dropped before the query, so a stale link shows the unfiltered shelf
+     * instead of an empty one.
+     *
+     * @param  array<string, list<string>>  $attributes
+     */
+    private function applyAttributes($builder, array $attributes): void
+    {
+        foreach ($this->knownValueIds($attributes) as $valueIds) {
+            $builder->whereExists(function ($query) use ($valueIds): void {
+                $query->selectRaw('1')
+                    ->from('product_attribute_value_product as pav')
+                    ->whereColumn('pav.product_id', 'products.id')
+                    ->whereIn('pav.value_id', $valueIds);
+            });
+        }
+    }
+
+    /**
+     * The requested filter, reduced to values this shop actually has.
+     *
+     * A code or slug nobody knows is dropped rather than matched against
+     * nothing: a link goes stale when a merchant renames a value, and a stale
+     * link should land the visitor on the shelf, not on "we sell nothing".
+     * Whatever survives is turned into ids once, so the listing query joins
+     * one small table instead of three.
+     *
+     * @param  array<string, list<string>>  $attributes
+     * @return array<string, list<int>>
+     */
+    private function knownValueIds(array $attributes): array
+    {
+        if ($attributes === []) {
+            return [];
+        }
+
+        $rows = ProductAttributeValue::query()
+            ->join('product_attributes as a', 'a.id', '=', 'product_attribute_values.attribute_id')
+            ->whereIn('a.code', array_keys($attributes))
+            ->get(['product_attribute_values.id', 'product_attribute_values.slug', 'a.code']);
+
+        $byCode = [];
+
+        foreach ($rows as $row) {
+            if (in_array($row->slug, $attributes[$row->code] ?? [], true)) {
+                $byCode[$row->code][] = (int) $row->id;
+            }
+        }
+
+        return $byCode;
+    }
+
+    /**
+     * How many products each value of an attribute would leave.
+     *
+     * Counted against the current filter **minus that attribute**, which is
+     * the only count that helps: with the attribute included, every unselected
+     * value reads zero, and a filter that offers nothing but dead ends is
+     * worse than one with no counts at all.
+     *
+     * @return array<string, array<string, int>> attribute code => value slug => count
+     */
+    public function facetCounts(ProductQuery $query): array
+    {
+        $counts = [];
+
+        $codes = ProductAttribute::query()
+            ->where('is_filterable', true)
+            ->orderBy('position')
+            ->pluck('code');
+
+        foreach ($codes as $code) {
+            $narrowed = array_diff_key($query->attributes, [$code => true]);
+
+            $rows = Product::query()->published()
+                ->when($query->categoryIds !== [], fn ($q) => $q->whereHas(
+                    'categories',
+                    fn ($inner) => $inner->whereIn('categories.id', $query->categoryIds)
+                ))
+                ->tap(fn ($q) => $this->applyAttributes($q, $narrowed))
+                ->join('product_attribute_value_product as pav', 'pav.product_id', '=', 'products.id')
+                ->join('product_attribute_values as v', 'v.id', '=', 'pav.value_id')
+                ->join('product_attributes as a', 'a.id', '=', 'v.attribute_id')
+                ->where('a.code', $code)
+                ->groupBy('v.slug')
+                ->selectRaw('v.slug as slug, count(distinct products.id) as total')
+                ->pluck('total', 'slug')
+                ->all();
+
+            if ($rows !== []) {
+                $counts[$code] = array_map('intval', $rows);
+            }
+        }
+
+        return $counts;
+    }
+
     private function applySort(Builder $builder, ProductQuery $query): void
     {
         // A search orders by relevance first: a term matching the start of the

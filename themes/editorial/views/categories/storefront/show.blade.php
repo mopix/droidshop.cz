@@ -50,6 +50,7 @@
                              covers the very listing it filters. --}}
                         <div class="mt-3 border border-line bg-surface p-4 sm:absolute sm:right-0 sm:z-20 sm:w-80">
                             <x-storefront::sort-form :query="$query" />
+                            <x-storefront::facet-panel :facets="$facets" :query="$query" />
                         </div>
                     </details>
                 @endif

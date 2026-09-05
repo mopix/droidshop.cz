@@ -3,6 +3,7 @@
 namespace Modules\Categories\Http\Controllers;
 
 use App\Core\Catalog\Contracts\ProductCatalog;
+use App\Core\Catalog\Contracts\ProductFacets;
 use App\Core\Catalog\ProductQuery;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\Request;
@@ -19,7 +20,13 @@ use Modules\Storefront\Support\Seo;
  */
 class CategoryStorefrontController
 {
-    public function __construct(private readonly ProductCatalog $catalog) {}
+    public function __construct(
+        private readonly ProductCatalog $catalog,
+        // Through the kernel contract, never Modules\Products directly: this
+        // module must keep working on a shop whose catalogue module is off,
+        // and the null binding is what makes the panel simply not appear.
+        private readonly ProductFacets $facets,
+    ) {}
 
     public function __invoke(Request $request, string $slug): View
     {
@@ -41,6 +48,7 @@ class CategoryStorefrontController
             'children' => $category->children()->visible()->get(),
             'products' => $products,
             'query' => $query,
+            'facets' => $this->facets->for($query),
             'ancestors' => $this->ancestors($category),
             'seo' => new Seo(
                 title: $category->seo_title ?: $category->name,

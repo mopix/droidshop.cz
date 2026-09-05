@@ -405,4 +405,75 @@ class PageCacheKeyTest extends TestCase
             $this->key($tenant, '/kategorie/boty?razeni[]=b'),
         );
     }
+
+    public function test_two_tabs_do_not_share_a_key(): void
+    {
+        $tenant = Tenant::factory()->create();
+
+        // Different tabs render different goods. Sharing one stored page would
+        // serve the first visitor's tab to everyone who asked for the other.
+        $this->assertNotSame(
+            $this->key($tenant, '/?zalozka=1'),
+            $this->key($tenant, '/?zalozka=2'),
+        );
+    }
+
+    public function test_a_tab_number_nobody_can_open_lands_on_the_default_key(): void
+    {
+        // HomeController clamps an out-of-range number back to the first tab,
+        // so the key has to agree — otherwise every guessed number mints its
+        // own cache entry holding the very same HTML.
+        $tenant = Tenant::factory()->create();
+        $default = $this->key($tenant, '/');
+
+        $this->assertSame($default, $this->key($tenant, '/?zalozka=99'));
+        $this->assertSame($default, $this->key($tenant, '/?zalozka=druha'));
+        $this->assertSame($default, $this->key($tenant, '/?zalozka=1'));
+    }
+
+    public function test_two_orderings_of_one_filter_are_one_entry(): void
+    {
+        // The catalogue sorts and de-duplicates the filter before reading it,
+        // so the key has to agree — otherwise the same shelf is stored twice
+        // under two spellings of the same choice.
+        $tenant = Tenant::factory()->create();
+
+        $this->assertSame(
+            $this->key($tenant, '/kategorie/obrazy?vlastnost[barva][]=modra&vlastnost[barva][]=cerna'),
+            $this->key($tenant, '/kategorie/obrazy?vlastnost[barva][]=cerna&vlastnost[barva][]=modra'),
+        );
+    }
+
+    public function test_a_filter_value_nobody_could_type_does_not_mint_a_key(): void
+    {
+        // Filter parameters arrive from a query string, so a crawler will
+        // eventually send every shape there is. Anything that is not a slug is
+        // dropped before the key, or each attempt is its own stored page.
+        $tenant = Tenant::factory()->create();
+        $plain = $this->key($tenant, '/kategorie/obrazy');
+
+        $this->assertSame($plain, $this->key($tenant, '/kategorie/obrazy?vlastnost[BARVA]=modra'));
+        $this->assertSame($plain, $this->key($tenant, '/kategorie/obrazy?vlastnost[barva][]=Modrá%20%3B%20drop'));
+        $this->assertSame($plain, $this->key($tenant, '/kategorie/obrazy?vlastnost=barva'));
+    }
+
+    public function test_a_filtered_page_does_not_share_the_plain_one(): void
+    {
+        $tenant = Tenant::factory()->create();
+
+        $this->assertNotSame(
+            $this->key($tenant, '/kategorie/obrazy'),
+            $this->key($tenant, '/kategorie/obrazy?vlastnost[barva][]=modra'),
+        );
+    }
+
+    public function test_only_offered_page_sizes_change_the_key(): void
+    {
+        $tenant = Tenant::factory()->create();
+        $plain = $this->key($tenant, '/kategorie/obrazy');
+
+        $this->assertNotSame($plain, $this->key($tenant, '/kategorie/obrazy?na-stranku=48'));
+        $this->assertSame($plain, $this->key($tenant, '/kategorie/obrazy?na-stranku=24'));
+        $this->assertSame($plain, $this->key($tenant, '/kategorie/obrazy?na-stranku=100000'));
+    }
 }

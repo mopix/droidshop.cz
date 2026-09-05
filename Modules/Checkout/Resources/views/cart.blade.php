@@ -38,7 +38,17 @@
 
         <div class="card mt-6 divide-y divide-slate-100">
             @foreach ($cart->lines as $line)
-                <div class="flex flex-wrap items-center gap-4 p-4">
+                {{--
+                    An accessory is drawn under the thing it belongs to and
+                    without controls of its own. It is not separately
+                    countable: its quantity follows the product's, and a
+                    "remove" beside it would offer to take the frame off a
+                    picture that then arrives unframed without anyone deciding
+                    that. Removing the product takes its accessories with it.
+                --}}
+                @php($isAddon = $line->parentItemId !== null)
+
+                <div class="flex flex-wrap items-center gap-4 p-4 {{ $isAddon ? 'bg-slate-50 pl-10' : '' }}">
                     @if ($line->imageUrl)
                         <img src="{{ $line->imageUrl }}" alt="" class="h-16 w-16 shrink-0 rounded-lg object-cover" loading="lazy">
                     @else
@@ -46,7 +56,10 @@
                     @endif
 
                     <div class="min-w-[10rem] flex-1">
-                        <p class="font-medium text-slate-900">
+                        <p class="{{ $isAddon ? 'text-sm text-slate-700' : 'font-medium text-slate-900' }}">
+                            @if ($isAddon)
+                                <span aria-hidden="true">+</span>
+                            @endif
                             @if ($line->url)
                                 <a href="{{ $line->url }}" class="hover:text-brand hover:underline">{{ $line->name }}</a>
                             @else
@@ -69,6 +82,9 @@
                         @endunless
                     </div>
 
+                    @if ($isAddon)
+                        <p class="text-sm text-slate-600">{{ $line->quantity }} ks</p>
+                    @else
                     <form method="POST" action="{{ route('storefront.checkout.update', $line->itemId) }}"
                           class="flex items-center gap-2">
                         @csrf
@@ -81,14 +97,17 @@
                             Aktualizovat
                         </button>
                     </form>
+                    @endif
 
                     <p class="w-28 text-right font-medium text-slate-900">{{ $line->lineTotal->format() }}</p>
 
-                    <form method="POST" action="{{ route('storefront.checkout.remove', $line->itemId) }}">
-                        @csrf
-                        @method('DELETE')
-                        <button type="submit" class="text-sm text-red-700 underline hover:text-red-800">Odebrat</button>
-                    </form>
+                    @unless ($isAddon)
+                        <form method="POST" action="{{ route('storefront.checkout.remove', $line->itemId) }}">
+                            @csrf
+                            @method('DELETE')
+                            <button type="submit" class="text-sm text-red-700 underline hover:text-red-800">Odebrat</button>
+                        </form>
+                    @endunless
                 </div>
             @endforeach
         </div>

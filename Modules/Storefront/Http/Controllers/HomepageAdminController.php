@@ -92,12 +92,64 @@ class HomepageAdminController
             $payload['image_path'] = $block->payload['image_path'];
         }
 
+        $payload = $this->resolveItemImages($request, $block, $payload);
+
         $block->update([
             'payload' => $payload,
             'visible' => $request->boolean('visible', $block->visible),
         ]);
 
         return back()->with('success', 'Blok byl uložen.');
+    }
+
+    /**
+     * The same server-authority rule as the single image, applied inside a list.
+     *
+     * A slider or a banner grid keeps an `image_path` per item, and update()'s
+     * `unset($payload['image_path'])` only reaches the top level — a payload
+     * carrying `slides[0].image_path` would otherwise let a tenant point a
+     * slide at any file on the public disk. So every item's path is thrown
+     * away and re-derived: from the upload when one arrived for that index,
+     * otherwise from what the block already had at that index.
+     *
+     * @param  array<string, mixed>  $payload
+     * @return array<string, mixed>
+     */
+    private function resolveItemImages(UpdateBlockRequest $request, HomepageBlock $block, array $payload): array
+    {
+        $bounds = $block->type->itemBounds();
+
+        if ($bounds === null) {
+            return $payload;
+        }
+
+        [$key] = $bounds;
+
+        if (! is_array($payload[$key] ?? null)) {
+            return $payload;
+        }
+
+        $stored = array_values($block->payload[$key] ?? []);
+        $items = array_values($payload[$key]);
+
+        foreach ($items as $index => $item) {
+            unset($item['image_path']);
+
+            if ($request->hasFile("images.{$index}")) {
+                $upload = $request->file("images.{$index}");
+                $path = "homepage/{$block->id}-{$index}.".$upload->extension();
+                $this->files->putPublic($path, file_get_contents($upload->getRealPath()));
+                $item['image_path'] = $path;
+            } elseif (isset($stored[$index]['image_path'])) {
+                $item['image_path'] = $stored[$index]['image_path'];
+            }
+
+            $items[$index] = $item;
+        }
+
+        $payload[$key] = $items;
+
+        return $payload;
     }
 
     public function move(MoveBlockRequest $request, HomepageBlock $block): RedirectResponse

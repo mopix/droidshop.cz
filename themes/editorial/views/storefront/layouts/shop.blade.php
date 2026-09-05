@@ -32,7 +32,7 @@
         shops never render.
     --}}
     <link rel="preload" as="font" type="font/woff2" crossorigin
-          href="{{ asset('fonts/editorial/archivo-latin.woff2') }}">
+          href="{{ asset('fonts/archivo/latin.woff2') }}">
 
     @stack('head')
 

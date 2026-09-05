@@ -2,6 +2,7 @@
 
 namespace Modules\Checkout\Services;
 
+use App\Core\Catalog\Contracts\ProductAddons;
 use App\Core\Catalog\Contracts\ProductCatalog;
 use App\Core\Checkout\Contracts\CartRepository;
 use App\Core\Checkout\Contracts\CartShape;
@@ -17,6 +18,10 @@ class EloquentCartRepository implements CartRepository
     public function __construct(
         private readonly ShopModules $modules,
         private readonly ProductCatalog $catalog,
+        // Through the kernel contract, never the products module: the addon's
+        // price and its ownership of the product are decided there, and this
+        // repository must keep working on a shop that sells no accessories.
+        private readonly ProductAddons $addons,
     ) {}
 
     /**
@@ -51,7 +56,7 @@ class EloquentCartRepository implements CartRepository
         ]);
     }
 
-    public function addItem(CartShape $cart, int $productId, int $quantity, ?int $variantId = null): void
+    public function addItem(CartShape $cart, int $productId, int $quantity, ?int $variantId = null, array $addonIds = []): void
     {
         if (! $this->modules->has('checkout')) {
             return;
@@ -62,10 +67,22 @@ class EloquentCartRepository implements CartRepository
         // 0, never null — see the migration: NULL would defeat cart_item_unique.
         $variantKey = $variantId ?? 0;
 
-        $existing = $this->existingItem($cart, $productId, $variantKey);
+        // Addons are part of a line's identity: the same picture with an oak
+        // frame and with no frame are two things a customer bought, not one
+        // line of two. The ids are sorted so the same choice made in a
+        // different order still merges.
+        $addonIds = collect($addonIds)->map(fn ($id): int => (int) $id)->unique()->sort()->values()->all();
+
+        $addonHash = $this->addonHash($addonIds);
+
+        $existing = $this->existingItem($cart, $productId, $variantKey, $addonIds);
 
         if ($existing !== null) {
             $existing->increment('quantity', $quantity);
+
+            // The accessories move with the thing they belong to; a frame
+            // without its picture is not something anyone ordered.
+            $existing->addonLines()->increment('quantity', $quantity);
 
             return;
         }
@@ -74,12 +91,15 @@ class EloquentCartRepository implements CartRepository
             // The price is read from the catalogue at the moment of insertion.
             // It is a snapshot for display only — the pricing authority stays
             // ProductCatalog::price(), read again wherever a total is computed.
-            $cart->items()->create([
+            $item = $cart->items()->create([
                 'product_id' => $productId,
                 'variant_id' => $variantKey,
+                'addon_hash' => $addonHash,
                 'quantity' => $quantity,
                 'unit_price' => $this->catalog->price($productId, [], $variantId),
             ]);
+
+            $this->addAddonLines($cart, $item, $productId, $quantity, $addonIds);
         } catch (UniqueConstraintViolationException $e) {
             // A concurrent addItem() for the same product (and variant)
             // committed between our lookup above and this insert — the
@@ -105,12 +125,65 @@ class EloquentCartRepository implements CartRepository
      * UniqueConstraintViolationException recovery path deterministically in
      * single-threaded PHPUnit (mirrors OrderPlacer::existingOrder()).
      */
-    protected function existingItem(Cart $cart, int $productId, int $variantId = 0): ?CartItem
+    /**
+     * @param  list<int>  $addonIds
+     */
+    protected function existingItem(Cart $cart, int $productId, int $variantId = 0, array $addonIds = []): ?CartItem
     {
         return $cart->items()
+            ->whereNull('parent_item_id')
             ->where('product_id', $productId)
             ->where('variant_id', $variantId)
+            ->where('addon_hash', $this->addonHash($addonIds))
             ->first();
+    }
+
+    /**
+     * One value standing for a whole set of accessories.
+     *
+     * Sorted before hashing, so the same choice made in a different order
+     * merges into one line instead of quietly becoming a second one.
+     *
+     * @param  list<int>  $addonIds
+     */
+    private function addonHash(array $addonIds): string
+    {
+        return $addonIds === [] ? '' : md5(implode(',', $addonIds));
+    }
+
+    /**
+     * The chosen accessories, as lines of their own.
+     *
+     * Their own lines rather than a surcharge folded into the product's price,
+     * because that is how they have to reach the invoice: with their own label
+     * and their own VAT rate. A cart that models them differently from the
+     * order is a cart whose total nobody can reconcile.
+     *
+     * The price comes from the catalogue, never from the form, and an addon
+     * that does not belong to this product is dropped — otherwise a crafted
+     * post buys one picture's cheap frame for another.
+     *
+     * @param  list<int>  $addonIds
+     */
+    private function addAddonLines(Cart $cart, CartItem $item, int $productId, int $quantity, array $addonIds): void
+    {
+        foreach ($addonIds as $addonId) {
+            $addon = $this->addons->find($productId, $addonId);
+
+            if ($addon === null) {
+                continue;
+            }
+
+            $cart->items()->create([
+                'product_id' => $productId,
+                'variant_id' => 0,
+                'addon_id' => $addon->id,
+                'parent_item_id' => $item->id,
+                'addon_hash' => $item->addon_hash,
+                'quantity' => $quantity,
+                'unit_price' => $addon->price,
+            ]);
+        }
     }
 
     public function setQuantity(CartShape $cart, int $itemId, int $quantity): void
@@ -128,12 +201,17 @@ class EloquentCartRepository implements CartRepository
         }
 
         if ($quantity <= 0) {
+            // Accessories go with the thing they were attached to. Leaving
+            // them behind would bill a frame for a picture that is no longer
+            // in the basket.
+            $item->addonLines()->delete();
             $item->delete();
 
             return;
         }
 
         $item->update(['quantity' => $quantity]);
+        $item->addonLines()->update(['quantity' => $quantity]);
     }
 
     public function removeItem(CartShape $cart, int $itemId): void
@@ -144,6 +222,9 @@ class EloquentCartRepository implements CartRepository
 
         $cart = $this->persisted($cart);
 
+        // Children first, then the line itself: the other order leaves orphan
+        // accessory rows pointing at a parent that no longer exists.
+        $cart->items()->where('parent_item_id', $itemId)->delete();
         $cart->items()->whereKey($itemId)->delete();
     }
 

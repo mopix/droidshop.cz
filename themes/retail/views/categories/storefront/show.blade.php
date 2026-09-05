@@ -51,12 +51,20 @@
             <x-storefront::sort-form :query="$query" />
         </div>
 
-        <div class="mt-6">
-            <x-storefront::product-grid :products="$products" />
-        </div>
+        <div class="mt-6 lg:grid lg:grid-cols-[15rem_minmax(0,1fr)] lg:gap-6">
+            <div class="mb-6 lg:mb-0">
+                <x-storefront::facet-panel :facets="$facets" :query="$query" />
+            </div>
 
-        <div class="mt-8">
-            {{ $products->links() }}
+            <div>
+                @if ($products->hasPages())
+                    <div class="mb-4">{{ $products->links() }}</div>
+                @endif
+
+                <x-storefront::product-grid :products="$products" />
+
+                <div class="mt-8">{{ $products->links() }}</div>
+            </div>
         </div>
     @endif
 

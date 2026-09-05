@@ -29,18 +29,31 @@
         </nav>
     @endif
 
-    <div class="mt-8">
-        @if ($products->total() === 0)
-            <p class="text-slate-600">V této kategorii zatím nic nenabízíme.</p>
-        @else
-            <x-storefront::sort-form :query="$query" />
+    <div class="mt-8 lg:grid lg:grid-cols-[16rem_minmax(0,1fr)] lg:gap-8">
+        <div class="mb-6 lg:mb-0">
+            <x-storefront::facet-panel :facets="$facets" :query="$query" />
+        </div>
 
-            <x-storefront::product-grid :products="$products" />
+        <div>
+            @if ($products->total() === 0)
+                <p class="text-slate-600">V této kategorii zatím nic nenabízíme.</p>
+            @else
+                <x-storefront::sort-form :query="$query" />
 
-            <div class="mt-8">
-                {{ $products->links() }}
-            </div>
-        @endif
+                {{-- Above the grid as well as below it: on a long listing the
+                     next page is otherwise a scroll away from the goods the
+                     visitor just decided not to buy. --}}
+                @if ($products->hasPages())
+                    <div class="mb-6">{{ $products->links() }}</div>
+                @endif
+
+                <x-storefront::product-grid :products="$products" />
+
+                <div class="mt-8">
+                    {{ $products->links() }}
+                </div>
+            @endif
+        </div>
     </div>
 
     @if ($category->description_below)

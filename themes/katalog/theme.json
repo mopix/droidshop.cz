@@ -1,0 +1,31 @@
+{
+    "key": "katalog",
+    "name": "Katalog",
+    "description": "Pro široký sortiment s filtrováním. Karusel a pás výhod na titulce, fasetové filtry ve výpisu, doplňky a kotvy sekcí na detailu.",
+    "css": "resources/css/themes/katalog.css",
+    "tokens": {
+        "container": "72rem",
+        "radius": "0.5rem",
+        "radius-lg": "0.75rem",
+        "button-radius": "0.375rem",
+        "surface": "#ffffff",
+        "surface-muted": "#f5f5f4",
+        "ink": "#1c1917",
+        "ink-muted": "#57534e",
+        "line": "#e7e5e4",
+        "font-body": "Source Sans 3, ui-sans-serif, system-ui, sans-serif",
+        "font-heading": "Source Sans 3, ui-sans-serif, system-ui, sans-serif",
+        "heading-transform": "none",
+        "heading-tracking": "-0.01em",
+        "heading-weight": "700",
+        "card": "bordered",
+        "section-gap": "2.5rem"
+    },
+    "overrides": [
+        "storefront::layouts.shop",
+        "categories::storefront.show",
+        "products::storefront.show",
+        "storefront::components.product-card",
+        "storefront::components.product-grid"
+    ]
+}
